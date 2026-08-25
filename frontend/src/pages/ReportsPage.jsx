@@ -98,16 +98,32 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {reportData.payment_methods && (
+          {reportData.payment_methods && Object.keys(reportData.payment_methods).length > 0 && (
             <div className="report-section">
               <h4>Payment Methods Breakdown</h4>
-              <ul>
-                {Object.entries(reportData.payment_methods).map(([method, count]) => (
-                  <li key={method}>{method}: {count} transactions</li>
-                ))}
-              </ul>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+                {Object.entries(reportData.payment_methods).map(([method, val]) => {
+                  const count = typeof val === 'object' && val !== null ? (val.count ?? 0) : val
+                  const total = typeof val === 'object' && val !== null && val.total ? ` (₱${Number(val.total).toLocaleString('en-PH', { maximumFractionDigits: 2 })})` : ''
+                  return (
+                    <div
+                      key={method}
+                      style={{
+                        padding: '8px 14px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{method}</strong>: {count} transactions{total}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
+
 
           {reportData.top_products && (
             <div className="report-section">

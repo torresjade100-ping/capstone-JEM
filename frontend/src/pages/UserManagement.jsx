@@ -98,11 +98,11 @@ export default function UserManagement() {
     if (!formData.email.trim()) {
       errors.email = 'Email address is required.'
     } else if (!emailRegex.test(formData.email.trim())) {
-      errors.email = 'Please enter a valid email address().'
+      errors.email = 'Please enter a valid email address.'
     } else {
       // Check duplicate email
-      const isDuplicate = users.some(u => 
-        u.email.toLowerCase() === formData.email.trim().toLowerCase() && 
+      const isDuplicate = users.some(u =>
+        u.email.toLowerCase() === formData.email.trim().toLowerCase() &&
         (!editingUser || u.id !== editingUser.id)
       )
       if (isDuplicate) {
@@ -110,9 +110,13 @@ export default function UserManagement() {
       }
     }
 
-    if (!formData.phone.trim()) {
+    const cleanPhone = (formData.phone || '').replace(/\D/g, '')
+    if (!cleanPhone) {
       errors.phone = 'Contact mobile number is required.'
+    } else if (cleanPhone.length !== 11) {
+      errors.phone = 'Mobile number must be exactly 11 digits (09XXXXXXXXX).'
     }
+
 
     if (!editingUser) {
       if (!formData.password) {
@@ -142,7 +146,7 @@ export default function UserManagement() {
     try {
       setSubmitting(true)
       const method = editingUser ? 'PUT' : 'POST'
-      const url = editingUser 
+      const url = editingUser
         ? `${API_BASE_URL}/admin/users/${editingUser.id}`
         : `${API_BASE_URL}/admin/users`
 
@@ -431,7 +435,7 @@ export default function UserManagement() {
             Manage registered accounts, contractors, and contact information.
           </p>
         </div>
-        <button 
+        <button
           className="btn btn-primary"
           onClick={() => {
             setEditingUser(null)
@@ -736,7 +740,7 @@ export default function UserManagement() {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. Maria Santos (Operations Staff)"
+                    placeholder="Enter full name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
@@ -758,7 +762,7 @@ export default function UserManagement() {
                   <input
                     type="email"
                     className="form-input"
-                    placeholder="e.g. maria.staff@jemhardware.com"
+                    placeholder="Enter email address"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
@@ -779,11 +783,19 @@ export default function UserManagement() {
                   <Phone className="form-input-icon" size={16} />
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    maxLength={11}
                     className="form-input"
-                    placeholder="e.g. 0917-555-1234"
+                    placeholder="09XXXXXXXXX (11 digits)"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => {
+                      const onlyNums = e.target.value.replace(/\D/g, '').slice(0, 11)
+                      setFormData({ ...formData, phone: onlyNums })
+                    }}
                   />
+
+
+
                 </div>
                 {formErrors.phone && (
                   <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>

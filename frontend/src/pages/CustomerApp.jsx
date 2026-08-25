@@ -994,11 +994,12 @@ export default function CustomerApp() {
                         <input
                           type="text"
                           className="form-input"
-                          placeholder="e.g. Juan Dela Cruz (JDC Builders)"
+                          placeholder="Juan Dela Cruz (JDC Builders)"
                           value={authFormData.name}
                           onChange={(e) => setAuthFormData({ ...authFormData, name: e.target.value })}
                           required
                         />
+
                       </div>
                     </div>
                   )}
@@ -1888,7 +1889,7 @@ export default function CustomerApp() {
                     <Tag size={18} color="#f97316" />
                     <input
                       type="text"
-                      placeholder="Enter promo voucher (e.g. JEMBUILD10)"
+                      placeholder="Enter promo voucher (JEMBUILD10)"
                       value={voucherCode}
                       onChange={(e) => setVoucherCode(e.target.value)}
                     />
@@ -1995,10 +1996,11 @@ export default function CustomerApp() {
                   type="text"
                   className="form-input"
                   style={{ padding: '10px 12px' }}
-                  placeholder="e.g. Unload near garage gate, call before entering"
+                  placeholder="Unload near garage gate, call before entering"
                   value={checkoutNotes}
                   onChange={(e) => setCheckoutNotes(e.target.value)}
                 />
+
               </div>
 
               {/* Order Summary & Breakdown */}

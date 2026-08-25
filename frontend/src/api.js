@@ -97,19 +97,30 @@ export function addSharedMobileOrder(orderData) {
 
 export function updateSharedOrderStatus(orderId, newStatus) {
   const currentOrders = getSharedOrders()
+  let targetOrder = null
   const updated = currentOrders.map(ord => {
-    if (ord.id === orderId || ord.order_number === orderId) {
-      return {
+    if (ord.id === orderId || ord.order_number === orderId || String(ord.id) === String(orderId)) {
+      targetOrder = {
         ...ord,
         status: newStatus,
         updated_at: new Date().toISOString()
       }
+      return targetOrder
     }
     return ord
   })
   saveSharedOrders(updated)
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jem_orders_update', { detail: targetOrder || { id: orderId, status: newStatus } }))
+      window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: { targetRole: 'all' } }))
+    }
+  } catch (e) {}
+
   return updated
 }
+
 
 // Lightweight In-Memory Cache & In-Flight Request Deduplication Map
 const apiCache = new Map()
@@ -236,17 +247,47 @@ export function changeUserRole(id, role) { return request(`/admin/users/${id}/ro
 
 
 export async function getAdminOrders(params = {}) {
+  const shared = getSharedOrders()
   try {
     const query = new URLSearchParams(params).toString()
-    const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 4000)
-
-    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
-    if (list.length > 0) return list
-    return getSharedOrders()
+    const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 3000)
+    const backendList = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    
+    // Merge backend MySQL orders and shared orders by order_number or id
+    const mergedMap = new Map()
+    shared.forEach((item) => mergedMap.set(String(item.order_number || item.id), item))
+    backendList.forEach((item) => {
+      mergedMap.set(String(item.order_number || item.id), {
+        id: item.id,
+        order_number: item.order_number,
+        customer_name: item.customer?.user?.name || item.customer_name || 'Customer',
+        customer_phone: item.customer?.user?.phone || item.customer_phone || '',
+        customer_email: item.customer?.user?.email || item.customer_email || '',
+        customer: item.customer || null,
+        items: (item.items || []).map(i => ({
+          product_id: i.product_id,
+          name: i.product?.name || i.name || 'Hardware Material',
+          quantity: i.quantity,
+          unit_price: i.unit_price || i.product?.base_price || 0,
+        })),
+        status: item.status || 'pending',
+        payment_method: item.payment_method || 'cod',
+        subtotal: item.subtotal || 0,
+        shipping_fee: item.shipping_fee || 0,
+        total: item.total || 0,
+        delivery_type: item.delivery_type || 'delivery',
+        delivery_address: item.delivery_address || '',
+        delivery_date: item.delivery_date || '',
+        order_source: 'Mobile App',
+        created_at: item.created_at || new Date().toISOString()
+      })
+    })
+    return Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
   } catch (err) {
-    return getSharedOrders()
+    return shared
   }
 }
+
 
 export async function updateOrderStatus(id, status) {
   try {

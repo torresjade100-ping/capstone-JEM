@@ -466,8 +466,9 @@ export default function InventoryManagement() {
                   type="number"
                   min="1"
                   className="form-input"
-                  placeholder="e.g. 50"
+                  placeholder="50"
                   value={adjustmentData.quantity}
+
                   onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
                   required
                 />

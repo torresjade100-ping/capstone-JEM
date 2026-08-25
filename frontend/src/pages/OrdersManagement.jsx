@@ -22,11 +22,28 @@ export default function OrdersManagement({ role = 'staff' }) {
 
   useEffect(() => {
     fetchOrders()
-    // Periodic auto-polling every 4 seconds to catch new incoming mobile orders in real-time
+    
+    // Periodic auto-polling every 3 seconds to catch new incoming mobile orders in real-time
     const interval = setInterval(() => {
       syncOrdersSilently()
-    }, 4000)
-    return () => clearInterval(interval)
+    }, 3000)
+
+    const handleEventUpdate = () => {
+      syncOrdersSilently()
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('jem_orders_update', handleEventUpdate)
+      window.addEventListener('jem_notification_update', handleEventUpdate)
+    }
+
+    return () => {
+      clearInterval(interval)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('jem_orders_update', handleEventUpdate)
+        window.removeEventListener('jem_notification_update', handleEventUpdate)
+      }
+    }
   }, [])
 
   const fetchOrders = async () => {
@@ -42,10 +59,17 @@ export default function OrdersManagement({ role = 'staff' }) {
     }
   }
 
-  const syncOrdersSilently = () => {
-    const live = getSharedOrders()
-    setOrders(live)
+  const syncOrdersSilently = async () => {
+    try {
+      const data = await getAdminOrders()
+      if (Array.isArray(data)) {
+        setOrders(data)
+      }
+    } catch (e) {
+      setOrders(getSharedOrders())
+    }
   }
+
 
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
@@ -285,15 +309,16 @@ export default function OrdersManagement({ role = 'staff' }) {
             <table className="management-table">
               <thead>
                 <tr>
-                  <th style={{ width: '18%' }}>Order # &amp; Source</th>
-                  <th style={{ width: '22%' }}>Customer Name</th>
-                  <th style={{ width: '14%' }}>Items / Qty</th>
-                  <th style={{ width: '14%' }}>Total Amount</th>
-                  <th style={{ width: '12%' }}>Payment Method</th>
-                  <th style={{ width: '10%' }}>Status</th>
-                  <th style={{ width: '10%', textAlign: 'right' }}>Actions</th>
+                  <th>Order # &amp; Source</th>
+                  <th>Customer Name</th>
+                  <th>Items / Qty</th>
+                  <th>Total Amount</th>
+                  <th>Payment Method</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filteredOrders.map((order) => {
                   const isMobile = (order.order_source || '').toLowerCase().includes('mobile')
@@ -393,19 +418,66 @@ export default function OrdersManagement({ role = 'staff' }) {
                       </td>
 
                       {/* Actions */}
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'flex-end' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {role !== 'admin' && order.status === 'pending' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ background: '#16a34a', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
+                              onClick={() => handleUpdateStatus(order.id || order.order_number, 'confirmed')}
+                              title="Accept and Confirm Customer Order (Moves to To Process)"
+                            >
+                              <CheckCircle2 size={12} /> Accept Order
+                            </button>
+                          )}
+                          {role !== 'admin' && order.status === 'confirmed' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ background: '#9333ea', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
+                              onClick={() => handleUpdateStatus(order.id || order.order_number, 'processing')}
+                              title="Process Materials in Warehouse (Moves to To Ship on Mobile)"
+                            >
+                              <Package size={12} /> Process in Warehouse
+                            </button>
+                          )}
+                          {role !== 'admin' && order.status === 'processing' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ background: '#0284c7', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
+                              onClick={() => handleUpdateStatus(order.id || order.order_number, 'out_for_delivery')}
+                              title="Dispatch Delivery Truck (Moves to To Receive on Mobile)"
+                            >
+                              <Truck size={12} /> Dispatch Delivery
+                            </button>
+                          )}
+                          {role !== 'admin' && order.status === 'out_for_delivery' && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ background: '#059669', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
+                              onClick={() => handleUpdateStatus(order.id || order.order_number, 'completed')}
+                              title="Mark as Completed & Settle (Moves to Completed on Mobile)"
+                            >
+                              <Check size={12} /> Complete &amp; Settle
+                            </button>
+                          )}
                           <button
                             type="button"
                             className={`btn btn-sm ${role === 'admin' ? 'btn-secondary' : 'btn-primary'}`}
                             onClick={() => { setSelectedOrder(order); setShowDetails(true) }}
-                            style={{ padding: '6px 12px', fontSize: '12px' }}
-                            title={role === 'admin' ? 'View Order Details (Audit)' : 'Process Customer Order'}
+                            style={{ padding: '5px 10px', fontSize: '11.5px', borderRadius: '6px' }}
+                            title={role === 'admin' ? 'View Order Details (Audit)' : 'Open Full Order Details'}
                           >
-                            <Eye size={13} /> {role === 'admin' ? 'View Details' : 'Process'}
+                            <Eye size={12} /> {role === 'admin' ? 'View' : 'Details'}
                           </button>
                         </div>
+
                       </td>
+
+
                     </tr>
                   )
 

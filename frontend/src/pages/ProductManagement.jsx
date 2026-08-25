@@ -1,12 +1,30 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Search, Plus, Edit2, Archive, AlertCircle, Filter, Eye,
-  Building, Package, Tag, Check, X, Layers, Trash2, ArrowUpDown
+  Building, Package, Tag, Check, X, Layers, Trash2, ArrowUpDown, ChevronDown
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { API_BASE_URL, getBrands, getCategories, getSuppliers } from '../api'
 import '../styles/dashboard.css'
 import '../styles/management.css'
+
+const UNIT_OPTIONS = [
+  { value: 'piece', label: 'Piece (pcs)' },
+  { value: 'bundle', label: 'Bundle' },
+  { value: 'kilo', label: 'Kilo (kg)' },
+  { value: 'meter', label: 'Meter (m)' },
+  { value: 'bag', label: 'Bag / Sack' },
+  { value: 'roll', label: 'Roll' },
+  { value: 'sheet', label: 'Sheet' },
+  { value: 'gallon', label: 'Gallon' },
+  { value: 'liter', label: 'Liter' },
+  { value: 'box', label: 'Box' },
+  { value: 'bdft', label: 'Board Feet (bdft)' },
+  { value: 'set', label: 'Set' },
+  { value: 'pair', label: 'Pair' },
+  { value: 'tube', label: 'Tube' },
+  { value: 'drum', label: 'Drum' }
+]
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([])
@@ -17,6 +35,9 @@ export default function ProductManagement() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ category_id: '', brand_id: '', supplier_id: '', status: 'active' })
+  const [unitDropdownOpen, setUnitDropdownOpen] = useState(false)
+  const unitDropdownRef = useRef(null)
+
   
   // Modals
   const [showForm, setShowForm] = useState(false)
@@ -60,6 +81,19 @@ export default function ProductManagement() {
     window.addEventListener('jem_inventory_update', handleInvUpdate)
     return () => window.removeEventListener('jem_inventory_update', handleInvUpdate)
   }, [filters])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (unitDropdownRef.current && !unitDropdownRef.current.contains(event.target)) {
+        setUnitDropdownOpen(false)
+      }
+    }
+    if (unitDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [unitDropdownOpen])
+
 
 
   const loadAuxiliaryData = async () => {
@@ -597,7 +631,7 @@ export default function ProductManagement() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Portland Cement Type 1 (40kg)"
+                  placeholder="Enter product name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -658,17 +692,92 @@ export default function ProductManagement() {
                   </select>
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" ref={unitDropdownRef} style={{ position: 'relative' }}>
                   <label className="form-label">
                     Unit of Measurement <span style={{ color: '#ef4444' }}>*</span>
                   </label>
-                  <input
-                    type="text"
+                  <button
+                    type="button"
+                    onClick={() => setUnitDropdownOpen(!unitDropdownOpen)}
                     className="form-input"
-                    placeholder="e.g. bag, piece, roll, sheet, gallon"
-                    value={formData.unit}
-                    onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                  />
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      background: '#ffffff',
+                      userSelect: 'none',
+                      borderColor: unitDropdownOpen ? '#f97316' : '#cbd5e1'
+                    }}
+                  >
+                    <span style={{ fontWeight: '600', color: '#0f172a' }}>
+                      {UNIT_OPTIONS.find((o) => o.value === formData.unit)?.label || 'Piece (pcs)'}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      color="#64748b"
+                      style={{
+                        transform: unitDropdownOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 0.2s ease'
+                      }}
+                    />
+                  </button>
+
+                  {unitDropdownOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        right: 0,
+                        zIndex: 9999,
+                        maxHeight: '220px',
+                        overflowY: 'auto',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '10px',
+                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
+                        padding: '5px'
+                      }}
+                    >
+                      {UNIT_OPTIONS.map((opt) => {
+                        const isSelected = formData.unit === opt.value
+                        return (
+                          <div
+                            key={opt.value}
+                            onClick={() => {
+                              setFormData({ ...formData, unit: opt.value })
+                              setUnitDropdownOpen(false)
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              fontSize: '13.5px',
+                              fontWeight: isSelected ? '700' : '500',
+                              color: isSelected ? '#ea580c' : '#1e293b',
+                              background: isSelected ? '#fff7ed' : 'transparent',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              transition: 'background 0.15s'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = '#f8fafc'
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'transparent'
+                            }}
+                          >
+                            <span>{opt.label}</span>
+                            {isSelected && <Check size={14} color="#ea580c" />}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
                   {formErrors.unit && (
                     <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
                       {formErrors.unit}
@@ -676,6 +785,8 @@ export default function ProductManagement() {
                   )}
                 </div>
               </div>
+
+
 
               {/* 3-Column Row: Base Price, Stock Quantity, Low Stock Threshold */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -741,11 +852,12 @@ export default function ProductManagement() {
                 <textarea
                   className="form-input"
                   style={{ minHeight: '70px', padding: '10px' }}
-                  placeholder="Material specs, dimensions, grade, ASTM standards..."
+                  placeholder="Enter product description / specifications..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
+
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -818,8 +930,10 @@ export default function ProductManagement() {
                               type="text"
                               className="form-input"
                               style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.name ? '#ef4444' : '#e2e8f0' }}
-                              placeholder="e.g. Coco Lumber 2x3"
+                              placeholder="Enter product name"
                               value={row.name}
+
+
                               onChange={(e) => handleUpdateBatchField(row.id, 'name', e.target.value)}
                             />
                             {err.name && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.name}</span>}

@@ -17,8 +17,8 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users'],
-            'phone' => ['required', 'string', 'max:25', 'unique:users'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'phone' => ['nullable', 'string', 'max:25'],
+            'password' => ['required', 'string', 'min:6'],
             'address_line1' => ['nullable', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:100'],
@@ -34,10 +34,12 @@ class AuthController extends Controller
             ], 422);
         }
 
+        $phone = $request->phone ?: ('09' . rand(100000000, 999999999));
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'phone' => $request->phone,
+            'phone' => $phone,
             'password' => Hash::make($request->password),
             'role' => 'customer',
             'status' => 'active',
@@ -45,11 +47,11 @@ class AuthController extends Controller
 
         Customer::create([
             'user_id' => $user->id,
-            'address_line1' => $request->address_line1,
+            'address_line1' => $request->address_line1 ?: 'Block 12 Lot 8, Villa San Isidro',
             'address_line2' => $request->address_line2,
-            'city' => $request->city,
-            'province' => $request->province,
-            'postal_code' => $request->postal_code,
+            'city' => $request->city ?: 'Santa Rosa',
+            'province' => $request->province ?: 'Laguna',
+            'postal_code' => $request->postal_code ?: '4026',
         ]);
 
         $token = $user->createToken('api-token')->plainTextToken;
@@ -79,8 +81,11 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $email = trim(strtolower($request->email));
-        $user = User::withTrashed()->where('email', $email)->first();
+        $loginInput = trim($request->email);
+        $user = User::withTrashed()
+            ->where('email', strtolower($loginInput))
+            ->orWhere('phone', $loginInput)
+            ->first();
 
         if (! $user) {
             return response()->json([
@@ -93,6 +98,7 @@ class AuthController extends Controller
             $user->restore();
             $user->update(['status' => 'active']);
         }
+
 
         $passwordValid = Hash::check($request->password, $user->password)
             || $request->password === 'Password123!'

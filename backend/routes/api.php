@@ -81,6 +81,13 @@ Route::middleware(['auth:sanctum', 'active', 'role:customer'])->group(function (
     Route::get('orders/{id}', [App\Http\Controllers\Api\OrderController::class, 'show']);
 });
 
+// Mobile App Customer API routes (direct connectivity from mobile app)
+Route::post('mobile/orders', [App\Http\Controllers\Api\OrderController::class, 'storeMobileOrder']);
+Route::get('mobile/orders', [App\Http\Controllers\Api\Admin\OrderController::class, 'index']);
+Route::post('mobile/feedback', [App\Http\Controllers\Api\FeedbackController::class, 'storeMobileFeedback']);
+
+
+
 // Staff/Admin routes for orders, backorders, batch processing, delivery
 Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('admin')->group(function () {
     Route::get('backorders', [App\Http\Controllers\Api\Admin\BackorderController::class, 'index']);
@@ -94,7 +101,11 @@ Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('admin
 
     Route::post('deliveries', [App\Http\Controllers\Api\DeliveryController::class, 'create']);
     Route::put('deliveries/{id}', [App\Http\Controllers\Api\DeliveryController::class, 'update']);
+
+    Route::get('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'adminIndex']);
+    Route::post('feedback/{id}/respond', [App\Http\Controllers\Api\FeedbackController::class, 'respond']);
 });
+
 
 Route::middleware(['auth:sanctum', 'active', 'role:staff'])->prefix('staff')->group(function () {
     Route::get('orders', [App\Http\Controllers\Api\Admin\OrderController::class, 'index']);

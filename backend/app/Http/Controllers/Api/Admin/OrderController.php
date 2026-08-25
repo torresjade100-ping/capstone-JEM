@@ -35,10 +35,10 @@ class OrderController extends Controller
     {
         $allowed = [
             'receive' => ['pending', 'confirmed'],
-            'process' => ['received'],
-            'ready' => ['processing'],
-            'out-for-delivery' => ['ready'],
-            'complete' => ['ready', 'out_for_delivery'],
+            'process' => ['received', 'pending', 'confirmed'],
+            'ready' => ['processing', 'received', 'pending', 'confirmed'],
+            'out-for-delivery' => ['ready', 'processing'],
+            'complete' => ['ready', 'out_for_delivery', 'processing'],
         ];
         abort_unless(isset($allowed[$target]), 404);
         abort_unless(in_array($order->status, $allowed[$target], true), 422, 'Order cannot move to this status from its current state.');

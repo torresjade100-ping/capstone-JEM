@@ -167,4 +167,183 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'message' => 'Order created', 'data' => $order]);
         });
     }
+
+    public function storeMobileOrder(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $validator = validator($request->all(), [
+            'items' => ['required', 'array', 'min:1'],
+            'payment_method' => ['required', 'string'],
+            'delivery_address' => ['nullable', 'string'],
+            'customer_name' => ['nullable', 'string'],
+            'customer_phone' => ['nullable', 'string'],
+            'customer_email' => ['nullable', 'string'],
+            'total' => ['nullable', 'numeric'],
+            'subtotal' => ['nullable', 'numeric'],
+            'shipping_fee' => ['nullable', 'numeric'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+        }
+
+        try {
+            return DB::transaction(function () use ($request) {
+                // 1. Resolve Customer
+                $customer = null;
+                if (Auth::check() && Auth::user()->customer) {
+                    $customer = Auth::user()->customer;
+                } elseif ($request->filled('customer_email')) {
+                    $user = \App\Models\User::where('email', $request->customer_email)->first();
+                    if ($user && $user->customer) {
+                        $customer = $user->customer;
+                    }
+                }
+                if (! $customer) {
+                    $customer = \App\Models\Customer::first();
+                    if (! $customer) {
+                        $defaultUser = \App\Models\User::firstOrCreate(
+                            ['email' => 'customer@jemlumber.com'],
+                            [
+                                'name' => $request->customer_name ?: 'Juan Dela Cruz',
+                                'phone' => $request->customer_phone ?: '+639191234567',
+                                'password' => Hash::make('Password123!'),
+                                'role' => 'customer',
+                                'status' => 'active',
+                            ]
+                        );
+                        $customer = \App\Models\Customer::firstOrCreate(
+                            ['user_id' => $defaultUser->id],
+                            [
+                                'address_line1' => $request->delivery_address ?: 'Santa Rosa, Laguna',
+                                'city' => 'Santa Rosa',
+                                'province' => 'Laguna',
+                                'postal_code' => '4026',
+                                'country' => 'Philippines',
+                            ]
+                        );
+                    }
+                }
+
+                $items = $request->input('items', []);
+                $subtotal = 0;
+                foreach ($items as $it) {
+                    $qty = (int) ($it['quantity'] ?? $it['qty'] ?? 1);
+                    $price = (float) ($it['unit_price'] ?? $it['price'] ?? 0);
+                    $subtotal += ($qty * $price);
+                }
+
+                $shipping = (float) ($request->shipping_fee ?? 200.00);
+                $total = (float) ($request->total ?? ($subtotal + $shipping));
+                $orderNumber = $request->order_number ?: ('JEM-'.date('Ymd').'-'.rand(1000, 9999));
+
+                $validPaymentMethod = in_array(strtolower($request->payment_method), ['gcash', 'maya', 'cod'], true)
+                    ? strtolower($request->payment_method)
+                    : 'cod';
+
+                $deliveryDate = date('Y-m-d');
+                if ($request->filled('delivery_date')) {
+                    try {
+                        $deliveryDate = \Carbon\Carbon::parse($request->delivery_date)->format('Y-m-d');
+                    } catch (\Throwable $e) {
+                        $deliveryDate = date('Y-m-d');
+                    }
+                }
+
+                // 2. Create Order
+                $order = Order::create([
+                    'customer_id' => $customer->id,
+                    'order_number' => $orderNumber,
+                    'status' => 'pending',
+                    'payment_method' => $validPaymentMethod,
+                    'subtotal' => $subtotal,
+                    'shipping_fee' => $shipping,
+                    'tax' => 0.00,
+                    'total' => $total,
+                    'amount_paid' => $validPaymentMethod === 'cod' ? 0.00 : $total,
+                    'delivery_address' => $request->delivery_address ?: 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
+                    'delivery_date' => $deliveryDate,
+                ]);
+
+
+                // 3. Create Order Items (ensuring Product existence)
+                $firstCat = \App\Models\Category::first();
+                $firstBrand = \App\Models\Brand::first();
+
+                foreach ($items as $it) {
+                    $pid = (int) ($it['product_id'] ?? $it['id'] ?? 1);
+                    $product = \App\Models\Product::find($pid);
+
+                    if (! $product) {
+                        $product = \App\Models\Product::firstOrCreate(
+                            ['name' => $it['name'] ?: 'Hardware Material Item'],
+                            [
+                                'category_id' => $firstCat?->id ?: 1,
+                                'brand_id' => $firstBrand?->id ?: 1,
+                                'base_price' => (float) ($it['unit_price'] ?? $it['price'] ?? 100),
+                                'unit' => 'piece',
+                                'status' => 'active',
+                            ]
+                        );
+                        $pid = $product->id;
+                    }
+
+                    $qty = max((int) ($it['quantity'] ?? $it['qty'] ?? 1), 1);
+                    $price = (float) ($it['unit_price'] ?? $it['price'] ?? $product->base_price);
+
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => $pid,
+                        'quantity' => $qty,
+                        'unit_price' => $price,
+                        'total_price' => $qty * $price,
+                    ]);
+                }
+
+                // 4. Create Payment record with valid enum status
+                Payment::create([
+                    'order_id' => $order->id,
+                    'method' => $validPaymentMethod,
+                    'status' => $validPaymentMethod === 'cod' ? 'pending' : 'completed',
+                    'amount' => $total,
+                ]);
+
+                // 5. Notify Admin and Staff in database
+                $notifTitle = 'New Customer Mobile Order 🛒';
+                $notifMsg = "Order #{$order->order_number} (₱".number_format($total, 2).') placed by '.($request->customer_name ?: 'Customer').' via '.strtoupper($validPaymentMethod);
+                $notifArray = [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'total' => $total,
+                    'customer_name' => $request->customer_name ?: 'Customer',
+                ];
+
+                $adminUsers = \App\Models\User::whereIn('role', ['admin', 'staff'])->get();
+                foreach ($adminUsers as $u) {
+                    \App\Models\Notification::create([
+                        'user_id' => $u->id,
+                        'title' => $notifTitle,
+                        'message' => $notifMsg,
+                        'type' => 'order',
+                        'data' => $notifArray,
+                        'channel' => 'database',
+                        'read' => false,
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Mobile order placed and synced with backend warehouse.',
+                    'data' => $order->load(['items.product', 'payments', 'customer.user']),
+                ], 201);
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process order: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+
 }
+

@@ -692,11 +692,12 @@ export default function RestockRequestsPage({ role: propRole }) {
                 </label>
                 <textarea
                   rows="3"
-                  placeholder="e.g. Low physical stock on showroom shelf, bulk customer inquiry coming up..."
+                  placeholder="Low physical stock on showroom shelf, bulk customer inquiry coming up..."
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px' }}
                 />
+
               </div>
 
               {/* Actions */}
@@ -816,8 +817,9 @@ export default function RestockRequestsPage({ role: propRole }) {
                   Add Admin Review Notes:
                 </label>
                 <textarea
-                  placeholder="e.g. Approved. Added to active store inventory..."
+                  placeholder="Approved. Added to active store inventory..."
                   value={reviewNotes}
+
                   onChange={(e) => setReviewNotes(e.target.value)}
                   rows="3"
                   style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px', marginBottom: '16px' }}

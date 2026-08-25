@@ -5,13 +5,13 @@
   "dependencies": {
     "@babel/core": "^7.29.7",
     "babel-plugin-syntax-hermes-parser": "^0.37.0",
-    "babel-preset-expo": "^57.0.7",
-    "expo": "~57.0.16",
-    "expo-status-bar": "~57.0.1",
+    "babel-preset-expo": "~54.0.1",
+    "expo": "^54.0.8",
+    "expo-status-bar": "~3.0.9",
     "hermes-parser": "^0.37.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.86.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-native": "^0.81.5",
     "react-native-web": "^0.21.2"
   },
   "scripts": {

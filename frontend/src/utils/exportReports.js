@@ -68,13 +68,17 @@ export function exportReportToPDF(reportType, reportData, meta = {}) {
             <tr><th>Payment Method</th><th>Transaction Count</th></tr>
           </thead>
           <tbody>
-            ${Object.entries(reportData.payment_methods).map(([method, count]) => `
+            ${Object.entries(reportData.payment_methods).map(([method, val]) => {
+              const count = typeof val === 'object' && val !== null ? (val.count ?? 0) : val
+              const total = typeof val === 'object' && val !== null && val.total ? ` (₱${Number(val.total).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''
+              return `
               <tr>
-                <td><strong>${method.toUpperCase()}</strong></td>
-                <td>${count}</td>
+                <td><strong>${String(method).toUpperCase()}</strong></td>
+                <td>${count} transactions${total}</td>
               </tr>
-            `).join('')}
+            `}).join('')}
           </tbody>
+
         </table>
       `
     }

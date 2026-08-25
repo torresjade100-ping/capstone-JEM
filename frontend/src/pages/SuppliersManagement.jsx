@@ -95,8 +95,9 @@ export default function SuppliersManagement() {
     if (!formData.email.trim()) {
       errors.email = 'Email address is required.'
     } else if (!emailRegex.test(formData.email.trim())) {
-      errors.email = 'Please enter a valid email address (e.g. sales@company.ph).'
+      errors.email = 'Please enter a valid email address (sales@company.ph).'
     }
+
 
     // Address
     if (!formData.address.trim()) {
@@ -436,7 +437,7 @@ export default function SuppliersManagement() {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. Metro Hardware Distributors"
+                    placeholder="Metro Hardware Distributors"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
@@ -456,7 +457,7 @@ export default function SuppliersManagement() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Engr. Robert Chen / Sales Representative"
+                  placeholder="Engr. Robert Chen / Sales Representative"
                   value={formData.contact_person}
                   onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
                 />
@@ -522,10 +523,11 @@ export default function SuppliersManagement() {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. KM 54 National Highway, Calamba, Laguna"
+                    placeholder="KM 54 National Highway, Calamba, Laguna"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   />
+
                 </div>
                 {formErrors.address && (
                   <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
