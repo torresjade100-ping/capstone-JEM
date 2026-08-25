@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { ArrowUpRight, AlertCircle } from 'lucide-react'
+import { ArrowUpRight, AlertCircle, Smartphone, ArrowRight } from 'lucide-react'
 import { login } from '../api'
 import '../styles/login.css'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('admin@jemlumber.com')
-  const [password, setPassword] = useState('Password123!')
+export default function LoginPage({ onLaunchMobilePreview }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -14,48 +15,30 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await login({ email, password })
+      await login({ email, password, remember: rememberMe })
       window.location.reload()
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.')
+      setError(err.message || 'Invalid credentials. Please verify your email and password.')
     } finally {
       setLoading(false)
     }
   }
 
-  const fillDemo = (type) => {
-    const demos = {
-      admin: { email: 'admin@jemlumber.com', password: 'Password123!' },
-      staff: { email: 'staff@jemlumber.com', password: 'Password123!' },
-      customer: { email: 'customer@jemlumber.com', password: 'Password123!' }
-    }
-    const demo = demos[type]
-    setEmail(demo.email)
-    setPassword(demo.password)
-    setError('')
-  }
-
   return (
     <div className="login-container">
+      <div className="login-bg-blur" />
+      <div className="login-bg-overlay" />
+
+
       <div className="login-panel">
         {/* Left side - Branding */}
         <div className="login-art">
           <div className="art-content">
             <div className="brand-logo-large">J</div>
-            <p className="art-subtitle">EST. 2014 • SAN PABLO CITY</p>
             <h1>Build it right.<br /><em>Build it with JEM.</em></h1>
-            <p className="art-description">Your reliable source for quality hardware, construction materials, and coco lumber.</p>
-            
-            <div className="art-stats">
-              <Stat>
-                <strong>1,248</strong>
-                <span>products tracked</span>
-              </Stat>
-              <Stat>
-                <strong>₱2.4M</strong>
-                <span>inventory value</span>
-              </Stat>
-            </div>
+            <p className="art-description">
+              Internal Operations Portal for JEM Hardware, Coco Lumber &amp; Construction Supply.
+            </p>
           </div>
         </div>
 
@@ -67,13 +50,13 @@ export default function LoginPage() {
                 <div className="brand-icon">J</div>
                 <div>
                   <strong>JEM Hardware</strong>
-                  <small>Coco Lumber & Construction Supply</small>
+                  <small>Coco Lumber &amp; Construction Supply</small>
                 </div>
               </div>
               <div className="login-heading">
-                <p className="eyebrow">Operations Portal</p>
-                <h2>Welcome back.</h2>
-                <p>Sign in to keep the store moving.</p>
+                <p className="eyebrow" style={{ color: '#f97316', fontWeight: '800' }}>Internal Operations Portal</p>
+                <h2>Staff &amp; Admin Sign In</h2>
+                <p>Access inventory management, POS, and customer mobile orders.</p>
               </div>
             </div>
 
@@ -91,7 +74,8 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="form-input"
-                placeholder="you@example.com"
+                placeholder="Enter your email"
+                required
                 disabled={loading}
               />
             </div>
@@ -104,47 +88,118 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="form-input"
                 placeholder="••••••••"
+                required
                 disabled={loading}
               />
             </div>
 
             <div className="form-options">
               <label className="checkbox-label">
-                <input type="checkbox" defaultChecked disabled={loading} />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={loading}
+                />
                 <span>Remember me</span>
               </label>
-              <a href="#forgot" className="forgot-link">Forgot password?</a>
             </div>
 
-            <button className="btn-login" type="submit" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign in'} <ArrowUpRight size={16} />
+            {/* Quick Demo Fill Buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '16px',
+              padding: '10px',
+              background: '#f8fafc',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('staff@jemlumber.com')
+                  setPassword('Password123!')
+                  setError('')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '8px 10px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: '#0f172a',
+                  cursor: 'pointer'
+                }}
+              >
+                👷 Fill Staff Account
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@jemlumber.com')
+                  setPassword('Password123!')
+                  setError('')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '8px 10px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: '#0f172a',
+                  cursor: 'pointer'
+                }}
+              >
+                🛡️ Fill Admin Account
+              </button>
+            </div>
+
+            <button className="btn-login" type="submit" disabled={loading} style={{ background: '#f97316', color: '#fff' }}>
+              {loading ? 'Signing in...' : 'Sign in to Dashboard'} <ArrowUpRight size={16} />
             </button>
 
-            <div className="demo-section">
-              <p className="demo-label">Demo accounts:</p>
-              <div className="demo-buttons">
-                <button type="button" className="btn-demo" onClick={() => fillDemo('admin')} disabled={loading}>
-                  Admin
-                </button>
-                <button type="button" className="btn-demo" onClick={() => fillDemo('staff')} disabled={loading}>
-                  Staff
-                </button>
-                <button type="button" className="btn-demo" onClick={() => fillDemo('customer')} disabled={loading}>
-                  Customer
-                </button>
-              </div>
-            </div>
 
-            <p className="login-footer">
-              Don't have an account? <a href="#signup" className="signup-link">Create one here</a>
-            </p>
+
+            {/* Customer Mobile App Notice */}
+            <div style={{
+              marginTop: '20px',
+              paddingTop: '16px',
+              borderTop: '1px solid #e2e8f0',
+              textAlign: 'center'
+            }}>
+              <p style={{ fontSize: '12.5px', color: '#64748b', margin: '0 0 8px' }}>
+                Customer ordering is exclusively on the JEM Mobile Application.
+              </p>
+              {onLaunchMobilePreview && (
+                <button
+                  type="button"
+                  onClick={onLaunchMobilePreview}
+                  style={{
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Smartphone size={14} /> Launch JEM Customer Mobile App <ArrowRight size={13} />
+                </button>
+              )}
+            </div>
           </form>
         </div>
       </div>
     </div>
   )
-}
-
-function Stat({ children }) {
-  return <div className="stat">{children}</div>
 }

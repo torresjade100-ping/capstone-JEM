@@ -158,12 +158,12 @@ class ReportService
      */
     public function inventoryReport(): array
     {
-        $products = Product::with('category', 'brand')
+        $products = Product::with(['category', 'brand', 'variants'])
             ->get()
             ->map(fn($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
-                'sku' => $p->sku,
+                'sku' => $p->variants->first()?->sku ?? ('PRD-' . $p->id),
                 'category' => $p->category?->name,
                 'brand' => $p->brand?->name,
                 'current_stock' => $p->stock_quantity,

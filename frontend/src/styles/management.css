@@ -133,21 +133,25 @@
 
 /* Buttons */
 .btn {
-  padding: 0.6rem 1.2rem;
+  padding: 8px 16px;
   border: none;
-  border-radius: 6px;
-  font-size: 1rem;
+  border-radius: 8px;
+  font-size: 13.5px;
   cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
+  transition: all 0.15s ease;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
 }
 
 .btn:active {
@@ -155,12 +159,14 @@
 }
 
 .btn-primary {
-  background-color: #1976d2;
-  color: white;
+  background-color: #f97316 !important;
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.22);
 }
 
 .btn-primary:hover {
-  background-color: #1565c0;
+  background-color: #ea580c !important;
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.32);
 }
 
 .btn-secondary {
@@ -567,3 +573,73 @@
   .panel form > div { grid-template-columns: 1fr !important; }
   .management-table { min-width: 680px; }
 }
+
+/* Icon Buttons & Tooltips */
+.icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.icon-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* Status Badges */
+.badge.status-in {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border: 1px solid #a7f3d0;
+  font-weight: 700;
+}
+
+.badge.status-low {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a;
+  font-weight: 700;
+}
+
+.badge.status-out {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fecaca;
+  font-weight: 700;
+}
+
+/* SweetAlert2 JEM Brand Overrides */
+.swal2-popup {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  border-radius: 16px !important;
+  padding: 24px !important;
+}
+
+.swal2-title {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+.swal2-confirm {
+  background-color: #f97316 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3) !important;
+}
+
+.swal2-cancel {
+  background-color: #64748b !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+}
+

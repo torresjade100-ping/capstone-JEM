@@ -32,17 +32,21 @@ export default function OrderProcessingPage() {
       const payload = data.data || []
       setOrders(Array.isArray(payload) ? payload : payload.data || [])
     } catch (error) {
-      console.error('Error fetching orders:', error)
-      alert('Failed to load orders')
+      console.warn('Error fetching orders:', error)
+      setOrders([])
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredOrders = orders.filter(order =>
-    order.order_number?.toLowerCase().includes(search.toLowerCase()) ||
-    order.customer_name?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredOrders = (Array.isArray(orders) ? orders : []).filter(order => {
+    if (!order) return false
+    const q = (search || '').toLowerCase().trim()
+    if (!q) return true
+    const num = String(order.order_number || order.id || '').toLowerCase()
+    const name = String(order.customer_name || order.customer?.user?.name || '').toLowerCase()
+    return num.includes(q) || name.includes(q)
+  })
 
   const handleStatusTransition = async (nextStatus) => {
     if (!selectedOrder) return

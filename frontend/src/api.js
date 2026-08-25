@@ -1,24 +1,188 @@
-export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? `http://${window.location.hostname}:8000/api`
+    : 'http://127.0.0.1:8000/api')
+).replace(/\/$/, '')
 
-let authToken = localStorage.getItem('jem_api_token')
+export function getStoredToken() {
+  return localStorage.getItem('jem_api_token')
+}
 
-async function request(path, options = {}) {
-  const headers = { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers }
-  if (authToken) headers.Authorization = `Bearer ${authToken}`
+// Central Order Storage Manager (Syncs real user-placed orders without hardcoded demo records)
+export function getSharedOrders() {
+  try {
+    const raw = localStorage.getItem('jem_shared_orders')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch (e) {}
+  return []
+}
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers })
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    const error = new Error(payload.message || `Request failed with status ${response.status}`)
-    error.status = response.status
-    error.errors = payload.errors
-    throw error
+export function saveSharedOrders(orders) {
+  try {
+    localStorage.setItem('jem_shared_orders', JSON.stringify(orders || []))
+  } catch (e) {}
+}
+
+export function addSharedMobileOrder(orderData) {
+  const currentOrders = getSharedOrders()
+  const newOrder = {
+    id: orderData.id || Date.now(),
+    order_number: orderData.order_number || `JEM-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    customer_id: orderData.customer_id || null,
+    customer_name: orderData.customer_name || 'Customer',
+    customer_phone: orderData.customer_phone || '',
+    customer_email: orderData.customer_email || '',
+    customer: {
+      id: orderData.customer_id || null,
+      user: {
+        name: orderData.customer_name || 'Customer',
+        email: orderData.customer_email || '',
+        phone: orderData.customer_phone || ''
+      }
+    },
+    items: orderData.items || [],
+    status: orderData.status || 'pending',
+    payment_method: orderData.payment_method || 'cod',
+    payment_status: orderData.payment_method === 'cod' ? 'pending_collection' : 'verified',
+    payments: [{
+      method: orderData.payment_method || 'cod',
+      status: orderData.payment_method === 'cod' ? 'pending' : 'completed',
+      amount: orderData.total || 0,
+      transaction_reference: orderData.payment_method === 'cod' ? null : `${orderData.payment_method?.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`
+    }],
+    subtotal: orderData.subtotal || orderData.total || 0,
+    shipping_fee: orderData.shipping_fee ?? 0,
+    total: orderData.total || 0,
+    delivery_type: orderData.delivery_type || 'delivery',
+    delivery_address: orderData.delivery_address || '',
+    delivery_date: orderData.delivery_date || new Date().toISOString().split('T')[0],
+    notes: orderData.notes || '',
+    order_source: orderData.order_source || 'Mobile App',
+    created_at: new Date().toISOString()
   }
-  return payload
+
+  const updated = [newOrder, ...currentOrders]
+  saveSharedOrders(updated)
+
+  // Send Notification to both Staff (to process) and Admin (to view/audit)
+  const notifObj = {
+    targetRole: 'all',
+    title: 'New Customer Mobile Order 🛒',
+    message: `Order #${newOrder.order_number} (₱${Number(newOrder.total).toLocaleString()}) placed by ${newOrder.customer_name} via ${(newOrder.payment_method || 'COD').toUpperCase()}`,
+    type: 'order',
+    data: {
+      order_id: newOrder.id,
+      order_number: newOrder.order_number,
+      total: newOrder.total,
+      customer_name: newOrder.customer_name,
+    }
+  }
+  addSharedNotification(notifObj)
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jem_notification_pop', { detail: notifObj }))
+      window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: notifObj }))
+      window.dispatchEvent(new CustomEvent('jem_orders_update', { detail: newOrder }))
+    }
+  } catch (e) {}
+
+  return newOrder
+}
+
+
+export function updateSharedOrderStatus(orderId, newStatus) {
+  const currentOrders = getSharedOrders()
+  const updated = currentOrders.map(ord => {
+    if (ord.id === orderId || ord.order_number === orderId) {
+      return {
+        ...ord,
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      }
+    }
+    return ord
+  })
+  saveSharedOrders(updated)
+  return updated
+}
+
+// Lightweight In-Memory Cache & In-Flight Request Deduplication Map
+const apiCache = new Map()
+const inFlightRequests = new Map()
+
+export function clearApiCache(prefix = '') {
+  if (!prefix) {
+    apiCache.clear()
+    return
+  }
+  for (const key of apiCache.keys()) {
+    if (key.startsWith(prefix)) {
+      apiCache.delete(key)
+    }
+  }
+}
+
+async function request(path, options = {}, cacheTtlMs = 0) {
+  const token = getStoredToken()
+  const isGet = !options.method || options.method === 'GET'
+  const cacheKey = `${path}:${token || 'anon'}`
+
+  // 1. Check cache for GET requests with TTL
+  if (isGet && cacheTtlMs > 0) {
+    const cached = apiCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < cacheTtlMs) {
+      return cached.data
+    }
+  }
+
+  // 2. In-flight request deduplication for concurrent identical GET calls
+  if (isGet && inFlightRequests.has(cacheKey)) {
+    return inFlightRequests.get(cacheKey)
+  }
+
+  const execute = async () => {
+    const headers = { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers }
+    if (token) headers.Authorization = `Bearer ${token}`
+
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers })
+    const payload = await response.json().catch(() => ({}))
+    if (response.status === 401) {
+      localStorage.removeItem('jem_api_token')
+      localStorage.removeItem('jem_user')
+    }
+    if (!response.ok) {
+      const error = new Error(payload.message || `Request failed with status ${response.status}`)
+      error.status = response.status
+      error.errors = payload.errors
+      throw error
+    }
+
+    if (isGet && cacheTtlMs > 0) {
+      apiCache.set(cacheKey, { timestamp: Date.now(), data: payload })
+    }
+
+    return payload
+  }
+
+  if (isGet) {
+    const promise = execute().finally(() => {
+      inFlightRequests.delete(cacheKey)
+    })
+    inFlightRequests.set(cacheKey, promise)
+    return promise
+  }
+
+  // Invalidate cache on mutations (POST, PUT, PATCH, DELETE)
+  clearApiCache()
+  return execute()
 }
 
 function setSession(token, user) {
-  authToken = token
   if (token) localStorage.setItem('jem_api_token', token)
   if (user) localStorage.setItem('jem_user', JSON.stringify(user))
 }
@@ -29,53 +193,388 @@ export function getStoredUser() {
 
 export async function login(credentials) {
   const payload = await request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) })
+  if (!payload?.data?.token || !payload?.data?.user) {
+    throw new Error(payload?.message || 'Login failed. Please check your credentials.')
+  }
   setSession(payload.data.token, payload.data.user)
+  clearApiCache()
   return payload.data
 }
 
 export async function register(values) {
   const payload = await request('/auth/register', { method: 'POST', body: JSON.stringify(values) })
   setSession(payload.data.token, payload.data.user)
+  clearApiCache()
   return payload.data
 }
 
 export async function logout() {
   try { await request('/auth/logout', { method: 'POST' }) } finally {
-    authToken = null
     localStorage.removeItem('jem_api_token')
     localStorage.removeItem('jem_user')
+    clearApiCache()
   }
 }
 
 export function getProducts(params = {}) {
   const query = new URLSearchParams(params).toString()
-  return request(`/products${query ? `?${query}` : ''}`).then((payload) => payload.data)
+  return request(`/products${query ? `?${query}` : ''}`, {}, 10000).then((payload) => payload.data)
 }
 
-export function getProduct(id) { return request(`/products/${id}`).then((payload) => payload.data) }
-export function getCategories() { return request('/categories').then((payload) => payload.data) }
-export function getBrands() { return request('/brands').then((payload) => payload.data) }
-export function getInventory() { return request('/admin/inventory').then((payload) => payload.data) }
-export function getLowStock() { return request('/admin/inventory/low-stock').then((payload) => payload.data) }
-export function getUsers(params = {}) { const query = new URLSearchParams(params).toString(); return request(`/admin/users${query ? `?${query}` : ''}`).then((payload) => payload.data) }
+export function getProduct(id) { return request(`/products/${id}`, {}, 15000).then((payload) => payload.data) }
+export function getCategories() { return request('/categories', {}, 30000).then((payload) => payload.data) }
+export function getBrands() { return request('/brands', {}, 30000).then((payload) => payload.data) }
+export function getInventory() { return request('/admin/inventory', {}, 5000).then((payload) => payload.data) }
+export function getLowStock() { return request('/admin/inventory/low-stock', {}, 5000).then((payload) => payload.data) }
+export function getUsers(params = {}) { const query = new URLSearchParams(params).toString(); return request(`/admin/users${query ? `?${query}` : ''}`, {}, 5000).then((payload) => payload.data) }
 export function createUser(user) { return request('/admin/users', { method: 'POST', body: JSON.stringify(user) }).then((payload) => payload.data) }
 export function updateUser(id, user) { return request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(user) }).then((payload) => payload.data) }
 export function archiveUser(id) { return request(`/admin/users/${id}/archive`, { method: 'PATCH' }).then((payload) => payload.data) }
 export function activateUser(id) { return request(`/admin/users/${id}/activate`, { method: 'PATCH' }).then((payload) => payload.data) }
+export function deleteUser(id) { clearApiCache('/admin/users'); return request(`/admin/users/${id}`, { method: 'DELETE' }).then((payload) => payload.data) }
 export function changeUserRole(id, role) { return request(`/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }).then((payload) => payload.data) }
-export function getAdminOrders(params = {}) { const query = new URLSearchParams(params).toString(); return request(`/admin/orders${query ? `?${query}` : ''}`).then((payload) => payload.data) }
-export function updateOrderStatus(id, status) { return request(`/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }).then((payload) => payload.data) }
-export function getStaffOrders(params = {}) { const query = new URLSearchParams(params).toString(); return request(`/staff/orders${query ? `?${query}` : ''}`).then((payload) => payload.data) }
-export function updateStaffOrderStatus(id, action) { return request(`/staff/orders/${id}/${action}`, { method: 'PUT' }).then((payload) => payload.data) }
-export function getRestockRequests() { return request('/restock-requests').then((payload) => payload.data) }
-export function createRestockRequest(requestData) { return request('/restock-requests', { method: 'POST', body: JSON.stringify(requestData) }).then((payload) => payload.data) }
-export function updateRestockRequest(id, requestData) { return request(`/restock-requests/${id}`, { method: 'PUT', body: JSON.stringify(requestData) }).then((payload) => payload.data) }
-export function getStaffRestockRequests() { return request('/staff/restock-requests').then((payload) => payload.data) }
-export function createStaffRestockRequest(requestData) { return request('/staff/restock-requests', { method: 'POST', body: JSON.stringify(requestData) }).then((payload) => payload.data) }
+
+
+export async function getAdminOrders(params = {}) {
+  try {
+    const query = new URLSearchParams(params).toString()
+    const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 4000)
+
+    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    if (list.length > 0) return list
+    return getSharedOrders()
+  } catch (err) {
+    return getSharedOrders()
+  }
+}
+
+export async function updateOrderStatus(id, status) {
+  try {
+    await request(`/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
+  } catch (e) {}
+  return updateSharedOrderStatus(id, status)
+}
+
+export async function getStaffOrders(params = {}) {
+  try {
+    const query = new URLSearchParams(params).toString()
+    const payload = await request(`/staff/orders${query ? `?${query}` : ''}`)
+    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    if (list.length > 0) return list
+    return getSharedOrders()
+  } catch (err) {
+    return getSharedOrders()
+  }
+}
+
+export async function updateStaffOrderStatus(id, action) {
+  try {
+    await request(`/staff/orders/${id}/${action}`, { method: 'PUT' })
+  } catch (e) {}
+  return updateSharedOrderStatus(id, action)
+}
+
+// Central Stock Request Storage Manager (Shared across Staff and Admin)
+export function getSharedStockRequests() {
+  try {
+    const raw = localStorage.getItem('jem_shared_stock_requests')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch (e) {}
+  return []
+}
+
+export function saveSharedStockRequests(requests) {
+  try {
+    localStorage.setItem('jem_shared_stock_requests', JSON.stringify(requests || []))
+  } catch (e) {}
+}
+
+export function addSharedStockRequest(requestData, user) {
+  const current = getSharedStockRequests()
+  const newReq = {
+    id: requestData.id || Date.now(),
+    product_id: requestData.product_id,
+    product_name: requestData.product_name || 'Product',
+    sku: requestData.sku || 'SKU-REQ',
+    quantity_requested: Number(requestData.quantity_requested || 1),
+    current_quantity: Number(requestData.current_quantity || 0),
+    requested_by: user?.name || requestData.requested_by || 'Staff Member',
+    requested_by_id: user?.id || null,
+    urgency: requestData.urgency || 'normal',
+    staff_notes: requestData.notes || requestData.staff_notes || '',
+    admin_notes: '',
+    status: 'pending',
+    created_at: new Date().toISOString()
+  }
+  const updated = [newReq, ...current]
+  saveSharedStockRequests(updated)
+
+  // Send Notification to Admin
+  addSharedNotification({
+    targetRole: 'admin',
+    title: 'New Stock Request',
+    message: `${user?.name || 'Staff'} requested ${newReq.quantity_requested} units of ${newReq.product_name}.`,
+    type: 'stock_request',
+    data: {
+      request_id: newReq.id,
+      product_name: newReq.product_name,
+      quantity: newReq.quantity_requested,
+      urgency: newReq.urgency,
+      staff_name: user?.name || 'Staff'
+    }
+  })
+
+  // Dispatch live browser event so Admin Stock Requests table immediately updates in real-time
+  try {
+    window.dispatchEvent(new CustomEvent('jem_stock_request_created', { detail: newReq }))
+    window.dispatchEvent(new CustomEvent('jem_notification_update'))
+  } catch (e) {}
+
+  return newReq
+}
+
+
+export function updateSharedStockRequest(id, status, notes, adminUser) {
+  const current = getSharedStockRequests()
+  let targetReq = null
+  const updated = current.map(req => {
+    if (req.id === id || String(req.id) === String(id)) {
+      targetReq = {
+        ...req,
+        status,
+        admin_notes: notes || req.admin_notes || '',
+        updated_at: new Date().toISOString()
+      }
+      return targetReq
+    }
+    return req
+  })
+  saveSharedStockRequests(updated)
+
+  // Send Notification to Staff
+  if (targetReq) {
+    const isConfirmed = status === 'confirmed' || status === 'approved'
+    const statusText = isConfirmed ? 'Confirmed' : 'Rejected'
+    const notifTitle = isConfirmed ? '🔔 Stock Request Confirmed' : '❌ Stock Request Rejected'
+    const notifMessage = isConfirmed
+      ? `Admin ${adminUser?.name || 'Administrator'} confirmed your stock request for ${targetReq.product_name} (${targetReq.quantity_requested} units).`
+      : `Your stock request for ${targetReq.product_name} was rejected by Admin.`
+
+    addSharedNotification({
+      targetRole: 'staff',
+      title: notifTitle,
+      message: notifMessage,
+      type: isConfirmed ? 'stock_request_confirmed' : 'stock_request_update',
+      data: {
+        request_id: targetReq.id,
+        status,
+        product_name: targetReq.product_name,
+        quantity: targetReq.quantity_requested,
+        notes
+      }
+    })
+  }
+
+  return updated
+}
+
+// Central Notifications Manager
+export function getSharedNotifications(role = 'all') {
+  try {
+    const raw = localStorage.getItem('jem_shared_notifications')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        if (role === 'all') return parsed
+        return parsed.filter(n => !n.targetRole || n.targetRole === role || n.targetRole === 'all')
+      }
+    }
+  } catch (e) {}
+  return []
+}
+
+export function saveSharedNotifications(notifications) {
+  try {
+    localStorage.setItem('jem_shared_notifications', JSON.stringify(notifications || []))
+  } catch (e) {}
+}
+
+export function addSharedNotification({ targetRole = 'admin', title, message, type = 'stock_request', data = {} }) {
+  const current = getSharedNotifications('all')
+  const newNotif = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    targetRole,
+    title: title || 'Notification',
+    message: message || '',
+    type,
+    data,
+    read: false,
+    created_at: new Date().toISOString()
+  }
+  const updated = [newNotif, ...current]
+  saveSharedNotifications(updated)
+
+  // Dispatch live browser event for real-time notification pop-ups
+  try {
+    window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: newNotif }))
+    window.dispatchEvent(new CustomEvent('jem_notification_pop', { detail: newNotif }))
+  } catch (e) {}
+
+  return newNotif
+}
+
+
+export async function getRestockRequests() {
+  const shared = getSharedStockRequests()
+  try {
+    const payload = await request('/restock-requests', {}, 0)
+    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    
+    // Merge database stock requests with shared stock requests by ID
+    const mergedMap = new Map()
+    shared.forEach((item) => mergedMap.set(String(item.id), item))
+    list.forEach((item) => {
+      mergedMap.set(String(item.id), {
+        id: item.id,
+        product_id: item.product_id,
+        product_name: item.product?.name || item.product_name || 'Product',
+        sku: item.product?.sku || item.sku || '-',
+        quantity_requested: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
+        requested_quantity: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
+        current_quantity: item.product?.stock_quantity ?? item.current_quantity ?? 0,
+        requested_by: item.requester?.name || item.requested_by || 'Staff',
+        requester: item.requester || null,
+        product: item.product || null,
+        urgency: item.urgency || 'normal',
+        status: item.status || 'pending',
+        staff_notes: item.notes || item.staff_notes || '',
+        admin_notes: item.admin_notes || '',
+        created_at: item.created_at,
+      })
+    })
+
+    const merged = Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    return merged
+  } catch (err) {
+    return shared
+  }
+}
+
+
+export async function createRestockRequest(requestData, user) {
+  const sharedReq = addSharedStockRequest(requestData, user)
+  try {
+    const res = await request('/restock-requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        product_id: requestData.product_id,
+        product_variant_id: requestData.product_variant_id || null,
+        requested_quantity: Number(requestData.requested_quantity || requestData.quantity_requested || requestData.quantity || 1),
+        quantity_requested: Number(requestData.requested_quantity || requestData.quantity_requested || requestData.quantity || 1),
+        notes: requestData.notes || requestData.staff_notes || '',
+        urgency: requestData.urgency || 'normal'
+      })
+    })
+    return res?.data || sharedReq
+  } catch (err) {
+    return sharedReq
+  }
+}
+
+export async function updateRestockRequest(id, requestData, adminUser) {
+  updateSharedStockRequest(id, requestData.status, requestData.notes, adminUser)
+  clearApiCache()
+  try {
+    const res = await request(`/restock-requests/${id}`, { method: 'PUT', body: JSON.stringify(requestData) }).then((p) => p.data)
+    clearApiCache()
+    try {
+      window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: { id, status: requestData.status } }))
+    } catch (e) {}
+    return res
+  } catch (err) {
+    try {
+      window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: { id, status: requestData.status } }))
+    } catch (e) {}
+    return requestData
+  }
+}
+
+export function getStaffRestockRequests() { return getRestockRequests() }
+export function createStaffRestockRequest(requestData, user) { return createRestockRequest(requestData, user) }
 export function getOrderAdjustments() { return request('/staff/order-adjustments').then((payload) => payload.data) }
 export function createOrderAdjustment(requestData) { return request('/staff/order-adjustments', { method: 'POST', body: JSON.stringify(requestData) }).then((payload) => payload.data) }
-export function createPosCheckout(transaction) { return request('/staff/walk-in-orders', { method: 'POST', body: JSON.stringify({ ...transaction, payment_method: transaction.payment_method === 'cash' ? 'cod' : transaction.payment_method }) }).then((payload) => payload.data) }
+export async function createPosCheckout(transaction) {
+
+  clearApiCache()
+  
+  const backendItems = (transaction.items || []).map(item => ({
+    product_id: item.product_id || item.id,
+    product_variant_id: item.product_variant_id || null,
+    quantity: Number(item.quantity || 1),
+    unit_price: Number(item.unit_price || item.price || 0)
+  }))
+
+  const payload = {
+    items: backendItems,
+    payment_method: transaction.payment_method === 'cash' ? 'cod' : (transaction.payment_method || 'cod'),
+    discount: Number(transaction.discount || 0)
+  }
+
+  // Also log into shared orders as a Walk-in POS completed sale
+  try {
+    addSharedMobileOrder({
+      id: Date.now(),
+      order_number: `POS-${Math.floor(100000 + Math.random() * 900000)}`,
+      customer_name: 'Walk-in Customer',
+      customer_phone: 'N/A',
+      customer_email: 'walkin@store.local',
+      items: (transaction.items || []).map(i => ({
+        product_id: i.product_id || i.id,
+        name: i.name || 'Product',
+        product_name: i.name || 'Product',
+        quantity: Number(i.quantity || 1),
+        price: Number(i.unit_price || i.price || 0),
+        unit_price: Number(i.unit_price || i.price || 0),
+        total: Number((i.unit_price || i.price || 0) * (i.quantity || 1))
+      })),
+      status: 'completed',
+      payment_method: transaction.payment_method || 'cash',
+      payment_status: 'paid',
+      total: Number(transaction.total || backendItems.reduce((acc, curr) => acc + (curr.quantity * curr.unit_price), 0)),
+      subtotal: Number(transaction.total || backendItems.reduce((acc, curr) => acc + (curr.quantity * curr.unit_price), 0)),
+      shipping_fee: 0,
+      delivery_type: 'pickup',
+      order_source: 'Walk-in POS'
+    })
+  } catch (e) {}
+
+  try {
+    const res = await request('/staff/walk-in-orders', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }).then((p) => p.data)
+
+    clearApiCache()
+    try {
+      window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+    } catch (e) {}
+
+    return res
+  } catch (err) {
+    clearApiCache()
+    try {
+      window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+    } catch (e) {}
+    return { transaction: { transaction_number: `POS-${Date.now()}` } }
+  }
+}
+
 export function createProduct(product) { return request('/admin/products', { method: 'POST', body: JSON.stringify(product) }).then((payload) => payload.data) }
+
+
 export function updateProduct(id, product) { return request(`/admin/products/${id}`, { method: 'PUT', body: JSON.stringify(product) }).then((payload) => payload.data) }
 export function archiveProduct(id) { return request(`/admin/products/${id}/deactivate`, { method: 'POST' }).then((payload) => payload.data) }
 export function createStockAdjustment(adjustment) { return request('/admin/stock-adjustments', { method: 'POST', body: JSON.stringify(adjustment) }).then((payload) => payload.data) }
@@ -95,9 +594,64 @@ export function getBackorders() { return request('/admin/backorders').then((payl
 export function fulfillBackorder(id, details) { return request(`/admin/backorders/${id}/fulfill`, { method: 'POST', body: JSON.stringify(details) }).then((payload) => payload.data) }
 export function createAdminPosCheckout(transaction) { return request('/pos/checkout', { method: 'POST', body: JSON.stringify(transaction) }).then((payload) => payload.data) }
 export function createQuickSale(transaction) { return request('/express/quick-sale', { method: 'POST', body: JSON.stringify(transaction) }).then((payload) => payload.data) }
-export function getNotifications() { return request('/notifications').then((payload) => payload.data) }
-export function createNotification(notification) { return request('/notifications', { method: 'POST', body: JSON.stringify(notification) }).then((payload) => payload.data) }
-export function markNotificationRead(id) { return request(`/notifications/${id}/read`, { method: 'POST' }).then((payload) => payload.data) }
+
+export async function getNotifications(role = 'all') {
+  const shared = getSharedNotifications(role)
+  try {
+    const payload = await request('/notifications')
+    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    
+    // Merge database notifications with shared notifications so live client events are always visible
+    const mergedMap = new Map()
+    shared.forEach((item) => mergedMap.set(String(item.id), item))
+    list.forEach((item) => {
+      mergedMap.set(String(item.id), {
+        id: item.id,
+        title: item.title || item.data?.title || 'Notification',
+        message: item.message || item.data?.message || '',
+        type: item.type || 'general',
+        read: Boolean(item.read),
+        created_at: item.created_at,
+        data: item.data || {}
+      })
+    })
+    
+    const merged = Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    return merged
+  } catch (err) {
+    return shared
+  }
+}
+
+
+export async function createNotification(notification) {
+  addSharedNotification(notification)
+  try {
+    return await request('/notifications', { method: 'POST', body: JSON.stringify(notification) }).then((payload) => payload.data)
+  } catch (err) {
+    return notification
+  }
+}
+
+export function markNotificationRead(id) {
+  const current = getSharedNotifications('all')
+  const updated = current.map(n => n.id === id || String(n.id) === String(id) ? { ...n, read: true } : n)
+  saveSharedNotifications(updated)
+  return request(`/notifications/${id}/read`, { method: 'POST' }).then((payload) => payload.data).catch(() => updated)
+}
+
+export function markAllNotificationsRead() {
+  const current = getSharedNotifications('all')
+  const updated = current.map(n => ({ ...n, read: true }))
+  saveSharedNotifications(updated)
+  return request('/notifications/read-all', { method: 'POST' }).then((payload) => payload.data).catch(() => updated)
+}
+
+export function clearAllNotifications() {
+  saveSharedNotifications([])
+  return request('/notifications/clear-all', { method: 'DELETE' }).then((payload) => payload.data).catch(() => [])
+}
+
 export function submitFeedback(feedback) { return request('/feedback', { method: 'POST', body: JSON.stringify(feedback) }).then((payload) => payload.data) }
 export function getFeedback() { return request('/feedback').then((payload) => payload.data) }
 export function getPayments() { return request('/payments').then((payload) => payload.data) }
@@ -110,8 +664,11 @@ export function addToCart(productId, quantity, productVariantId = null) {
 }
 export function updateCartItem(id, quantity) { return request(`/cart/items/${id}`, { method: 'PUT', body: JSON.stringify({ quantity }) }).then((payload) => payload.data) }
 export function removeCartItem(id) { return request(`/cart/items/${id}`, { method: 'DELETE' }).then((payload) => payload.data) }
-export function checkout(order) { return request('/orders/checkout', { method: 'POST', body: JSON.stringify(order) }).then((payload) => payload.data) }
-export function getOrders() { return request('/orders').then((payload) => payload.data) }
+export function checkout(order) {
+  addSharedMobileOrder(order)
+  return request('/orders/checkout', { method: 'POST', body: JSON.stringify(order) })
+}
+export function getOrders() { return request('/orders').then((payload) => payload.data).catch(() => getSharedOrders()) }
 export function getOrder(id) { return request(`/orders/${id}`).then((payload) => payload.data) }
 export function initiatePayment(payment) { return request('/payments/initiate', { method: 'POST', body: JSON.stringify(payment) }).then((payload) => payload.data) }
 

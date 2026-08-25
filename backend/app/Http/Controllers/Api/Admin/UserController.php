@@ -61,4 +61,18 @@ class UserController extends Controller
     public function archive(User $user): JsonResponse { $user->update(['status' => 'inactive']); $user->tokens()->delete(); return response()->json(['success' => true, 'message' => 'User archived.']); }
     public function activate(User $user): JsonResponse { $user->update(['status' => 'active']); return response()->json(['success' => true, 'message' => 'User activated.', 'data' => $user->fresh()]); }
     public function changeRole(Request $request, User $user): JsonResponse { $data = $request->validate(['role' => [ 'required', Rule::in(['admin', 'staff', 'customer']) ]]); $user->update($data); return response()->json(['success' => true, 'data' => $user->fresh()]); }
+
+    public function destroy(User $user): JsonResponse
+    {
+        if ($user->role === 'admin') {
+            return response()->json(['success' => false, 'message' => 'Administrator accounts cannot be deleted.'], 403);
+        }
+        $user->tokens()->delete();
+        $user->customer()?->delete();
+        $user->staff()?->delete();
+        $user->forceDelete();
+        return response()->json(['success' => true, 'message' => 'User deleted successfully.']);
+    }
 }
+
+

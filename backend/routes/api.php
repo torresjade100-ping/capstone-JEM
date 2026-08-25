@@ -12,8 +12,10 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-    Route::apiResource('users', App\Http\Controllers\Api\Admin\UserController::class)->only(['index', 'store', 'show', 'update']);
+    Route::apiResource('users', App\Http\Controllers\Api\Admin\UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::delete('users/{user}', [App\Http\Controllers\Api\Admin\UserController::class, 'destroy']);
     Route::patch('users/{user}/archive', [App\Http\Controllers\Api\Admin\UserController::class, 'archive']);
+
     Route::patch('users/{user}/activate', [App\Http\Controllers\Api\Admin\UserController::class, 'activate']);
     Route::patch('users/{user}/role', [App\Http\Controllers\Api\Admin\UserController::class, 'changeRole']);
     Route::apiResource('products', App\Http\Controllers\Api\Admin\ProductController::class);
@@ -39,14 +41,23 @@ Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(
     Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
 });
 
+// Stock Requests: Staff submits requests; Admin receives, reviews, and approves/rejects
 Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->group(function () {
+    Route::get('stock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'index']);
     Route::get('restock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'index']);
+});
+
+
+Route::middleware(['auth:sanctum', 'active', 'role:staff'])->group(function () {
     Route::post('restock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'store']);
+    Route::post('stock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'store']);
 });
 
 Route::middleware(['auth:sanctum', 'active', 'role:admin'])->group(function () {
     Route::put('restock-requests/{restockRequest}', [App\Http\Controllers\Api\RestockRequestController::class, 'update']);
+    Route::put('stock-requests/{restockRequest}', [App\Http\Controllers\Api\RestockRequestController::class, 'update']);
 });
+
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -147,6 +158,8 @@ Route::middleware(['auth:sanctum','active','role:admin|staff'])->group(function 
 Route::middleware(['auth:sanctum','active'])->group(function () {
     Route::get('notifications', [App\Http\Controllers\Api\NotificationController::class, 'index']);
     Route::post('notifications', [App\Http\Controllers\Api\NotificationController::class, 'store']);
+    Route::post('notifications/read-all', [App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+    Route::delete('notifications/clear-all', [App\Http\Controllers\Api\NotificationController::class, 'clearAll']);
     Route::post('notifications/{id}/read', [App\Http\Controllers\Api\NotificationController::class, 'markRead']);
 
     Route::post('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'store']);

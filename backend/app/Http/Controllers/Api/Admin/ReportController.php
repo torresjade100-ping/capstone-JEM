@@ -17,6 +17,34 @@ class ReportController extends Controller
     }
 
     /**
+     * Get sales report summary
+     */
+    public function sales(Request $request)
+    {
+        $date = $request->query('date');
+        $report = $this->reportService->dailySalesReport($date);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $report,
+        ]);
+    }
+
+    /**
+     * Get product sales report
+     */
+    public function productSales(Request $request)
+    {
+        $date = $request->query('date');
+        $report = $this->reportService->dailySalesReport($date);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $report['top_products'] ?? [],
+        ]);
+    }
+
+    /**
      * Get daily sales report
      */
     public function daily(Request $request)

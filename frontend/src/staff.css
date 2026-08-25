@@ -21,3 +21,31 @@ select option[value="bank_transfer"] { display: none; }
 	.pos-product { min-width: 0; }
 	.staff-form .form-row { grid-template-columns: 1fr; }
 }
+
+.staff-pos-content {
+	box-sizing: border-box;
+	height: calc(100vh - 72px);
+	overflow: hidden;
+}
+.staff-pos-content .staff-page {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+.staff-pos-content .pos-layout {
+	flex: 1;
+	min-height: 0;
+}
+.staff-pos-content .pos-layout > .staff-panel {
+	min-height: 0;
+	overflow: hidden;
+}
+.staff-pos-content .pos-layout > .staff-panel:first-child {
+	display: flex;
+	flex-direction: column;
+}
+.staff-pos-content .pos-products {
+	min-height: 0;
+	overflow-y: auto;
+}

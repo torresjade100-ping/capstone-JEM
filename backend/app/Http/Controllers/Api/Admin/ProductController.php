@@ -15,7 +15,7 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Product::with(['category', 'brand', 'variants']);
+        $query = Product::with(['category:id,name', 'brand:id,name', 'variants:id,product_id,sku,price,stock_quantity']);
 
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
@@ -30,19 +30,22 @@ class ProductController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where(function ($search) use ($request) {
-                $search->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('sku', 'like', '%'.$request->search.'%');
+            $searchTerm = $request->search;
+            $query->where(function ($search) use ($searchTerm) {
+                $search->where('name', 'like', '%'.$searchTerm.'%')
+                    ->orWhereHas('variants', fn ($v) => $v->where('sku', 'like', '%'.$searchTerm.'%'));
             });
         }
 
-        $products = $query->orderBy('name')->paginate(20);
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $products = $query->orderBy('name')->paginate($perPage);
 
         return response()->json([
             'success' => true,
             'data' => $products,
         ]);
     }
+
 
     public function store(\App\Http\Requests\ProductStoreRequest $request): JsonResponse
     {

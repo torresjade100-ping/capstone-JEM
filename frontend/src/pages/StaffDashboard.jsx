@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState, lazy, Suspense } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -13,90 +14,135 @@ import {
   PanelLeftOpen,
   Warehouse,
 } from 'lucide-react'
-import { getStoredUser, logout } from '../api'
-import POSPage from './POSPage'
+import { getStoredUser, logout, getSharedOrders } from '../api'
+import NotificationDropdown from '../components/NotificationDropdown'
+import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
+import PageSkeletonLoader from '../components/PageSkeletonLoader'
+import ErrorBoundary from '../components/ErrorBoundary'
+
+const POSPage = lazy(() => import('./POSPage'))
+const OrdersManagement = lazy(() => import('./OrdersManagement'))
+const RestockRequestsPage = lazy(() => import('./RestockRequestsPage'))
+const FeedbackManagement = lazy(() => import('./FeedbackManagement'))
+
 
 const navItems = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'pos', label: 'POS', icon: ShoppingCart },
-  { key: 'orders', label: 'Orders', icon: ClipboardList },
-  { key: 'restock', label: 'Restock', icon: Package },
-  { key: 'feedback', label: 'Feedback', icon: MessageSquareText },
+  { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'pos', path: '/pos', label: 'POS', icon: ShoppingCart },
+  { key: 'orders', path: '/orders', label: 'Orders', icon: ClipboardList },
+  { key: 'restock', path: '/stock-requests', label: 'Stock Requests', icon: Package },
+  { key: 'feedback', path: '/feedback', label: 'Feedback', icon: MessageSquareText },
 ]
 
-export default function StaffDashboard() {
-  const [user, setUser] = useState(null)
-  const [currentPage, setCurrentPage] = useState('dashboard')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [orders, setOrders] = useState([])
 
-  const stats = [
-    { label: 'Today\'s sales', value: orders.reduce((sum, order) => sum + Number(order.total || 0), 0), format: 'currency' },
-    { label: 'Orders today', value: orders.length, format: 'number' },
-    { label: 'Pending', value: orders.filter((order) => order.paymentMethod === 'Cash' || order.paymentMethod === 'GCash' || order.paymentMethod === 'Maya').length, format: 'number' },
-    { label: 'Cash sales', value: orders.filter((order) => order.paymentMethod === 'Cash').reduce((sum, order) => sum + Number(order.total || 0), 0), format: 'currency' },
-  ]
+export default function StaffDashboard() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const [user, setUser] = useState(() => getStoredUser())
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+  const [orders, setOrders] = useState(() => {
+    const list = getSharedOrders()
+    return Array.isArray(list) ? list : []
+  })
+
+  const getActivePage = (pathname) => {
+    const cleanPath = (pathname || '/').toLowerCase().replace(/\/$/, '') || '/'
+    if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
+    if (cleanPath.startsWith('/pos')) return 'pos'
+    if (cleanPath.startsWith('/orders')) return 'orders'
+    if (cleanPath.startsWith('/stock-requests') || cleanPath.startsWith('/stock-request') || cleanPath.startsWith('/restock')) return 'restock'
+    if (cleanPath.startsWith('/feedback')) return 'feedback'
+    return 'dashboard'
+  }
+
+
+  const activePage = getActivePage(location.pathname)
+
+  const navigateTo = (path) => {
+    navigate(path)
+  }
 
   useEffect(() => {
     setUser(getStoredUser())
+    const initialOrders = getSharedOrders()
+    setOrders(Array.isArray(initialOrders) ? initialOrders : [])
+    const interval = setInterval(() => {
+      const live = getSharedOrders()
+      setOrders(Array.isArray(live) ? live : [])
+    }, 4000)
+    return () => clearInterval(interval)
   }, [])
 
-  const handleLogout = async () => {
+  const safeOrders = Array.isArray(orders) ? orders : []
+
+  const stats = [
+    { label: 'TODAY SALES', value: safeOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0), format: 'currency' },
+    { label: 'ORDERS TODAY', value: safeOrders.length, format: 'number' },
+    { label: 'PENDING ORDERS', value: safeOrders.filter((o) => ['pending', 'confirmed'].includes(o?.status)).length, format: 'number' },
+    { label: 'COMPLETED TODAY', value: safeOrders.filter((o) => o?.status === 'completed').length, format: 'number' },
+  ]
+
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true)
+  }
+
+  const handleConfirmLogout = async () => {
     try {
+      setLogoutLoading(true)
       await logout()
       window.location.href = '/login'
     } catch (error) {
       console.error('Logout failed:', error)
+      window.location.href = '/login'
+    } finally {
+      setLogoutLoading(false)
+      setShowLogoutModal(false)
     }
   }
 
   const renderPage = () => {
-    if (currentPage === 'pos') {
-      return <POSPage onTransactionComplete={(transaction) => setOrders((list) => [transaction, ...list])} />
-    }
-
-    if (currentPage === 'orders') {
+    if (activePage === 'pos') {
       return (
-        <div className="jem-content-panel jem-orders-panel">
-          <div className="jem-panel-header">
-            <div>
-              <p className="jem-eyebrow">Recent sales</p>
-              <h2>Orders</h2>
-            </div>
-          </div>
-
-          <div className="jem-orders-list">
-            {orders.length === 0 ? (
-              <div className="jem-empty-state">
-                <Warehouse size={36} />
-                <p>No transactions yet.</p>
-              </div>
-            ) : (
-              orders.map((order) => (
-                <div className="jem-order-row" key={order.id}>
-                  <div>
-                    <strong>{order.number}</strong>
-                    <span>{order.date}</span>
-                  </div>
-                  <div>
-                    <span>{order.paymentMethod}</span>
-                    <strong>₱{order.total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <POSPage
+          onTransactionComplete={(transaction) => {
+            const live = getSharedOrders()
+            setOrders(Array.isArray(live) ? live : [])
+          }}
+        />
       )
     }
 
-    if (currentPage === 'dashboard') {
-      const salesTrend = [28, 42, 37, 61, 55, 73, 64]
-      const lowStockPreview = [
-        { name: 'Coco Lumber 2x3', remaining: 8 },
-        { name: 'Portland Cement', remaining: 14 },
-        { name: 'GI Sheet 24G', remaining: 11 },
-      ]
+    if (activePage === 'orders') {
+      return <OrdersManagement role="staff" />
+    }
+
+    if (activePage === 'restock') {
+      return <RestockRequestsPage role="staff" />
+    }
+
+
+    if (activePage === 'feedback') {
+      return <FeedbackManagement />
+    }
+
+    if (activePage === 'dashboard') {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      
+      const realWeeklySales = days.map((dayLabel, idx) => {
+        const dayOrders = safeOrders.filter(ord => {
+          if (!ord?.created_at) return false
+          const d = new Date(ord.created_at)
+          const dayIndex = (d.getDay() + 6) % 7 // Monday = 0
+          return dayIndex === idx
+        })
+        const total = dayOrders.reduce((sum, o) => sum + Number(o?.total || 0), 0)
+        return { label: dayLabel, value: total }
+      })
+
+      const maxSales = Math.max(...realWeeklySales.map(d => d.value), 1)
 
       return (
         <div className="jem-content-panel">
@@ -124,36 +170,49 @@ export default function StaffDashboard() {
             <div style={{ background: 'white', borderRadius: '16px', border: '1px solid rgba(23,41,58,0.08)', padding: '18px 18px 14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
                 <div>
-                  <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Sales trend</div>
+                  <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Sales activity</div>
                   <div style={{ marginTop: '6px', fontSize: '1.35rem', fontWeight: 800, color: '#17293a' }}>This week</div>
                 </div>
-                <div style={{ color: '#64737b', fontSize: '0.78rem' }}>+14.2% vs last week</div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: '120px', paddingTop: '8px' }}>
-                {salesTrend.map((value, index) => (
+                {realWeeklySales.map((d, index) => (
                   <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '100%', height: '100px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <div style={{ width: '100%', maxWidth: '26px', height: `${value}%`, background: index === salesTrend.length - 1 ? '#f97316' : '#dfe6eb', borderRadius: '10px 10px 4px 4px' }} />
+                      <div style={{
+                        width: '100%',
+                        maxWidth: '26px',
+                        height: d.value ? `${Math.max((d.value / maxSales) * 100, 10)}%` : '4px',
+                        background: d.value ? '#f97316' : '#e2e8f0',
+                        borderRadius: '10px 10px 4px 4px'
+                      }} />
                     </div>
-                    <span style={{ fontSize: '0.68rem', color: '#64737b' }}>{['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}</span>
+                    <span style={{ fontSize: '0.68rem', color: '#64737b' }}>{d.label}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div style={{ background: 'white', borderRadius: '16px', border: '1px solid rgba(23,41,58,0.08)', padding: '18px' }}>
-              <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Low stock</div>
-              <div style={{ marginTop: '10px', display: 'grid', gap: '12px' }}>
-                {lowStockPreview.map((item) => (
-                  <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fffaf5', border: '1px solid rgba(249,115,22,0.12)', borderRadius: '10px', padding: '10px 12px' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#17293a' }}>{item.name}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64737b' }}>Critical remaining</div>
-                    </div>
-                    <span style={{ color: '#f97316', fontWeight: 800, fontSize: '1rem' }}>{item.remaining}</span>
+              <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Orders Stream</div>
+              <div style={{ marginTop: '14px', display: 'grid', gap: '8px' }}>
+                {safeOrders.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '13px' }}>
+                    No incoming orders currently.
                   </div>
-                ))}
+                ) : (
+                  safeOrders.slice(0, 3).map((ord) => (
+                    <div key={ord.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#17293a', fontSize: '0.85rem' }}>{ord.order_number || `#${ord.id}`}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64737b' }}>{ord.customer_name || 'Customer'}</div>
+                      </div>
+                      <span style={{ color: '#f97316', fontWeight: 800, fontSize: '0.9rem' }}>
+                        ₱{Number(ord.total || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -166,20 +225,20 @@ export default function StaffDashboard() {
           </div>
 
           <div className="jem-orders-list">
-            {orders.length === 0 ? (
+            {safeOrders.length === 0 ? (
               <div className="jem-empty-state compact">
                 <LayoutDashboard size={32} />
                 <p>No sales have been recorded yet. POS transactions will appear here.</p>
               </div>
             ) : (
-              orders.slice(0, 5).map((order) => (
+              safeOrders.slice(0, 5).map((order) => (
                 <div className="jem-order-row" key={order.id}>
                   <div>
-                    <strong>{order.number}</strong>
-                    <span>{order.date}</span>
+                    <strong>{order.order_number || `#${order.id}`}</strong>
+                    <span>{order.created_at ? new Date(order.created_at).toLocaleDateString() : 'Today'}</span>
                   </div>
                   <div>
-                    <span>{order.paymentMethod}</span>
+                    <span>{order.payment_method?.toUpperCase() || 'COD'}</span>
                     <strong>₱{Number(order.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                   </div>
                 </div>
@@ -190,52 +249,36 @@ export default function StaffDashboard() {
       )
     }
 
-    if (currentPage === 'restock') {
-      return (
-        <div className="jem-content-panel">
-          <div className="jem-panel-header">
-            <div>
-              <p className="jem-eyebrow">Inventory</p>
-              <h2>Restock</h2>
-            </div>
-          </div>
-          <div className="jem-empty-state compact">
-            <Package size={32} />
-            <p>Restock workflow is ready for the next inventory module.</p>
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div className="jem-content-panel">
-        <div className="jem-panel-header">
-          <div>
-            <p className="jem-eyebrow">Customer care</p>
-            <h2>Feedback</h2>
-          </div>
-        </div>
-        <div className="jem-empty-state compact">
-          <MessageSquareText size={32} />
-          <p>Customer feedback view is ready for future review tools.</p>
-        </div>
-      </div>
-    )
+    return null
   }
+
 
   return (
     <>
       <style>{`
         .jem-staff-shell {
-          display: flex;
+          position: fixed;
+          inset: 0;
+          width: 100vw;
           height: 100vh;
-          width: 100%;
+          max-height: 100vh;
+          overflow: hidden;
+          display: flex;
           background: #f5f4f1;
           color: #17293a;
         }
 
         .jem-staff-sidebar {
           width: 260px;
+          min-width: 260px;
+          flex: 0 0 260px;
+          height: 100vh;
+          flex-shrink: 0;
+          position: sticky;
+          top: 0;
+          align-self: flex-start;
+          z-index: 20;
+          box-sizing: border-box;
           background: #17293a;
           color: #dfe7e4;
           padding: 22px 16px 18px;
@@ -243,10 +286,14 @@ export default function StaffDashboard() {
           flex-direction: column;
           border-right: 1px solid rgba(255,255,255,0.06);
           transition: width 0.2s ease;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
 
         .jem-staff-sidebar.collapsed {
           width: 76px;
+          min-width: 76px;
+          flex-basis: 76px;
         }
 
         .jem-staff-sidebar.collapsed .jem-brand-copy,
@@ -405,21 +452,30 @@ export default function StaffDashboard() {
 
         .jem-main {
           flex: 1;
+          width: 0;
           min-width: 0;
+          height: 100vh;
+          max-height: 100vh;
           background: #f5f4f1;
           display: flex;
           flex-direction: column;
+          overflow: hidden;
         }
 
         .jem-header {
-          height: 74px;
-          background: rgba(255,255,255,0.82);
+          flex-shrink: 0;
+          height: 72px;
+          min-height: 72px;
+          background: rgba(255,255,255,0.96);
           border-bottom: 1px solid rgba(23,41,58,0.08);
           display: flex;
           align-items: center;
           justify-content: space-between;
           padding: 0 28px 0 24px;
           backdrop-filter: blur(10px);
+          position: relative;
+          z-index: 100;
+          overflow: visible;
         }
 
         .jem-header-title {
@@ -450,6 +506,8 @@ export default function StaffDashboard() {
           align-items: center;
           gap: 14px;
           margin-left: 12px;
+          position: relative;
+          overflow: visible;
         }
 
         .jem-notice-btn {
@@ -489,8 +547,10 @@ export default function StaffDashboard() {
 
         .jem-content {
           flex: 1;
-          overflow: auto;
-          padding: 22px 18px 18px;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding: 22px 24px 28px;
         }
 
         .jem-content-panel {
@@ -581,21 +641,33 @@ export default function StaffDashboard() {
         }
 
         @media (max-width: 900px) {
+          .jem-pos-header-tools .notification-dropdown {
+            right: 0;
+          }
+
           .jem-staff-sidebar {
-            width: 84px;
+            width: 72px !important;
+            min-width: 72px !important;
+            flex-basis: 72px !important;
+            padding: 16px 8px;
           }
 
           .jem-brand-copy,
           .jem-badge,
           .jem-nav-label,
-          .jem-nav-indicator {
-            display: none;
+          .jem-nav-indicator,
+          .jem-collapse-btn {
+            display: none !important;
+          }
+
+          .jem-brand {
+            justify-content: center;
+            padding-bottom: 12px;
           }
 
           .jem-nav-item {
             justify-content: center;
-            padding-left: 0;
-            padding-right: 0;
+            padding: 10px 0;
           }
 
           .jem-header {
@@ -607,45 +679,22 @@ export default function StaffDashboard() {
           }
 
           .jem-header-title h1 {
-            font-size: 1.5rem;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .jem-staff-shell {
-            display: block;
-          }
-
-          .jem-staff-sidebar {
-            width: 100%;
-            border-right: none;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-          }
-
-          .jem-nav {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .jem-header {
-            height: auto;
-            padding: 14px 16px;
-            flex-wrap: wrap;
-            gap: 10px;
-          }
-
-          .jem-header-title {
-            width: 100%;
-            margin-left: 0;
-          }
-
-          .jem-content {
-            padding: 16px 12px 18px;
+            font-size: 1.4rem;
           }
         }
       `}</style>
 
+      <LogoutConfirmationModal
+        isOpen={showLogoutModal}
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+        loading={logoutLoading}
+        title="Staff Sign Out"
+        message="Are you sure you want to log out?"
+      />
+
       <div className="jem-staff-shell">
+
         <aside className={`jem-staff-sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
           <div className="jem-brand">
             <div className="jem-brand-main">
@@ -663,24 +712,24 @@ export default function StaffDashboard() {
           <div className="jem-badge">Staff</div>
 
           <nav className="jem-nav" aria-label="Sidebar navigation">
-            {navItems.map(({ key, label, icon: Icon }) => (
+            {navItems.map(({ key, path, label, icon: Icon }) => (
               <button
                 key={key}
                 type="button"
-                className={`jem-nav-item ${currentPage === key ? 'active' : ''}`}
-                onClick={() => setCurrentPage(key)}
+                className={`jem-nav-item ${activePage === key ? 'active' : ''}`}
+                onClick={() => navigateTo(path)}
               >
                 <span className="jem-nav-main">
                   <Icon size={17} />
                   <span className="jem-nav-label">{label}</span>
                 </span>
-                {currentPage === key && <span className="jem-nav-indicator" aria-hidden="true" />}
+                {activePage === key && <span className="jem-nav-indicator" aria-hidden="true" />}
               </button>
             ))}
           </nav>
 
           <div className="jem-sidebar-footer">
-            <button type="button" className="jem-nav-item" onClick={handleLogout}>
+            <button type="button" className="jem-nav-item" onClick={handleLogoutClick}>
               <span className="jem-nav-main">
                 <LogOut size={17} />
                 <span className="jem-nav-label">Logout</span>
@@ -692,19 +741,26 @@ export default function StaffDashboard() {
         <main className="jem-main">
           <header className="jem-header">
             <div className="jem-header-title">
-              <h1>{currentPage === 'pos' ? 'POS' : currentPage === 'orders' ? 'Orders' : currentPage === 'restock' ? 'Restock' : currentPage === 'feedback' ? 'Feedback' : 'Dashboard'}</h1>
+              <h1>{activePage === 'pos' ? 'POS' : activePage === 'orders' ? 'Orders' : activePage === 'restock' ? 'Stock Requests' : activePage === 'feedback' ? 'Feedback' : 'Dashboard'}</h1>
+
               <p>Staff · JEM Hardware &amp; Coco Lumber</p>
             </div>
 
+
             <div className="jem-header-tools">
-              <button className="jem-notice-btn" aria-label="Notifications" type="button">
-                <Bell size={15} />
-              </button>
-              <div className="jem-user-avatar" aria-label="Current user">R</div>
+              <NotificationDropdown role="staff" iconSize={16} />
+              <div className="jem-user-avatar" aria-label="Current user">{user?.name ? user.name.charAt(0).toUpperCase() : 'S'}</div>
             </div>
           </header>
 
-          <div className="jem-content">{renderPage()}</div>
+          <div className="jem-content">
+            <ErrorBoundary>
+              <Suspense fallback={<PageSkeletonLoader rows={6} />}>
+                {renderPage()}
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+
         </main>
       </div>
     </>

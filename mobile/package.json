@@ -1,0 +1,24 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@babel/core": "^7.29.7",
+    "babel-plugin-syntax-hermes-parser": "^0.37.0",
+    "babel-preset-expo": "^57.0.7",
+    "expo": "~57.0.16",
+    "expo-status-bar": "~57.0.1",
+    "hermes-parser": "^0.37.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-web": "^0.21.2"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

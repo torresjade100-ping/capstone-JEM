@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { FileText, Download } from 'lucide-react'
 import { API_BASE_URL } from '../api'
+import { exportReportToPDF, exportReportToCSV } from '../utils/exportReports'
 import '../styles/management.css'
 
 export default function ReportsPage() {
@@ -33,8 +35,8 @@ export default function ReportsPage() {
       const data = await response.json()
       setReportData(data.data || data)
     } catch (error) {
-      console.error('Error fetching report:', error)
-      alert('Failed to load report')
+      console.warn('Error fetching report:', error)
+      setReportData(null)
     } finally {
       setLoading(false)
     }
@@ -54,34 +56,22 @@ export default function ReportsPage() {
     }
   }, [reportType, selectedDate, selectedMonth, selectedYear])
 
-  const handleExport = async () => {
-    try {
-      const params = new URLSearchParams()
-      let url = ''
-      
-      if (reportType === 'daily') {
-        params.append('date', selectedDate)
-        url = `${API_BASE_URL}/admin/reports/daily/csv?${params.toString()}`
-      } else if (reportType === 'inventory') {
-        url = `${API_BASE_URL}/admin/reports/inventory/csv`
-      } else {
-        alert('Export not available for this report type')
-        return
-      }
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      if (!response.ok) throw new Error('Failed to export report')
-      const blob = await response.blob()
-      const downloadUrl = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = downloadUrl
-      anchor.download = `${reportType}-report.csv`
-      anchor.click()
-      URL.revokeObjectURL(downloadUrl)
-    } catch (error) {
-      console.error('Error exporting report:', error)
-      alert('Failed to export report')
+  const handleExportPDF = () => {
+    if (!reportData) {
+      alert('Please wait for report data to load before exporting.')
+      return
     }
+    exportReportToPDF(reportType, reportData, { selectedDate, selectedMonth, selectedYear })
   }
+
+  const handleExportCSV = () => {
+    if (!reportData) {
+      alert('Please wait for report data to load before exporting.')
+      return
+    }
+    exportReportToCSV(reportType, reportData, { selectedDate, selectedMonth, selectedYear })
+  }
+
 
   const renderDailyReport = () => {
     if (!reportData) return null
@@ -290,12 +280,71 @@ export default function ReportsPage() {
 
   return (
     <div className="management-container">
-      <div className="management-header">
-        <h1>Reports & Analytics</h1>
-        <button className="btn btn-primary" onClick={handleExport}>
-          📥 Export to CSV
-        </button>
+      <div className="management-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1>Reports &amp; Analytics</h1>
+          <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
+            Generate, review, and export business performance records
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-export-pdf"
+            onClick={handleExportPDF}
+            disabled={loading || !reportData}
+            title="Export standard printable PDF report"
+            style={{
+              height: '38px',
+              padding: '0 16px',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '13.5px',
+              background: '#1e293b',
+              color: '#ffffff',
+              border: '1px solid #334155',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: loading || !reportData ? 'not-allowed' : 'pointer',
+              opacity: loading || !reportData ? 0.6 : 1,
+              boxShadow: '0 2px 6px rgba(15, 23, 42, 0.1)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <FileText size={16} />
+            <span>Export to PDF</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-export-csv"
+            onClick={handleExportCSV}
+            disabled={loading || !reportData}
+            title="Export Excel-compatible CSV spreadsheet"
+            style={{
+              height: '38px',
+              padding: '0 16px',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '13.5px',
+              background: '#f97316',
+              color: '#ffffff',
+              border: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: loading || !reportData ? 'not-allowed' : 'pointer',
+              opacity: loading || !reportData ? 0.6 : 1,
+              boxShadow: '0 2px 6px rgba(249, 115, 22, 0.22)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Download size={16} />
+            <span>Export to CSV</span>
+          </button>
+        </div>
       </div>
+
 
       {/* Report Type Selection */}
       <div className="report-controls">

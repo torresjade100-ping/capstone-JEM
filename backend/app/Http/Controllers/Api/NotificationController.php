@@ -42,4 +42,16 @@ class NotificationController extends Controller
         $n->save();
         return response()->json(['success' => true, 'data' => $n]);
     }
+
+    public function markAllRead(Request $request): JsonResponse
+    {
+        Notification::where('user_id', Auth::id())->where('read', false)->update(['read' => true]);
+        return response()->json(['success' => true, 'message' => 'All notifications marked as read.']);
+    }
+
+    public function clearAll(Request $request): JsonResponse
+    {
+        Notification::where('user_id', Auth::id())->delete();
+        return response()->json(['success' => true, 'message' => 'All notifications cleared.']);
+    }
 }

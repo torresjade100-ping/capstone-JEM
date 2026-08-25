@@ -16,14 +16,16 @@ class OrderController extends Controller
         $query = Order::with(['items.product', 'payments', 'customer.user'])->latest();
         if ($request->filled('status')) $query->where('status', $request->status);
         if ($request->filled('search')) $query->where('order_number', 'like', '%'.$request->search.'%');
-        return response()->json(['success' => true, 'data' => $query->paginate(20)]);
+        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        return response()->json(['success' => true, 'data' => $query->paginate($perPage)]);
     }
+
 
     public function show(Order $order): JsonResponse { return response()->json(['success' => true, 'data' => $order->load(['items.product', 'payments', 'customer.user'])]); }
 
     public function updateStatus(Request $request, Order $order): JsonResponse
     {
-        $data = $request->validate(['status' => ['required', Rule::in(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'])]]);
+        $data = $request->validate(['status' => ['required', Rule::in(['pending', 'confirmed', 'received', 'processing', 'ready', 'out_for_delivery', 'shipped', 'delivered', 'completed', 'cancelled', 'returned'])]]);
         $before = $order->status;
         $order->update($data);
         return response()->json(['success' => true, 'message' => "Order status changed from {$before} to {$order->status}.", 'data' => $order->fresh()]);

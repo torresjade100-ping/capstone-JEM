@@ -1,6 +1,7 @@
-import { Menu, Bell, UserCircle2, Search } from 'lucide-react'
+import { Menu, UserCircle2, Search } from 'lucide-react'
+import NotificationDropdown from '../NotificationDropdown'
 
-export default function Header({ title, onToggleSidebar, onShowCustomer, notifications, onLogout }) {
+export default function Header({ title, onToggleSidebar, onShowCustomer, onLogout }) {
   return (
     <header
       style={{
@@ -45,26 +46,7 @@ export default function Header({ title, onToggleSidebar, onShowCustomer, notific
         <button type="button" className="btn-secondary" onClick={onShowCustomer}>
           Customer App
         </button>
-        <button
-          type="button"
-          className="btn-secondary"
-          style={{ position: 'relative', padding: '10px 12px' }}
-        >
-          <Bell size={18} />
-          {notifications > 0 && (
-            <span
-              style={{
-                position: 'absolute',
-                top: 6,
-                right: 6,
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: '#ef4444',
-              }}
-            />
-          )}
-        </button>
+        <NotificationDropdown role="admin" iconSize={18} />
         <button type="button" className="btn-secondary" style={{ padding: '10px 12px' }}>
           <UserCircle2 size={18} />
         </button>

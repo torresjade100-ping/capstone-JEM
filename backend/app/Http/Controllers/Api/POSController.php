@@ -88,9 +88,45 @@ class POSController extends Controller
                     'total_price' => $product->base_price * $it['quantity'],
                 ]);
 
-                // Deduct inventory immediately
-                $this->inventoryService->adjustStock($request->user(), $it['product_id'], $it['product_variant_id'] ?? null, -1 * $it['quantity'], 'pos_sale', 'sale');
+                // Deduct actual product stock quantity
+                $qtyToDeduct = (int) $it['quantity'];
+                $qtyBefore = (int) ($product->stock_quantity ?? 0);
+                $qtyAfter = max(0, $qtyBefore - $qtyToDeduct);
+                $product->stock_quantity = $qtyAfter;
+                $product->save();
+
+                // If variant exists, also decrement variant stock
+                if (!empty($it['product_variant_id'])) {
+                    \App\Models\ProductVariant::where('id', $it['product_variant_id'])
+                        ->decrement('stock_quantity', $qtyToDeduct);
+                }
+
+                // Log Stock Adjustment and Audit Record
+                try {
+                    $this->inventoryService->adjustStock(
+                        $request->user(),
+                        $it['product_id'],
+                        $it['product_variant_id'] ?? null,
+                        -1 * $qtyToDeduct,
+                        "Walk-in POS Sale (Tx #{$tx->transaction_number})",
+                        'pos_sale'
+                    );
+                } catch (\Throwable $e) {
+                    try {
+                        \App\Models\StockAdjustment::create([
+                            'product_id' => $product->id,
+                            'product_variant_id' => $it['product_variant_id'] ?? null,
+                            'user_id' => $request->user()->id ?? 1,
+                            'adjustment_type' => 'deduct',
+                            'quantity_before' => $qtyBefore,
+                            'quantity_changed' => -1 * $qtyToDeduct,
+                            'quantity_after' => $qtyAfter,
+                            'reason' => "Walk-in POS Sale (Tx #{$tx->transaction_number})",
+                        ]);
+                    } catch (\Throwable $err) {}
+                }
             }
+
 
             // Create payment record
             Payment::create([
