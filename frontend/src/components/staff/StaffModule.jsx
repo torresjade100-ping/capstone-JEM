@@ -47,10 +47,84 @@ function StaffMetric({ icon: Icon, label, value, tone }) { return <div className
 function StaffEmpty({ text }) { return <div className="staff-empty">{text}</div> }
 
 function RestockPanel({ products, requests, onDone }) {
-  const [form, setForm] = useState({ product_id: '', requested_quantity: '', notes: '' }); const selected = products.find((product) => String(product.id) === form.product_id)
-  const submit = async (event) => { event.preventDefault(); if (!selected || Number(form.requested_quantity) < 1 || !form.notes.trim()) return; try { await createStaffRestockRequest({ ...form, product_id: Number(form.product_id), requested_quantity: Number(form.requested_quantity) }); setForm({ product_id: '', requested_quantity: '', notes: '' }); onDone('Restock request submitted for administrator review.') } catch (error) { onDone(error.message) } }
-  return <div className="staff-page"><StaffHeading eyebrow="Inventory support" title="Restock request" subtitle="Flag products that need replenishment before they interrupt an order." /><div className="staff-two-col"><StaffPanel title="Submit a request" subtitle="All requests start as Pending"><form className="staff-form" onSubmit={submit}><label>Product<select className="input" required value={form.product_id} onChange={(event) => setForm({ ...form, product_id: event.target.value })}><option value="">Select a product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selected && <div className="stock-callout"><strong>{selected.stock_quantity ?? selected.stock ?? 0} {selected.unit || 'unit'} available</strong><span>Current stock for {selected.name}</span></div>}<label>Requested quantity<input className="input" type="number" min="1" required value={form.requested_quantity} onChange={(event) => setForm({ ...form, requested_quantity: event.target.value })} /></label><label>Reason<textarea className="input" rows="4" required value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Explain why this product needs replenishment" /></label><button className="button button-accent" type="submit"><ClipboardList size={16} /> Submit restock request</button></form></StaffPanel><StaffPanel title="Request history" subtitle="Your submitted requests"><div className="table-wrap"><table><thead><tr><th>Request</th><th>Product</th><th>Quantity</th><th>Date</th><th>Status</th></tr></thead><tbody>{requests.map((item) => <tr key={item.id}><td>#{item.id}</td><td>{item.product?.name || 'Product'}</td><td>{item.requested_quantity}</td><td>{new Date(item.created_at).toLocaleDateString()}</td><td><StaffStatus value={item.status} /></td></tr>)}</tbody></table></div>{!requests.length && <StaffEmpty text="No restock requests yet." />}</StaffPanel></div></div>
+  const [form, setForm] = useState({ product_id: '', requested_quantity: '', notes: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const selected = products.find((product) => String(product.id) === form.product_id);
+  const submit = async (event) => {
+    event.preventDefault();
+    if (isSubmitting || !selected || Number(form.requested_quantity) < 1 || !form.notes.trim()) return;
+    try {
+      setIsSubmitting(true);
+      await createStaffRestockRequest({ ...form, product_id: Number(form.product_id), requested_quantity: Number(form.requested_quantity) });
+      setForm({ product_id: '', requested_quantity: '', notes: '' });
+      onDone('Restock request submitted for administrator review.');
+    } catch (error) {
+      onDone(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  return (
+    <div className="staff-page">
+      <StaffHeading eyebrow="Inventory support" title="Restock request" subtitle="Flag products that need replenishment before they interrupt an order." />
+      <div className="staff-two-col">
+        <StaffPanel title="Submit a request" subtitle="All requests start as Pending">
+          <form className="staff-form" onSubmit={submit}>
+            <label>Product
+              <select className="input" required value={form.product_id} onChange={(event) => setForm({ ...form, product_id: event.target.value })}>
+                <option value="">Select a product</option>
+                {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+              </select>
+            </label>
+            {selected && (
+              <div className="stock-callout">
+                <strong>{selected.stock_quantity ?? selected.stock ?? 0} {selected.unit || 'unit'} available</strong>
+                <span>Current stock for {selected.name}</span>
+              </div>
+            )}
+            <label>Requested quantity
+              <input className="input" type="number" min="1" required value={form.requested_quantity} onChange={(event) => setForm({ ...form, requested_quantity: event.target.value })} />
+            </label>
+            <label>Reason
+              <textarea className="input" rows="4" required value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Explain why this product needs replenishment" />
+            </label>
+            <button className="button button-accent" type="submit" disabled={isSubmitting}>
+              <ClipboardList size={16} /> {isSubmitting ? 'Submitting...' : 'Submit restock request'}
+            </button>
+          </form>
+        </StaffPanel>
+        <StaffPanel title="Request history" subtitle="Your submitted requests">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Product</th>
+                  <th>Quantity</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((item) => (
+                  <tr key={item.id}>
+                    <td>#{item.id}</td>
+                    <td>{item.product?.name || item.product_name || 'Product'}</td>
+                    <td>{item.requested_quantity ?? item.quantity_requested}</td>
+                    <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                    <td><StaffStatus value={item.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!requests.length && <StaffEmpty text="No restock requests yet." />}
+        </StaffPanel>
+      </div>
+    </div>
+  );
 }
+
 function StaffHeading({ eyebrow, title, subtitle }) { return <div className="staff-page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="muted">{subtitle}</p></div></div> }
 
 function OrdersPanel({ orders, onDone }) {
@@ -60,11 +134,197 @@ function OrdersPanel({ orders, onDone }) {
 }
 
 function PosPanel({ products, onDone }) {
-  const [query, setQuery] = useState(''); const [cart, setCart] = useState([]); const [payment, setPayment] = useState('cod'); const visible = products.filter((product) => product.name.toLowerCase().includes(query.toLowerCase())); const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const add = (product) => setCart((current) => { const found = current.find((item) => item.id === product.id); if (found) return current.map((item) => item.id === product.id ? { ...item, quantity: Math.min(item.quantity + 1, Number(product.stock_quantity ?? product.stock ?? 0)) } : item); return [...current, { ...product, price: Number(product.base_price || product.price || 0), quantity: 1 }] })
-  const change = (id, delta) => setCart((current) => current.map((item) => item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item))
-  const complete = async () => { if (!cart.length || !window.confirm('Confirm Walk-In Transaction?')) return; try { await createPosCheckout({ items: cart.map((item) => ({ product_id: item.id, quantity: item.quantity, unit_price: item.price })), payment_method: payment }); setCart([]); onDone('Walk-in transaction completed and inventory updated.') } catch (error) { onDone(error.message) } }
-  return <div className="staff-page"><StaffHeading eyebrow="Store counter" title="Walk-in order / POS" subtitle="Fast, stock-aware checkout for customers in the store." /><div className="pos-layout"><StaffPanel title="Products" subtitle="Only add quantities available in stock"><div className="search-box staff-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" /></div><div className="pos-products">{visible.map((product) => <div className="pos-product" key={product.id}><div className="product-visual cement">{product.category?.name || 'Hardware'}</div><strong>{product.name}</strong><span>₱{Number(product.base_price || 0).toLocaleString()} / {product.unit || 'unit'}</span><small>{product.stock_quantity ?? product.stock ?? 0} available</small><button className="button button-accent compact" disabled={Number(product.stock_quantity ?? product.stock ?? 0) < 1} onClick={() => add(product)}><Plus size={14} /> Add</button></div>)}</div></StaffPanel><StaffPanel title="Current order" subtitle="Review before completing"><div className="pos-cart">{cart.map((item) => <div className="pos-cart-row" key={item.id}><div><strong>{item.name}</strong><span>₱{item.price.toLocaleString()} × {item.quantity}</span></div><div><button className="qty-button" onClick={() => change(item.id, -1)}>-</button><button className="qty-button" onClick={() => change(item.id, 1)}>+</button><strong>₱{(item.price * item.quantity).toLocaleString()}</strong></div></div>)}{!cart.length && <StaffEmpty text="Add products to begin a walk-in order." />}</div><div className="pos-total"><span>Total</span><strong>₱{total.toLocaleString()}</strong></div><label className="staff-payment">Payment method<select className="input" value={payment} onChange={(event) => setPayment(event.target.value)}><option value="cash">Cash</option><option value="gcash">GCash</option><option value="maya">PayMaya</option><option value="bank_transfer">Bank transfer</option></select></label><button className="button button-accent" disabled={!cart.length} onClick={complete}><Receipt size={16} /> Complete transaction</button></StaffPanel></div></div>
+  const [query, setQuery] = useState('')
+  const [cart, setCart] = useState([])
+  const [payment, setPayment] = useState('cod')
+  const [amountPaid, setAmountPaid] = useState('')
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const visible = products.filter((product) => product.name.toLowerCase().includes(query.toLowerCase()))
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const paidNum = payment === 'cod' ? Number(amountPaid || 0) : total
+  const changeDue = payment === 'cod' && amountPaid ? Math.max(0, paidNum - total) : 0
+
+  const add = (product) => {
+    const stock = Number(product.stock_quantity ?? product.stock ?? 0)
+    if (stock <= 0) return
+    setCart((current) => {
+      const found = current.find((item) => item.id === product.id)
+      if (found) {
+        if (found.quantity >= stock) return current
+        return current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+      }
+      return [...current, { ...product, price: Number(product.base_price || product.price || 0), quantity: 1, stock }]
+    })
+  }
+
+  const change = (id, delta) => {
+    setCart((current) => current.map((item) => {
+      if (item.id !== id) return item
+      const product = products.find(p => p.id === id)
+      const stock = Number(product?.stock_quantity ?? product?.stock ?? item.stock ?? 999)
+      const next = item.quantity + delta
+      if (next <= 0) return null
+      return { ...item, quantity: Math.min(next, stock) }
+    }).filter(Boolean))
+  }
+
+  const handleStartCheckout = () => {
+    if (!cart.length) return
+    if (payment === 'cod' && (!amountPaid || paidNum < total)) {
+      alert(`Please enter an amount of at least ₱${total.toLocaleString()}`)
+      return
+    }
+    setShowConfirm(true)
+  }
+
+  const handleConfirm = async () => {
+    setIsProcessing(true)
+    try {
+      await createPosCheckout({
+        items: cart.map((item) => ({ product_id: item.id, quantity: item.quantity, unit_price: item.price })),
+        payment_method: payment,
+        total
+      })
+      setCart([])
+      setAmountPaid('')
+      setShowConfirm(false)
+      onDone('Walk-in transaction completed and inventory updated.')
+    } catch (error) {
+      onDone(error.message)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  return (
+    <div className="staff-page">
+      <StaffHeading eyebrow="Store counter" title="Walk-in order / POS" subtitle="Fast, stock-aware checkout for customers in the store." />
+      <div className="pos-layout">
+        <StaffPanel title="Products" subtitle="Only add quantities available in stock">
+          <div className="search-box staff-search">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" />
+          </div>
+          <div className="pos-products">
+            {visible.map((product) => {
+              const stock = Number(product.stock_quantity ?? product.stock ?? 0)
+              const isOut = stock <= 0
+              return (
+                <div className={`pos-product ${isOut ? 'disabled' : ''}`} key={product.id} style={{ opacity: isOut ? 0.6 : 1 }}>
+                  <div className="product-visual cement">{product.category?.name || 'Hardware'}</div>
+                  <strong>{product.name}</strong>
+                  <span>₱{Number(product.base_price || 0).toLocaleString()} / {product.unit || 'unit'}</span>
+                  {isOut ? (
+                    <small style={{ color: '#dc2626', fontWeight: 700 }}>Out of Stock</small>
+                  ) : (
+                    <small>{stock} available</small>
+                  )}
+                  <button
+                    className="button button-accent compact"
+                    disabled={isOut}
+                    onClick={() => add(product)}
+                  >
+                    <Plus size={14} /> {isOut ? 'Out of Stock' : 'Add'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </StaffPanel>
+
+        <StaffPanel title="Current order" subtitle="Review before completing">
+          <div className="pos-cart">
+            {cart.map((item) => (
+              <div className="pos-cart-row" key={item.id}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>₱{item.price.toLocaleString()} × {item.quantity}</span>
+                </div>
+                <div>
+                  <button className="qty-button" onClick={() => change(item.id, -1)}>-</button>
+                  <button className="qty-button" onClick={() => change(item.id, 1)}>+</button>
+                  <strong>₱{(item.price * item.quantity).toLocaleString()}</strong>
+                </div>
+              </div>
+            ))}
+            {!cart.length && <StaffEmpty text="Add products to begin a walk-in order." />}
+          </div>
+
+          <div className="pos-total">
+            <span>Total</span>
+            <strong>₱{total.toLocaleString()}</strong>
+          </div>
+
+          <label className="staff-payment">
+            Payment method
+            <select className="input" value={payment} onChange={(event) => setPayment(event.target.value)}>
+              <option value="cod">Cash</option>
+              <option value="gcash">GCash</option>
+              <option value="maya">PayMaya</option>
+            </select>
+          </label>
+
+          {payment === 'cod' && (
+            <label className="staff-payment" style={{ marginTop: '8px' }}>
+              Amount Received (₱)
+              <input
+                className="input"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={amountPaid}
+                onChange={(e) => setAmountPaid(e.target.value)}
+              />
+            </label>
+          )}
+
+          <button
+            className="button button-accent"
+            disabled={!cart.length}
+            onClick={handleStartCheckout}
+          >
+            <Receipt size={16} /> Complete transaction
+          </button>
+        </StaffPanel>
+      </div>
+
+      {showConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 440, width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: '#17293a' }}>Confirm Walk-In Transaction</h3>
+            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: '#64748b', fontSize: 13 }}>Total Amount:</span>
+                <strong style={{ fontSize: 15, color: '#f97316' }}>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: '#64748b', fontSize: 13 }}>Amount Paid:</span>
+                <strong style={{ fontSize: 13 }}>₱{paidNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b', fontSize: 13 }}>Change:</span>
+                <strong style={{ fontSize: 13, color: changeDue > 0 ? '#16a34a' : '#64748b' }}>
+                  {changeDue > 0 ? `₱${changeDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '₱0.00 (No Change)'}
+                </strong>
+              </div>
+            </div>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>
+              Confirming will complete this transaction and automatically deduct items from inventory.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="button" disabled={isProcessing} onClick={() => setShowConfirm(false)}>Cancel</button>
+              <button className="button button-accent" disabled={isProcessing} onClick={handleConfirm}>
+                {isProcessing ? 'Processing...' : 'Confirm Transaction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function AdjustmentPanel({ orders, products, onDone }) { const [form, setForm] = useState({ order_id: '', product_id: '', original_quantity: '', requested_quantity: '', reason: '' }); const submit = async (event) => { event.preventDefault(); try { await createOrderAdjustment({ ...form, order_id: Number(form.order_id), product_id: Number(form.product_id), original_quantity: Number(form.original_quantity), requested_quantity: Number(form.requested_quantity) }); onDone('Order adjustment submitted for administrator review.'); setForm({ order_id: '', product_id: '', original_quantity: '', requested_quantity: '', reason: '' }) } catch (error) { onDone(error.message) } }; return <div className="staff-page"><StaffHeading eyebrow="Exception handling" title="Order adjustment" subtitle="Submit a request when an order needs administrator review." /><StaffPanel title="New adjustment request"><form className="staff-form narrow" onSubmit={submit}><label>Order<select className="input" required value={form.order_id} onChange={(event) => setForm({ ...form, order_id: event.target.value })}><option value="">Select an order</option>{orders.map((order) => <option key={order.id} value={order.id}>{order.order_number || `#${order.id}`}</option>)}</select></label><label>Product<select className="input" required value={form.product_id} onChange={(event) => setForm({ ...form, product_id: event.target.value })}><option value="">Select a product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><div className="form-row"><label>Original quantity<input className="input" type="number" min="1" required value={form.original_quantity} onChange={(event) => setForm({ ...form, original_quantity: event.target.value })} /></label><label>Requested quantity<input className="input" type="number" min="1" required value={form.requested_quantity} onChange={(event) => setForm({ ...form, requested_quantity: event.target.value })} /></label></div><label>Reason<textarea className="input" rows="4" required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></label><button className="button button-accent"><FileEdit size={16} /> Submit adjustment request</button></form></StaffPanel></div> }

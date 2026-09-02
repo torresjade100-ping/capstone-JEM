@@ -9,7 +9,7 @@ export function getStoredToken() {
   return localStorage.getItem('jem_api_token')
 }
 
-// Central Order Storage Manager (Syncs real user-placed orders without hardcoded demo records)
+// Central Order Storage Manager (Syncs user-placed orders)
 export function getSharedOrders() {
   try {
     const raw = localStorage.getItem('jem_shared_orders')
@@ -235,8 +235,140 @@ export function getProducts(params = {}) {
 export function getProduct(id) { return request(`/products/${id}`, {}, 15000).then((payload) => payload.data) }
 export function getCategories() { return request('/categories', {}, 30000).then((payload) => payload.data) }
 export function getBrands() { return request('/brands', {}, 30000).then((payload) => payload.data) }
-export function getInventory() { return request('/admin/inventory', {}, 5000).then((payload) => payload.data) }
+export function getInventory() { clearApiCache('/admin/inventory'); return request('/admin/inventory', {}, 5000).then((payload) => payload.data) }
 export function getLowStock() { return request('/admin/inventory/low-stock', {}, 5000).then((payload) => payload.data) }
+
+export function getSharedStockAdjustments(productId = null) {
+  try {
+    const raw = localStorage.getItem('jem_stock_adjustments')
+    const list = raw ? JSON.parse(raw) : []
+    if (productId) {
+      return list.filter(item => String(item.product_id) === String(productId))
+    }
+    return list
+  } catch (e) {
+    return []
+  }
+}
+
+export function addSharedStockAdjustment(record) {
+  try {
+    const raw = localStorage.getItem('jem_stock_adjustments')
+    const list = raw ? JSON.parse(raw) : []
+    const updated = [record, ...list].slice(0, 300)
+    localStorage.setItem('jem_stock_adjustments', JSON.stringify(updated))
+  } catch (e) {}
+}
+
+export async function adjustStock(payload) {
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+  
+  // Record in shared storage
+  addSharedStockAdjustment({
+    id: Date.now(),
+    product_id: payload.product_id,
+    product_name: payload.product_name || 'Product',
+    quantity_before: payload.quantity_before ?? 0,
+    quantity_changed: payload.quantity_change,
+    quantity_after: payload.quantity_after ?? (Math.max(0, Number(payload.quantity_before || 0) + Number(payload.quantity_change))),
+    adjustment_type: payload.adjustment_type || (payload.quantity_change > 0 ? 'add' : 'deduct'),
+    reason: payload.reason || 'Manual Adjustment',
+    notes: payload.notes || '',
+    user: { name: 'Admin / Inventory Manager' },
+    created_at: new Date().toISOString()
+  })
+
+  // Update local POS catalog cache
+  try {
+    const rawPos = localStorage.getItem('jem_pos_catalog')
+    if (rawPos) {
+      const list = JSON.parse(rawPos)
+      const updated = list.map(p => {
+        if (p.id === payload.product_id) {
+          const nextStock = Math.max(0, Number(p.stock_quantity ?? p.stock ?? 0) + Number(payload.quantity_change))
+          return { ...p, stock_quantity: nextStock, stock: nextStock }
+        }
+        return p
+      })
+      localStorage.setItem('jem_pos_catalog', JSON.stringify(updated))
+    }
+  } catch (e) {}
+
+  try {
+    await request('/admin/stock-adjustments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  } catch (err) {
+    console.warn('Backend stock adjustment failed, saved locally:', err)
+  }
+
+  window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: payload }))
+  return { success: true }
+}
+
+export async function getStockAdjustments(productId = null) {
+  const localList = getSharedStockAdjustments(productId)
+  try {
+    const url = productId ? `/admin/stock-adjustments/product/${productId}` : '/admin/stock-adjustments'
+    const res = await request(url, {}, 4000)
+    const backendList = Array.isArray(res.data) ? res.data : (res.data?.data || [])
+    
+    // Merge backend + local history
+    const map = new Map()
+    localList.forEach(item => map.set(String(item.id), item))
+    backendList.forEach(item => map.set(String(item.id), item))
+    const merged = Array.from(map.values())
+    merged.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    return merged
+  } catch (e) {
+    return localList
+  }
+}
+
+export async function toggleProductStatus(productId, currentStatus) {
+  const nextStatus = currentStatus === 'active' ? 'inactive' : 'active'
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+  
+  try {
+    const endpoint = nextStatus === 'active' ? `/admin/products/${productId}/activate` : `/admin/products/${productId}/deactivate`
+    await request(endpoint, { method: 'POST' })
+  } catch (err) {
+    try {
+      await request(`/admin/products/${productId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus })
+      })
+    } catch (e) {}
+  }
+
+  // Update local storage caches
+  try {
+    const rawPos = localStorage.getItem('jem_pos_catalog')
+    if (rawPos) {
+      const list = JSON.parse(rawPos)
+      const updated = list.map(p => p.id === productId ? { ...p, status: nextStatus } : p)
+      localStorage.setItem('jem_pos_catalog', JSON.stringify(updated))
+    }
+  } catch (e) {}
+
+  // Record status change in stock adjustment history
+  addSharedStockAdjustment({
+    id: Date.now(),
+    product_id: productId,
+    quantity_changed: 0,
+    adjustment_type: nextStatus === 'active' ? 'activated' : 'deactivated',
+    reason: `Product status switched to ${nextStatus}`,
+    user: { name: 'Admin' },
+    created_at: new Date().toISOString()
+  })
+
+  window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: { product_id: productId, status: nextStatus } }))
+  return { nextStatus }
+}
+
 export function getUsers(params = {}) { const query = new URLSearchParams(params).toString(); return request(`/admin/users${query ? `?${query}` : ''}`, {}, 5000).then((payload) => payload.data) }
 export function createUser(user) { return request('/admin/users', { method: 'POST', body: JSON.stringify(user) }).then((payload) => payload.data) }
 export function updateUser(id, user) { return request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(user) }).then((payload) => payload.data) }
@@ -321,7 +453,16 @@ export function getSharedStockRequests() {
     const raw = localStorage.getItem('jem_shared_stock_requests')
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) {
+        // Enforce strict uniqueness by ID
+        const map = new Map()
+        parsed.forEach(item => {
+          if (item && item.id) {
+            map.set(String(item.id), item)
+          }
+        })
+        return Array.from(map.values())
+      }
     }
   } catch (e) {}
   return []
@@ -329,7 +470,16 @@ export function getSharedStockRequests() {
 
 export function saveSharedStockRequests(requests) {
   try {
-    localStorage.setItem('jem_shared_stock_requests', JSON.stringify(requests || []))
+    const map = new Map()
+    if (Array.isArray(requests)) {
+      requests.forEach(item => {
+        if (item && item.id) {
+          map.set(String(item.id), item)
+        }
+      })
+    }
+    const cleanList = Array.from(map.values())
+    localStorage.setItem('jem_shared_stock_requests', JSON.stringify(cleanList))
   } catch (e) {}
 }
 
@@ -338,37 +488,26 @@ export function addSharedStockRequest(requestData, user) {
   const newReq = {
     id: requestData.id || Date.now(),
     product_id: requestData.product_id,
-    product_name: requestData.product_name || 'Product',
-    sku: requestData.sku || 'SKU-REQ',
-    quantity_requested: Number(requestData.quantity_requested || 1),
-    current_quantity: Number(requestData.current_quantity || 0),
+    product_name: requestData.product_name || requestData.product?.name || 'Product',
+    sku: requestData.sku || requestData.product?.sku || 'SKU-REQ',
+    quantity_requested: Number(requestData.quantity_requested || requestData.requested_quantity || 1),
+    requested_quantity: Number(requestData.quantity_requested || requestData.requested_quantity || 1),
+    current_quantity: Number(requestData.current_quantity || requestData.product?.stock_quantity || 0),
     requested_by: user?.name || requestData.requested_by || 'Staff Member',
     requested_by_id: user?.id || null,
     urgency: requestData.urgency || 'normal',
     staff_notes: requestData.notes || requestData.staff_notes || '',
-    admin_notes: '',
-    status: 'pending',
-    created_at: new Date().toISOString()
+    admin_notes: requestData.admin_notes || '',
+    status: requestData.status || 'pending',
+    created_at: requestData.created_at || new Date().toISOString()
   }
-  const updated = [newReq, ...current]
+
+  // Deduplicate before saving
+  const filtered = current.filter(r => String(r.id) !== String(newReq.id))
+  const updated = [newReq, ...filtered]
   saveSharedStockRequests(updated)
 
-  // Send Notification to Admin
-  addSharedNotification({
-    targetRole: 'admin',
-    title: 'New Stock Request',
-    message: `${user?.name || 'Staff'} requested ${newReq.quantity_requested} units of ${newReq.product_name}.`,
-    type: 'stock_request',
-    data: {
-      request_id: newReq.id,
-      product_name: newReq.product_name,
-      quantity: newReq.quantity_requested,
-      urgency: newReq.urgency,
-      staff_name: user?.name || 'Staff'
-    }
-  })
-
-  // Dispatch live browser event so Admin Stock Requests table immediately updates in real-time
+  // Dispatch live browser event so UI tables and badges immediately update without duplicate notification entries
   try {
     window.dispatchEvent(new CustomEvent('jem_stock_request_created', { detail: newReq }))
     window.dispatchEvent(new CustomEvent('jem_notification_update'))
@@ -376,7 +515,6 @@ export function addSharedStockRequest(requestData, user) {
 
   return newReq
 }
-
 
 export function updateSharedStockRequest(id, status, notes, adminUser) {
   const current = getSharedStockRequests()
@@ -395,30 +533,6 @@ export function updateSharedStockRequest(id, status, notes, adminUser) {
   })
   saveSharedStockRequests(updated)
 
-  // Send Notification to Staff
-  if (targetReq) {
-    const isConfirmed = status === 'confirmed' || status === 'approved'
-    const statusText = isConfirmed ? 'Confirmed' : 'Rejected'
-    const notifTitle = isConfirmed ? '🔔 Stock Request Confirmed' : '❌ Stock Request Rejected'
-    const notifMessage = isConfirmed
-      ? `Admin ${adminUser?.name || 'Administrator'} confirmed your stock request for ${targetReq.product_name} (${targetReq.quantity_requested} units).`
-      : `Your stock request for ${targetReq.product_name} was rejected by Admin.`
-
-    addSharedNotification({
-      targetRole: 'staff',
-      title: notifTitle,
-      message: notifMessage,
-      type: isConfirmed ? 'stock_request_confirmed' : 'stock_request_update',
-      data: {
-        request_id: targetReq.id,
-        status,
-        product_name: targetReq.product_name,
-        quantity: targetReq.quantity_requested,
-        notes
-      }
-    })
-  }
-
   return updated
 }
 
@@ -429,8 +543,19 @@ export function getSharedNotifications(role = 'all') {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        if (role === 'all') return parsed
-        return parsed.filter(n => !n.targetRole || n.targetRole === role || n.targetRole === 'all')
+        const seenMap = new Map()
+        const deduplicated = []
+        parsed.forEach(n => {
+          if (!n || !n.id) return
+          const reqId = n.data?.request_id || ''
+          const key = reqId ? `${n.type || 'stock_request'}_${reqId}_${n.data?.status || ''}` : `notif_${n.id}`
+          if (!seenMap.has(key)) {
+            seenMap.set(key, true)
+            deduplicated.push(n)
+          }
+        })
+        if (role === 'all') return deduplicated
+        return deduplicated.filter(n => !n.targetRole || n.targetRole === role || n.targetRole === 'all')
       }
     }
   } catch (e) {}
@@ -439,7 +564,20 @@ export function getSharedNotifications(role = 'all') {
 
 export function saveSharedNotifications(notifications) {
   try {
-    localStorage.setItem('jem_shared_notifications', JSON.stringify(notifications || []))
+    const seenMap = new Map()
+    const cleanList = []
+    if (Array.isArray(notifications)) {
+      notifications.forEach(n => {
+        if (!n || !n.id) return
+        const reqId = n.data?.request_id || ''
+        const key = reqId ? `${n.type || 'stock_request'}_${reqId}_${n.data?.status || ''}` : `notif_${n.id}`
+        if (!seenMap.has(key)) {
+          seenMap.set(key, true)
+          cleanList.push(n)
+        }
+      })
+    }
+    localStorage.setItem('jem_shared_notifications', JSON.stringify(cleanList))
   } catch (e) {}
 }
 
@@ -467,70 +605,82 @@ export function addSharedNotification({ targetRole = 'admin', title, message, ty
   return newNotif
 }
 
-
 export async function getRestockRequests() {
-  const shared = getSharedStockRequests()
+  clearApiCache('/restock-requests')
   try {
     const payload = await request('/restock-requests', {}, 0)
-    const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
+    const backendRaw = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
     
-    // Merge database stock requests with shared stock requests by ID
-    const mergedMap = new Map()
-    shared.forEach((item) => mergedMap.set(String(item.id), item))
-    list.forEach((item) => {
-      mergedMap.set(String(item.id), {
-        id: item.id,
-        product_id: item.product_id,
-        product_name: item.product?.name || item.product_name || 'Product',
-        sku: item.product?.sku || item.sku || '-',
-        quantity_requested: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
-        requested_quantity: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
-        current_quantity: item.product?.stock_quantity ?? item.current_quantity ?? 0,
-        requested_by: item.requester?.name || item.requested_by || 'Staff',
-        requester: item.requester || null,
-        product: item.product || null,
-        urgency: item.urgency || 'normal',
-        status: item.status || 'pending',
-        staff_notes: item.notes || item.staff_notes || '',
-        admin_notes: item.admin_notes || '',
-        created_at: item.created_at,
-      })
-    })
+    // Normalize backend database records
+    const cleanList = backendRaw.map((item) => ({
+      id: item.id,
+      product_id: item.product_id,
+      product_name: item.product?.name || item.product_name || 'Product',
+      sku: item.product?.sku || item.sku || '-',
+      quantity_requested: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
+      requested_quantity: item.requested_quantity ?? item.quantity_requested ?? item.quantity ?? 1,
+      current_quantity: item.product?.stock_quantity ?? item.current_quantity ?? 0,
+      requested_by: item.requester?.name || item.requested_by || 'Staff',
+      requester: item.requester || null,
+      product: item.product || null,
+      urgency: item.urgency || 'normal',
+      status: item.status || 'pending',
+      staff_notes: item.notes || item.staff_notes || '',
+      admin_notes: item.admin_notes || '',
+      created_at: item.created_at,
+    }))
 
-    const merged = Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-    return merged
+    // Save accurate database list to shared cache for offline fallback
+    saveSharedStockRequests(cleanList)
+    return cleanList
   } catch (err) {
-    return shared
+    // Offline fallback to stored requests
+    return getSharedStockRequests()
   }
 }
 
-
 export async function createRestockRequest(requestData, user) {
-  const sharedReq = addSharedStockRequest(requestData, user)
+  clearApiCache('/restock-requests')
   try {
+    const qty = Number(requestData.requested_quantity || requestData.quantity_requested || requestData.quantity || 1)
     const res = await request('/restock-requests', {
       method: 'POST',
       body: JSON.stringify({
         product_id: requestData.product_id,
         product_variant_id: requestData.product_variant_id || null,
-        requested_quantity: Number(requestData.requested_quantity || requestData.quantity_requested || requestData.quantity || 1),
-        quantity_requested: Number(requestData.requested_quantity || requestData.quantity_requested || requestData.quantity || 1),
+        requested_quantity: qty,
+        quantity_requested: qty,
         notes: requestData.notes || requestData.staff_notes || '',
         urgency: requestData.urgency || 'normal'
       })
     })
-    return res?.data || sharedReq
+
+    const createdRecord = res?.data || res
+    if (createdRecord && createdRecord.id) {
+      // Sync into shared storage with real database ID
+      addSharedStockRequest({
+        ...requestData,
+        ...createdRecord,
+        id: createdRecord.id
+      }, user)
+      clearApiCache('/restock-requests')
+      return createdRecord
+    }
+    return addSharedStockRequest(requestData, user)
   } catch (err) {
-    return sharedReq
+    console.warn('Backend stock request error, fallback to shared storage:', err)
+    return addSharedStockRequest(requestData, user)
   }
 }
 
 export async function updateRestockRequest(id, requestData, adminUser) {
   updateSharedStockRequest(id, requestData.status, requestData.notes, adminUser)
-  clearApiCache()
+  clearApiCache('/restock-requests')
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
   try {
     const res = await request(`/restock-requests/${id}`, { method: 'PUT', body: JSON.stringify(requestData) }).then((p) => p.data)
-    clearApiCache()
+    clearApiCache('/restock-requests')
     try {
       window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: { id, status: requestData.status } }))
     } catch (e) {}
@@ -637,30 +787,42 @@ export function createAdminPosCheckout(transaction) { return request('/pos/check
 export function createQuickSale(transaction) { return request('/express/quick-sale', { method: 'POST', body: JSON.stringify(transaction) }).then((payload) => payload.data) }
 
 export async function getNotifications(role = 'all') {
-  const shared = getSharedNotifications(role)
+  clearApiCache('/notifications')
   try {
-    const payload = await request('/notifications')
+    const payload = await request('/notifications', {}, 0)
     const list = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
     
-    // Merge database notifications with shared notifications so live client events are always visible
-    const mergedMap = new Map()
-    shared.forEach((item) => mergedMap.set(String(item.id), item))
+    // Deduplicate database notifications by ID and semantic request_id
+    const seenMap = new Map()
+    const cleanList = []
+
     list.forEach((item) => {
-      mergedMap.set(String(item.id), {
-        id: item.id,
-        title: item.title || item.data?.title || 'Notification',
-        message: item.message || item.data?.message || '',
-        type: item.type || 'general',
-        read: Boolean(item.read),
-        created_at: item.created_at,
-        data: item.data || {}
-      })
+      if (!item || !item.id) return
+      const id = item.id
+      const type = item.type || 'general'
+      const reqId = item.data?.request_id || ''
+      const dedupeKey = reqId ? `${type}_${reqId}_${item.data?.status || ''}` : `id_${id}`
+      
+      if (!seenMap.has(dedupeKey) && !seenMap.has(`id_${id}`)) {
+        seenMap.set(dedupeKey, true)
+        seenMap.set(`id_${id}`, true)
+        cleanList.push({
+          id: item.id,
+          title: item.title || item.data?.title || 'Notification',
+          message: item.message || item.data?.message || '',
+          type: type,
+          read: Boolean(item.read),
+          created_at: item.created_at,
+          data: item.data || {}
+        })
+      }
     })
-    
-    const merged = Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-    return merged
+
+    const sorted = cleanList.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    saveSharedNotifications(sorted)
+    return sorted
   } catch (err) {
-    return shared
+    return getSharedNotifications(role)
   }
 }
 

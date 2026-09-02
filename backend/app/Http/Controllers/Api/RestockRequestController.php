@@ -12,8 +12,11 @@ class RestockRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = RestockRequest::with(['product', 'requester', 'variant'])->latest();
-        if ($request->user()->role === 'staff') $query->where('requested_by', $request->user()->id);
-        return response()->json(['success' => true, 'data' => $query->paginate(20)]);
+        if ($request->user()->role === 'staff') {
+            $query->where('requested_by', $request->user()->id);
+        }
+        $perPage = min(max((int) $request->input('per_page', 100), 1), 500);
+        return response()->json(['success' => true, 'data' => $query->paginate($perPage)]);
     }
 
     public function store(Request $request): JsonResponse
@@ -24,30 +27,60 @@ class RestockRequestController extends Controller
             'requested_quantity' => ['required', 'integer', 'min:1'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-        $data['requested_by'] = $request->user()->id;
+
+        $userId = $request->user()->id;
+        $data['requested_by'] = $userId;
+
+        // Idempotency & Duplicate Protection: Check if the exact same pending request was submitted within the last 15 seconds
+        $existingRecent = RestockRequest::where('requested_by', $userId)
+            ->where('product_id', $data['product_id'])
+            ->where('requested_quantity', $data['requested_quantity'])
+            ->where(function ($q) {
+                $q->where('status', 'pending')->orWhereNull('status');
+            })
+            ->where('created_at', '>=', now()->subSeconds(15))
+            ->first();
+
+        if ($existingRecent) {
+            $existingRecent->load(['product', 'requester']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Stock request already received.',
+                'data' => $existingRecent,
+                'is_duplicate' => true
+            ], 200);
+        }
+
         $requestModel = RestockRequest::create($data);
         $requestModel->load(['product', 'requester']);
 
-        // Dispatch Notification to all Admin accounts
+        // Dispatch Notification to all Admin accounts (avoid duplicate notification for this request)
         $admins = \App\Models\User::where('role', 'admin')->get();
         $productName = $requestModel->product?->name ?? 'Product';
         $staffName = $request->user()->name ?? 'Staff';
         foreach ($admins as $admin) {
-            \App\Models\Notification::create([
-                'user_id' => $admin->id,
-                'title' => 'New Stock Request',
-                'message' => "{$staffName} submitted a stock request for {$productName} (Qty: {$requestModel->requested_quantity}).",
-                'type' => 'stock_request',
-                'data' => [
-                    'request_id' => $requestModel->id,
-                    'product_id' => $requestModel->product_id,
-                    'product_name' => $productName,
-                    'quantity' => $requestModel->requested_quantity,
-                    'staff_name' => $staffName,
-                ],
-                'channel' => 'database',
-                'read' => false,
-            ]);
+            $alreadyNotified = \App\Models\Notification::where('user_id', $admin->id)
+                ->where('type', 'stock_request')
+                ->where('data->request_id', $requestModel->id)
+                ->exists();
+
+            if (!$alreadyNotified) {
+                \App\Models\Notification::create([
+                    'user_id' => $admin->id,
+                    'title' => 'New Stock Request',
+                    'message' => "{$staffName} submitted a stock request for {$productName} (Qty: {$requestModel->requested_quantity}).",
+                    'type' => 'stock_request',
+                    'data' => [
+                        'request_id' => $requestModel->id,
+                        'product_id' => $requestModel->product_id,
+                        'product_name' => $productName,
+                        'quantity' => $requestModel->requested_quantity,
+                        'staff_name' => $staffName,
+                    ],
+                    'channel' => 'database',
+                    'read' => false,
+                ]);
+            }
         }
 
         return response()->json(['success' => true, 'message' => 'Stock request submitted successfully.', 'data' => $requestModel], 201);
@@ -105,7 +138,7 @@ class RestockRequestController extends Controller
             }
         }
 
-        // Dispatch Notification back to the requesting Staff member
+        // Dispatch Notification back to the requesting Staff member (avoid duplicates)
         if ($restockRequest->requested_by) {
             $statusLabel = ucfirst($restockRequest->status);
             $productName = $restockRequest->product?->name ?? 'Product';
@@ -115,21 +148,30 @@ class RestockRequestController extends Controller
                 ? "Your stock request for {$productName} ({$qty} units) has been confirmed and added to inventory stock."
                 : "Your stock request for {$productName} ({$qty} units) has been {$restockRequest->status} by Admin.";
 
-            \App\Models\Notification::create([
-                'user_id' => $restockRequest->requested_by,
-                'title' => $notifTitle,
-                'message' => $notifMessage,
-                'type' => $isNowApproved ? 'stock_request_confirmed' : 'stock_request_update',
-                'data' => [
-                    'request_id' => $restockRequest->id,
-                    'status' => $restockRequest->status,
-                    'product_name' => $productName,
-                    'quantity' => $qty,
-                    'notes' => $restockRequest->notes,
-                ],
-                'channel' => 'database',
-                'read' => false,
-            ]);
+            $notifType = $isNowApproved ? 'stock_request_confirmed' : 'stock_request_update';
+            $alreadyNotifiedStaff = \App\Models\Notification::where('user_id', $restockRequest->requested_by)
+                ->where('type', $notifType)
+                ->where('data->request_id', $restockRequest->id)
+                ->where('data->status', $restockRequest->status)
+                ->exists();
+
+            if (!$alreadyNotifiedStaff) {
+                \App\Models\Notification::create([
+                    'user_id' => $restockRequest->requested_by,
+                    'title' => $notifTitle,
+                    'message' => $notifMessage,
+                    'type' => $notifType,
+                    'data' => [
+                        'request_id' => $restockRequest->id,
+                        'status' => $restockRequest->status,
+                        'product_name' => $productName,
+                        'quantity' => $qty,
+                        'notes' => $restockRequest->notes,
+                    ],
+                    'channel' => 'database',
+                    'read' => false,
+                ]);
+            }
         }
 
         return response()->json([

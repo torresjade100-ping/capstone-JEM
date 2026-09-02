@@ -2,36 +2,46 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { HARDWARE_PRODUCTS, CATEGORY_ITEMS } from '../data/initialData';
 
-// Dynamic API Base URL resolution for Expo Go, Emulators, and Web
+let cachedWorkingBaseUrl = null;
+
+// Dynamic API Base URL resolution for Expo Go, Emulators, Physical Phones, and Web
 const getBaseUrls = () => {
   const hostUri = Constants?.expoConfig?.hostUri || Constants?.manifest?.debuggerHost || '';
   const detectedHost = hostUri ? hostUri.split(':')[0] : null;
 
   const urls = [];
 
-  if (Platform.OS === 'web') {
-    urls.push('http://127.0.0.1:8000/api');
-    urls.push('http://localhost:8000/api');
+  // 1. If we already found a working URL in this session, try it first
+  if (cachedWorkingBaseUrl) {
+    urls.push(cachedWorkingBaseUrl);
   }
 
+  // 2. In Web Browser Preview (e.g., localhost or LAN hostname)
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    urls.push(`http://${window.location.hostname}:8000/api`);
+  }
+
+  // 3. Expo Go on Physical Device / LAN detected host
   if (detectedHost && !detectedHost.includes('exp.direct') && !detectedHost.includes('ngrok')) {
     urls.push(`http://${detectedHost}:8000/api`);
   }
 
-  urls.push('http://10.0.128.29:8000/api');
+  // 4. Current Wi-Fi / Local Machine LAN IP
+  urls.push('http://192.168.254.106:8000/api');
+
+  // 5. Standard Localhost Loopback
   urls.push('http://127.0.0.1:8000/api');
   urls.push('http://localhost:8000/api');
 
+  // 6. Android Emulator Loopback
   if (Platform.OS === 'android') {
     urls.push('http://10.0.2.2:8000/api');
   }
 
-  return Array.from(new Set(urls));
+  return Array.from(new Set(urls.filter(Boolean)));
 };
 
 export const API_BASE_URL = getBaseUrls()[0];
-
-
 
 let cachedAuthToken = null;
 
@@ -60,7 +70,7 @@ async function safeFetch(path, options = {}) {
   for (const base of urlsToTry) {
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
 
       const response = await fetch(`${base}${path}`, {
         ...options,
@@ -73,19 +83,39 @@ async function safeFetch(path, options = {}) {
       const data = await response.json().catch(() => null);
 
       if (response.ok) {
+        cachedWorkingBaseUrl = base; // Cache successful endpoint for instant future requests
         return data;
       } else {
-        lastError = new Error(data?.message || `HTTP ${response.status}: Request failed`);
-        if (response.status === 401 || response.status === 422) {
-          throw lastError;
+        const errorMsg = data?.message || `HTTP ${response.status}: Request failed`;
+        const serverError = new Error(errorMsg);
+        
+        // If it's a definite server response (e.g. 401, 422, 403), do not continue trying other URLs
+        if (response.status === 401 || response.status === 422 || response.status === 403) {
+          throw serverError;
         }
+        lastError = serverError;
       }
     } catch (e) {
-      lastError = e;
-      if (e.message && (e.message.includes('Invalid credentials') || e.message.includes('Validation failed'))) {
+      // If error is authentication/validation rejection from server, throw directly
+      if (
+        e.message &&
+        !e.name?.includes('Abort') &&
+        !e.message?.toLowerCase().includes('abort') &&
+        !e.message?.includes('Failed to fetch') &&
+        !e.message?.includes('Network request failed')
+      ) {
         throw e;
       }
+      lastError = e;
     }
+  }
+
+  if (lastError && lastError.name?.includes('Abort')) {
+    throw new Error('Connection timed out. Please ensure the backend server is running and accessible.');
+  }
+
+  if (lastError && (lastError.message?.includes('Failed to fetch') || lastError.message?.includes('Network request failed'))) {
+    throw new Error('Unable to reach server. Please check your network connection.');
   }
 
   throw lastError || new Error(`Failed to connect to backend at ${path}`);
@@ -110,19 +140,11 @@ export async function loginCustomer(emailOrPhone, password) {
 
     return {
       success: true,
-      user: data?.data?.user || { email: emailOrPhone, name: 'Juan Dela Cruz' },
+      user: data?.data?.user || { email: emailOrPhone, name: emailOrPhone.split('@')[0] },
       token: data?.data?.token || '',
       message: data?.message || 'Login successful',
     };
   } catch (err) {
-    if (emailOrPhone.toLowerCase() === 'customer@jemlumber.com' && (password === 'Password123!' || password === 'password')) {
-      return {
-        success: true,
-        user: { name: 'Juan Dela Cruz', email: 'customer@jemlumber.com', phone: '+639191234567', role: 'customer' },
-        token: 'demo-token',
-        message: 'Welcome back Juan!',
-      };
-    }
     throw err;
   }
 }
@@ -298,9 +320,9 @@ export async function getMobileOrders() {
 export async function submitMobileOrder(orderData) {
   const payload = {
     order_number: orderData.order_number,
-    customer_name: orderData.customer_name || 'Juan dela Cruz',
-    customer_email: orderData.customer_email || 'customer@jemlumber.com',
-    customer_phone: orderData.customer_phone || '+639191234567',
+    customer_name: orderData.customer_name || 'Customer',
+    customer_email: orderData.customer_email || '',
+    customer_phone: orderData.customer_phone || '',
     items: (orderData.items || []).map((it) => ({
       product_id: it.product_id || it.id || 1,
       quantity: Number(it.quantity || it.qty || 1),
@@ -362,8 +384,8 @@ export async function submitMobileFeedback(feedbackData) {
     rating: Number(feedbackData.rating || 5),
     message: feedbackData.message || '',
     subject: feedbackData.subject || `Order #${feedbackData.order_number || 'Delivery'} - ${feedbackData.rating || 5} Stars Review`,
-    customer_name: feedbackData.customer_name || 'Juan Dela Cruz',
-    customer_email: feedbackData.customer_email || 'customer@jemlumber.com',
+    customer_name: feedbackData.customer_name || 'Customer',
+    customer_email: feedbackData.customer_email || '',
   };
 
   let backendRes = null;
@@ -405,5 +427,3 @@ export async function submitMobileFeedback(feedbackData) {
 
   return backendRes?.data || payload;
 }
-
-

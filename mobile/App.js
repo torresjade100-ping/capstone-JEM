@@ -3,7 +3,6 @@ import {
   SafeAreaView,
   StatusBar,
   ScrollView,
-  Alert,
 } from 'react-native';
 
 // Initial Seed Data & Styles
@@ -52,9 +51,9 @@ export default function App() {
   // Screen & Auth Navigation State
   const [currentScreen, setCurrentScreen] = useState('splash'); // 'splash' | 'onboarding' | 'signin' | 'signup' | 'main'
   const [onboardingSlide, setOnboardingSlide] = useState(0);
-  const [authEmail, setAuthEmail] = useState('customer@jemlumber.com');
-  const [authPassword, setAuthPassword] = useState('Password123!');
-  const [authName, setAuthName] = useState('Juan Dela Cruz');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
@@ -68,7 +67,7 @@ export default function App() {
   const [categories, setCategories] = useState(CATEGORY_ITEMS);
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [wishlist, setWishlist] = useState([1, 2]);
+  const [wishlist, setWishlist] = useState([]);
   const [ordersTabFilter, setOrdersTabFilter] = useState('To Pay');
 
   // Active Modals State
@@ -79,7 +78,6 @@ export default function App() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showWishlistModal, setShowWishlistModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-
 
   // Checkout & Voucher State
   const [voucher, setVoucher] = useState('');
@@ -140,8 +138,6 @@ export default function App() {
       }
     };
   }, []);
-
-
 
   // 2. Splash Screen Auto Transition
   useEffect(() => {
@@ -234,6 +230,13 @@ export default function App() {
     showToast(`Added ${product.name} to Cart`);
   };
 
+  const handleBuyNow = (product, qty = 1) => {
+    addToCart(product, qty);
+    setSelectedProduct(null);
+    setActiveTab('cart');
+    showToast(`Proceeding to checkout for ${product.name}! 🛒`);
+  };
+
   const updateQuantity = (id, delta) => {
     setCart((prev) => {
       const item = prev.find((i) => i.id === id);
@@ -262,7 +265,7 @@ export default function App() {
   // Checkout Handler: Synchronizes directly with Backend MySQL Database
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    const subtotal = cart.reduce((sum, i) => sum + i.base_price * i.quantity, 0);
+    const subtotal = cart.reduce((sum, i) => sum + (i.base_price || i.price || 0) * i.quantity, 0);
     const total = Math.max(subtotal + 200 - discount, 0);
     const orderNumber = `JEM-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -277,14 +280,14 @@ export default function App() {
         name: i.name,
         qty: i.quantity,
         quantity: i.quantity,
-        price: i.base_price,
-        unit_price: i.base_price,
+        price: i.base_price || i.price || 0,
+        unit_price: i.base_price || i.price || 0,
       })),
       status: 'pending',
       order_source: 'Mobile App',
-      customer_name: authName || 'Juan Dela Cruz',
-      customer_email: authEmail || 'customer@jemlumber.com',
-      customer_phone: '+639191234567',
+      customer_name: authName || 'Customer',
+      customer_email: authEmail || '',
+      customer_phone: '',
       payment_method: paymentMethod.toLowerCase(),
       delivery_type: 'delivery',
       delivery_address: 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
@@ -300,7 +303,7 @@ export default function App() {
     setCart([]);
     setOrdersTabFilter('To Pay');
     setActiveTab('orders');
-    showToast('Order Placed! (Awaiting Staff Confirmation)');
+    showToast('Order Placed! (Awaiting Store Confirmation)');
   };
 
   // Feedback Submission Handler
@@ -308,8 +311,8 @@ export default function App() {
     try {
       await submitMobileFeedback({
         ...data,
-        customer_name: authName || 'Juan Dela Cruz',
-        customer_email: authEmail || 'customer@jemlumber.com',
+        customer_name: authName || 'Customer',
+        customer_email: authEmail || '',
       });
       setOrders((prev) =>
         prev.map((o) =>
@@ -324,13 +327,12 @@ export default function App() {
     }
   };
 
-
-  // Filtered Products
+  // Filtered Products for Search on Home Tab
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const q = searchQuery.toLowerCase().trim();
       const matchQuery =
-        !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q);
+        !q || p.name.toLowerCase().includes(q) || (p.brand && p.brand.toLowerCase().includes(q));
       const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory;
       return matchQuery && matchCat;
     });
@@ -359,8 +361,7 @@ export default function App() {
     });
   }, [orders, ordersTabFilter]);
 
-
-  const cartSubtotal = cart.reduce((sum, i) => sum + i.base_price * i.quantity, 0);
+  const cartSubtotal = cart.reduce((sum, i) => sum + (i.base_price || i.price || 0) * i.quantity, 0);
   const cartTotal = Math.max(cartSubtotal + 200 - discount, 0);
 
   // =========================================================================
@@ -406,11 +407,6 @@ export default function App() {
           setAuthError('');
           setCurrentScreen('signup');
         }}
-        onQuickFillDemo={() => {
-          setAuthEmail('customer@jemlumber.com');
-          setAuthPassword('Password123!');
-          setAuthError('');
-        }}
       />
     );
   }
@@ -451,7 +447,7 @@ export default function App() {
       {/* Main Tab Content */}
       <ScrollView
         style={styles.mainScroll}
-        contentContainerStyle={{ paddingBottom: 85 }}
+        contentContainerStyle={{ paddingBottom: 95 }}
         showsVerticalScrollIndicator={false}
       >
         {activeTab === 'home' && (
@@ -470,16 +466,23 @@ export default function App() {
             }}
             onOpenNotifications={() => setShowNotificationsModal(true)}
             onNavigateToCategories={() => setActiveTab('categories')}
+            userName={authName}
           />
         )}
 
         {activeTab === 'categories' && (
           <CategoriesTab
             categories={categories}
+            products={products}
+            selectedCategory={selectedCategory}
             onSelectCategory={(catId, catTitle) => {
               setSelectedCategory(catId);
-              showToast(`Filtered: ${catTitle}`);
+              showToast(`Category: ${catTitle}`);
             }}
+            onSelectProduct={(p) => setSelectedProduct(p)}
+            addToCart={addToCart}
+            wishlist={wishlist}
+            toggleWishlist={toggleWishlist}
           />
         )}
 
@@ -517,7 +520,7 @@ export default function App() {
             userName={authName}
             userEmail={authEmail}
             ordersCount={orders.length}
-            completedOrdersCount={orders.filter((o) => o.status === 'completed').length}
+            completedOrdersCount={orders.filter((o) => (o.status || '').toLowerCase() === 'completed' || (o.status || '').toLowerCase() === 'delivered').length}
             wishlistCount={wishlist.length}
             onNavigateToOrders={() => setActiveTab('orders')}
             onOpenWishlist={() => setShowWishlistModal(true)}
@@ -525,19 +528,10 @@ export default function App() {
             onOpenNotifications={() => setShowNotificationsModal(true)}
             onOpenSupport={() => setShowSupportModal(true)}
             onSignOut={() => {
-              Alert.alert('Sign Out', 'Are you sure you want to log out of your account?', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Sign Out',
-                  style: 'destructive',
-                  onPress: () => {
-                    setCart([]);
-                    setAuthPassword('');
-                    showToast('Signed out successfully.');
-                    setCurrentScreen('signin');
-                  },
-                },
-              ]);
+              setCart([]);
+              setAuthPassword('');
+              showToast('Signed out successfully.');
+              setCurrentScreen('signin');
             }}
             onShowToast={showToast}
           />
@@ -559,6 +553,7 @@ export default function App() {
           addToCart(p, qty);
           setSelectedProduct(null);
         }}
+        onBuyNow={handleBuyNow}
       />
 
       <NotificationsModal
@@ -571,7 +566,6 @@ export default function App() {
         onClose={() => setSelectedOrder(null)}
         onLeaveFeedback={(ord) => setFeedbackOrder(ord)}
       />
-
 
       <FeedbackModal
         visible={!!feedbackOrder}
@@ -589,6 +583,7 @@ export default function App() {
           addToCart(p, qty);
           showToast('Added to cart!');
         }}
+        onToggleWishlist={toggleWishlist}
       />
 
       <AddressModal
@@ -608,4 +603,3 @@ export default function App() {
     </SafeAreaView>
   );
 }
-

@@ -242,6 +242,8 @@ export default function ProductManagement() {
         setProducts(prev => [...prev, newProduct].sort((a, b) => a.name.localeCompare(b.name)))
       }
 
+      window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: payload }))
+
       Swal.fire({
         icon: 'success',
         title: editingProduct ? 'Product Updated! 🎉' : 'Product Created! 📦',
@@ -290,6 +292,7 @@ export default function ProductManagement() {
       } catch (err) {}
 
       setProducts(prev => prev.map(p => p.id === product.id ? { ...p, status: 'inactive' } : p))
+      window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: { product_id: product.id, status: 'inactive' } }))
 
       Swal.fire({
         icon: 'success',
@@ -393,6 +396,7 @@ export default function ProductManagement() {
     })
 
     setProducts(prev => [...prev, ...newItems].sort((a, b) => a.name.localeCompare(b.name)))
+    window.dispatchEvent(new CustomEvent('jem_inventory_update'))
 
     Swal.fire({
       icon: 'success',

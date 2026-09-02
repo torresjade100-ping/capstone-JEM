@@ -8,14 +8,15 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { styles } from '../styles/appStyles';
+import { styles, COLORS } from '../styles/appStyles';
 
 const QUICK_TAGS = [
-  '🚚 Fast Delivery',
-  '🪵 Quality Lumber',
-  '👷 Polite Driver',
-  '📦 Complete Items',
-  '🧱 Well Packed',
+  '🚚 Fast Site Delivery',
+  '🪵 Quality Construction Lumber',
+  '👷 Polite Freight Driver',
+  '📦 Complete Hardware Items',
+  '🧱 Well Packed Materials',
+  '💵 Smooth Payment Processing',
 ];
 
 export default function FeedbackModal({
@@ -25,7 +26,7 @@ export default function FeedbackModal({
   onSubmitFeedback,
 }) {
   const [rating, setRating] = useState(5);
-  const [selectedTags, setSelectedTags] = useState(['🚚 Fast Delivery', '🪵 Quality Lumber']);
+  const [selectedTags, setSelectedTags] = useState(['🚚 Fast Site Delivery', '🪵 Quality Construction Lumber']);
   const [comment, setComment] = useState('Materials arrived in great condition and driver was very helpful!');
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,85 +60,99 @@ export default function FeedbackModal({
     }
   };
 
-  const ratingLabels = ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent! 🌟'];
+  const ratingLabels = [
+    '1 ★ Poor Experience',
+    '2 ★ Fair - Needs Improvement',
+    '3 ★ Good Delivery',
+    '4 ★ Very Good Service',
+    '5 ★ Outstanding Contractor Service! 🌟',
+  ];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
-        <View
-          style={{
-            backgroundColor: '#fff',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 20,
-            maxHeight: '90%',
-          }}
-        >
-          {/* Header */}
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalSheetContainer}>
+          <View style={styles.sheetDragHandle} />
+
+          {/* Modal Header */}
           <View style={styles.modalNav}>
             <View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#0f172a' }}>
-                Delivery Service Feedback ⭐
-              </Text>
-              <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
+              <Text style={styles.modalNavTitle}>Delivery Service Review ⭐</Text>
+              <Text style={{ fontSize: 11.5, color: COLORS.textMuted, fontWeight: '600' }}>
                 Order #{order.order_number || order.id}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={{ fontSize: 20, color: '#94a3b8' }}>✕</Text>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+              <Text style={styles.modalCloseBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Star Rating Section */}
+            {/* 1. Star Rating Selector */}
             <View style={{ alignItems: 'center', marginVertical: 14 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 }}>
                 How was your hardware delivery experience?
               </Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginVertical: 6 }}>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginVertical: 6 }}>
                 {[1, 2, 3, 4, 5].map((star) => (
                   <TouchableOpacity
                     key={star}
                     onPress={() => setRating(star)}
-                    style={{ padding: 4 }}
+                    activeOpacity={0.7}
+                    style={{
+                      padding: 4,
+                      transform: [{ scale: rating >= star ? 1.15 : 1.0 }],
+                    }}
                   >
-                    <Text style={{ fontSize: 32 }}>
-                      {star <= rating ? '⭐' : '☆'}
-                    </Text>
+                    <Text style={{ fontSize: 32 }}>{rating >= star ? '⭐' : '☆'}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#ea580c' }}>
-                {ratingLabels[rating - 1]} ({rating} / 5 Stars)
-              </Text>
+
+              <View
+                style={{
+                  backgroundColor: COLORS.primaryLight,
+                  paddingHorizontal: 12,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  marginTop: 4,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primaryDark }}>
+                  {ratingLabels[rating - 1]}
+                </Text>
+              </View>
             </View>
 
-            {/* Quick Praise Tags */}
-            <View style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#334155', marginBottom: 8 }}>
-                Quick Highlights:
+            {/* 2. Quick Highlight Chips */}
+            <View style={{ marginVertical: 10 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 }}>
+                What went well? (Select all that apply):
               </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {QUICK_TAGS.map((tag) => {
                   const isSelected = selectedTags.includes(tag);
                   return (
                     <TouchableOpacity
                       key={tag}
-                      onPress={() => toggleTag(tag)}
                       style={{
-                        paddingVertical: 6,
                         paddingHorizontal: 12,
-                        borderRadius: 20,
-                        backgroundColor: isSelected ? '#ea580c' : '#f1f5f9',
-                        borderWidth: 1,
-                        borderColor: isSelected ? '#ea580c' : '#e2e8f0',
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        backgroundColor: isSelected ? COLORS.primaryLight : COLORS.surface,
+                        borderWidth: 1.5,
+                        borderColor: isSelected ? COLORS.primary : COLORS.border,
                       }}
+                      onPress={() => toggleTag(tag)}
+                      activeOpacity={0.7}
                     >
                       <Text
                         style={{
                           fontSize: 12,
-                          fontWeight: '700',
-                          color: isSelected ? '#fff' : '#475569',
+                          fontWeight: isSelected ? '800' : '600',
+                          color: isSelected ? COLORS.primaryDark : COLORS.textBody,
                         }}
                       >
                         {tag}
@@ -148,42 +163,46 @@ export default function FeedbackModal({
               </View>
             </View>
 
-            {/* Comments Input */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#334155', marginBottom: 6 }}>
-                Your Comments &amp; Suggestions:
+            {/* 3. Review Comment Box */}
+            <View style={{ marginVertical: 10 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.textMain, marginBottom: 6 }}>
+                Additional Feedback / Site Notes:
               </Text>
               <TextInput
                 style={{
-                  borderWidth: 1,
-                  borderColor: '#cbd5e1',
-                  borderRadius: 12,
+                  backgroundColor: COLORS.surface,
+                  borderWidth: 1.5,
+                  borderColor: COLORS.border,
+                  borderRadius: 14,
                   padding: 12,
-                  fontSize: 13,
-                  color: '#0f172a',
+                  fontSize: 13.5,
+                  color: COLORS.textMain,
                   minHeight: 80,
                   textAlignVertical: 'top',
-                  backgroundColor: '#f8fafc',
                 }}
                 multiline
-                numberOfLines={3}
-                placeholder="Share your experience with driver and materials delivery..."
+                placeholder="Share your feedback on material quality, dispatch speed, or driver service..."
                 placeholderTextColor="#94a3b8"
                 value={comment}
                 onChangeText={setComment}
               />
             </View>
 
-            {/* Submit Button */}
+            {/* 4. Submit Button */}
             <TouchableOpacity
-              style={[styles.primaryAuthBtn, { backgroundColor: '#ea580c' }]}
+              style={[
+                styles.primaryAuthBtn,
+                { marginTop: 14, marginBottom: 20 },
+                submitting && { opacity: 0.8 },
+              ]}
               onPress={handleSubmit}
               disabled={submitting}
+              activeOpacity={0.88}
             >
               {submitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.primaryAuthBtnText}>Submit Service Feedback ⭐</Text>
+                <Text style={styles.primaryAuthBtnText}>Submit Review &amp; Feedback ⭐</Text>
               )}
             </TouchableOpacity>
           </ScrollView>

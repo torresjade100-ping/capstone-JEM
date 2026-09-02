@@ -190,7 +190,7 @@ export default function UserManagement() {
       fetchUsers()
     } catch (error) {
       console.warn('Backend error saving user, applying local state update:', error)
-      // Local state fallback for responsive demo
+      // Local state fallback for UI responsiveness
       if (editingUser) {
         setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...formData } : u))
       } else {

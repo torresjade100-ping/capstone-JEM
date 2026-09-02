@@ -64,7 +64,13 @@ export default function RestockRequestsPage({ role: propRole }) {
     try {
       const data = await getRestockRequests()
       const list = Array.isArray(data) ? data : data?.data || []
-      setRequests(Array.isArray(list) ? list : [])
+      const uniqueMap = new Map()
+      list.forEach((item) => {
+        if (item && item.id) {
+          uniqueMap.set(String(item.id), item)
+        }
+      })
+      setRequests(Array.from(uniqueMap.values()))
     } catch (error) {
       console.warn('Error fetching stock requests:', error)
       setRequests(getSharedStockRequests())
@@ -91,7 +97,7 @@ export default function RestockRequestsPage({ role: propRole }) {
     // 2-second background sync for cross-dashboard real-time updates
     const pollInterval = setInterval(() => {
       fetchRequestsData()
-    }, 2000)
+    }, 2500)
 
     // Listen to real-time custom events
     const handleSync = () => {
@@ -110,11 +116,11 @@ export default function RestockRequestsPage({ role: propRole }) {
       window.removeEventListener('jem_inventory_update', handleSync)
       window.removeEventListener('storage', handleSync)
     }
-  }, [filter])
+  }, [])
 
-  // Filter requests
+  // Filter requests with guaranteed uniqueness by ID
   const filteredRequests = (Array.isArray(requests) ? requests : []).filter((request) => {
-    if (!request) return false
+    if (!request || !request.id) return false
     const status = request.status || 'pending'
     if (filter !== 'all') {
       if (filter === 'approved' && (status === 'approved' || status === 'confirmed')) {
@@ -140,6 +146,7 @@ export default function RestockRequestsPage({ role: propRole }) {
   // Submit Stock Request (Staff only)
   const handleCreateRequest = async (e) => {
     e.preventDefault()
+    if (actionLoading) return
     setFormError('')
     setFormSuccess('')
 
@@ -182,11 +189,11 @@ export default function RestockRequestsPage({ role: propRole }) {
         setFormUrgency('normal')
         setFormNotes('')
         setFormSuccess('')
+        setActionLoading(false)
         fetchRequestsData()
-      }, 1200)
+      }, 1000)
     } catch (err) {
       setFormError(err.message || 'Failed to submit stock request.')
-    } finally {
       setActionLoading(false)
     }
   }
@@ -268,50 +275,162 @@ export default function RestockRequestsPage({ role: propRole }) {
     const s = String(status || 'pending').toLowerCase().trim()
     if (!s || s === 'pending') {
       return (
-        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '11.5px' }}>
-          <Clock size={13} style={{ marginRight: 4 }} /> Pending
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: '#fef3c7',
+            color: '#b45309',
+            border: '1px solid #fde68a',
+            height: '28px',
+            padding: '0 12px',
+            borderRadius: '14px',
+            fontWeight: 800,
+            fontSize: '12px',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box'
+          }}
+        >
+          <Clock size={14} color="#d97706" style={{ flexShrink: 0 }} />
+          <span style={{ lineHeight: 1 }}>Pending</span>
         </span>
       )
     }
     if (s === 'approved' || s === 'confirmed') {
       return (
-        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '11.5px' }}>
-          <CheckCircle2 size={13} style={{ marginRight: 4 }} /> Approved
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: '#ecfdf5',
+            color: '#047857',
+            border: '1px solid #a7f3d0',
+            height: '28px',
+            padding: '0 12px',
+            borderRadius: '14px',
+            fontWeight: 800,
+            fontSize: '12px',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box'
+          }}
+        >
+          <CheckCircle2 size={14} color="#16a34a" style={{ flexShrink: 0 }} />
+          <span style={{ lineHeight: 1 }}>Approved</span>
         </span>
       )
     }
     if (s === 'rejected') {
       return (
-        <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '11.5px' }}>
-          <XCircle size={13} style={{ marginRight: 4 }} /> Rejected
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: '#fef2f2',
+            color: '#b91c1c',
+            border: '1px solid #fecaca',
+            height: '28px',
+            padding: '0 12px',
+            borderRadius: '14px',
+            fontWeight: 800,
+            fontSize: '12px',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box'
+          }}
+        >
+          <XCircle size={14} color="#dc2626" style={{ flexShrink: 0 }} />
+          <span style={{ lineHeight: 1 }}>Rejected</span>
         </span>
       )
     }
     if (s === 'fulfilled') {
       return (
-        <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '11.5px' }}>
-          <ShieldCheck size={13} style={{ marginRight: 4 }} /> Fulfilled
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            background: '#e0f2fe',
+            color: '#0369a1',
+            border: '1px solid #bae6fd',
+            height: '28px',
+            padding: '0 12px',
+            borderRadius: '14px',
+            fontWeight: 800,
+            fontSize: '12px',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box'
+          }}
+        >
+          <ShieldCheck size={14} color="#0284c7" style={{ flexShrink: 0 }} />
+          <span style={{ lineHeight: 1 }}>Fulfilled</span>
         </span>
       )
     }
     return (
-      <span className="badge" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '11.5px' }}>
-        <Clock size={13} style={{ marginRight: 4 }} /> Pending
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px',
+          background: '#fef3c7',
+          color: '#b45309',
+          border: '1px solid #fde68a',
+          height: '28px',
+          padding: '0 12px',
+          borderRadius: '14px',
+          fontWeight: 800,
+          fontSize: '12px',
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+          boxSizing: 'border-box'
+        }}
+      >
+        <Clock size={14} color="#d97706" style={{ flexShrink: 0 }} />
+        <span style={{ lineHeight: 1 }}>Pending</span>
       </span>
     )
   }
 
-
   const getUrgencyBadge = (urgency) => {
     switch (urgency) {
       case 'urgent':
-        return <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}><AlertTriangle size={12} /> Urgent</span>
+        return (
+          <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fee2e2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fca5a5' }}>
+            <AlertTriangle size={12} color="#dc2626" /> Urgent
+          </span>
+        )
       case 'high':
-        return <span style={{ color: '#ea580c', fontWeight: 700, fontSize: '11.5px' }}>High</span>
+        return (
+          <span style={{ color: '#ea580c', fontWeight: 700, fontSize: '11.5px', background: '#ffedd5', padding: '3px 8px', borderRadius: '6px', border: '1px solid #fdba74' }}>
+            High
+          </span>
+        )
       default:
-        return <span style={{ color: '#64748b', fontSize: '11.5px' }}>Normal</span>
+        return (
+          <span style={{ color: '#64748b', fontSize: '11.5px', fontWeight: 600 }}>
+            Normal
+          </span>
+        )
     }
   }
+
+  // Calculate Metrics Counts
+  const pendingCount = requests.filter(r => !r.status || r.status === 'pending').length
+  const approvedCount = requests.filter(r => r.status === 'approved' || r.status === 'confirmed').length
+  const rejectedCount = requests.filter(r => r.status === 'rejected').length
+  const totalCount = requests.length
 
   return (
     <div className="management-container">
@@ -340,11 +459,16 @@ export default function RestockRequestsPage({ role: propRole }) {
       {/* Header */}
       <div className="management-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1>Stock Requests</h1>
-          <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
+          <p className="eyebrow" style={{ color: '#f97316', fontWeight: '700', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.05em' }}>
+            Inventory Replenishment
+          </p>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+            Stock Requests
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '13.5px', marginTop: '4px' }}>
             {isStaff
               ? 'Request additional inventory from management for low or out-of-stock items.'
-              : 'Review and approve stock replenishment requests submitted by store staff.'}
+              : 'Review, approve, and track stock replenishment requests submitted by store staff.'}
           </p>
         </div>
 
@@ -376,31 +500,148 @@ export default function RestockRequestsPage({ role: propRole }) {
         )}
       </div>
 
+      {/* Status KPI Overview Cards */}
+      <div className="metrics-grid" style={{ marginBottom: '20px' }}>
+        {/* Pending Requests KPI */}
+        <div
+          className="metric-card"
+          onClick={() => setFilter(filter === 'pending' ? 'all' : 'pending')}
+          style={{
+            borderLeft: '4px solid #f59e0b',
+            cursor: 'pointer',
+            background: filter === 'pending' ? '#fffbeb' : '#ffffff',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click to filter pending requests"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: '#b45309', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={15} color="#d97706" /> Pending Review
+            </span>
+            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#b45309', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
+              Requires Action
+            </span>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: '#d97706', margin: '6px 0 2px' }}>
+            {pendingCount}
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Awaiting Admin approval
+          </span>
+        </div>
+
+        {/* Approved Requests KPI */}
+        <div
+          className="metric-card"
+          onClick={() => setFilter(filter === 'approved' ? 'all' : 'approved')}
+          style={{
+            borderLeft: '4px solid #10b981',
+            cursor: 'pointer',
+            background: filter === 'approved' ? '#f0fdf4' : '#ffffff',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click to filter approved requests"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: '#047857', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <CheckCircle2 size={15} color="#16a34a" /> Approved &amp; Restocked
+            </span>
+            <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
+              Completed
+            </span>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: '#16a34a', margin: '6px 0 2px' }}>
+            {approvedCount}
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Added to warehouse inventory
+          </span>
+        </div>
+
+        {/* Rejected Requests KPI */}
+        <div
+          className="metric-card"
+          onClick={() => setFilter(filter === 'rejected' ? 'all' : 'rejected')}
+          style={{
+            borderLeft: '4px solid #ef4444',
+            cursor: 'pointer',
+            background: filter === 'rejected' ? '#fef2f2' : '#ffffff',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click to filter rejected requests"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: '#b91c1c', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <XCircle size={15} color="#dc2626" /> Rejected Requests
+            </span>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: '#dc2626', margin: '6px 0 2px' }}>
+            {rejectedCount}
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Declined by management
+          </span>
+        </div>
+
+        {/* Total Requests KPI */}
+        <div
+          className="metric-card"
+          onClick={() => setFilter('all')}
+          style={{
+            cursor: 'pointer',
+            background: filter === 'all' ? '#f8fafc' : '#ffffff',
+            transition: 'all 0.15s ease'
+          }}
+          title="Click to show all requests"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Package size={15} color="#64748b" /> Total Requests
+            </span>
+          </div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a', margin: '6px 0 2px' }}>
+            {totalCount}
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            All lifetime submissions
+          </span>
+        </div>
+      </div>
+
       {/* Search and Filters */}
-      <div className="management-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
-        <div style={{ position: 'relative', flex: '1 1 280px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+      <div className="management-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', background: '#ffffff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ position: 'relative', flex: '1 1 280px', display: 'flex', alignItems: 'center' }}>
+          <Search size={17} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
           <input
             type="text"
             placeholder="Search by product name, SKU, staff member, or request ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
-            style={{ paddingLeft: '36px', width: '100%', boxSizing: 'border-box' }}
+            style={{ paddingLeft: '38px', width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', fontSize: '13.5px' }}
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', paddingRight: '8px' }}
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
+        {/* Status Filter Tabs / Dropdown */}
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="filter-select"
-          style={{ width: 'auto', minWidth: '160px' }}
+          style={{ width: 'auto', minWidth: '190px' }}
         >
-          <option value="all">All Statuses ({requests.length})</option>
-          <option value="pending">Pending ({requests.filter(r => !r.status || r.status === 'pending').length})</option>
-          <option value="approved">Approved ({requests.filter(r => r.status === 'approved' || r.status === 'confirmed').length})</option>
-          <option value="rejected">Rejected ({requests.filter(r => r.status === 'rejected').length})</option>
-          <option value="fulfilled">Fulfilled ({requests.filter(r => r.status === 'fulfilled').length})</option>
+          <option value="all">📦 All Statuses ({totalCount})</option>
+          <option value="pending">⏳ Pending Review ({pendingCount})</option>
+          <option value="approved">✅ Approved ({approvedCount})</option>
+          <option value="rejected">❌ Rejected ({rejectedCount})</option>
+          <option value="fulfilled">🛡️ Fulfilled ({requests.filter(r => r.status === 'fulfilled').length})</option>
         </select>
       </div>
 
@@ -416,7 +657,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
             {isStaff
               ? 'You have not submitted any stock requests matching this filter.'
-              : 'There are no stock requests submitted by store staff at this time.'}
+              : 'There are no stock requests matching this filter criteria.'}
           </p>
           {isStaff && (
             <button
@@ -434,15 +675,15 @@ export default function RestockRequestsPage({ role: propRole }) {
           <table className="management-table">
             <thead>
               <tr>
-                <th style={{ width: '80px' }}>ID</th>
+                <th style={{ width: '60px' }}>ID</th>
                 <th>Product Information</th>
-                <th style={{ textAlign: 'center' }}>Requested Qty</th>
-                <th style={{ textAlign: 'center' }}>Current Stock</th>
-                <th>Priority</th>
+                <th style={{ textAlign: 'center', width: '110px' }}>Requested Qty</th>
+                <th style={{ textAlign: 'center', width: '100px' }}>Current Stock</th>
+                <th style={{ width: '90px' }}>Priority</th>
                 <th>Requested By</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right', minWidth: '130px' }}>Actions</th>
+                <th style={{ width: '95px' }}>Date</th>
+                <th style={{ textAlign: 'center', width: '130px' }}>Status</th>
+                <th style={{ textAlign: 'center', width: '140px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -454,11 +695,9 @@ export default function RestockRequestsPage({ role: propRole }) {
                 const currentStock = request.current_quantity ?? request.product?.stock_quantity ?? 0
                 const statusStr = String(request.status || 'pending').toLowerCase().trim()
                 const isPending = !statusStr || statusStr === 'pending'
+                const isApproved = statusStr === 'approved' || statusStr === 'confirmed'
+                const isRejected = statusStr === 'rejected'
                 const dateStr = request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Today'
-
-
-
-
 
                 return (
                   <tr key={request.id}>
@@ -466,16 +705,16 @@ export default function RestockRequestsPage({ role: propRole }) {
                       <strong style={{ color: '#0f172a' }}>#{request.id}</strong>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 700, color: '#1e293b' }}>{productName}</div>
+                      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '13.5px' }}>{productName}</div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>SKU: {sku}</div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ fontWeight: 800, color: '#ea580c', fontSize: '0.95rem' }}>
-                        {requestedQty}
+                      <span style={{ fontWeight: 800, color: '#ea580c', fontSize: '14px', background: '#fff7ed', padding: '3px 8px', borderRadius: '6px', border: '1px solid #ffedd5' }}>
+                        +{requestedQty}
                       </span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ fontWeight: 600, color: currentStock === 0 ? '#dc2626' : '#475569' }}>
+                      <span style={{ fontWeight: 700, color: currentStock === 0 ? '#dc2626' : '#475569', fontSize: '13px' }}>
                         {currentStock}
                       </span>
                     </td>
@@ -483,13 +722,19 @@ export default function RestockRequestsPage({ role: propRole }) {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <User size={13} style={{ color: '#94a3b8' }} />
-                        <span style={{ fontWeight: 600, color: '#334155' }}>{requestedBy}</span>
+                        <span style={{ fontWeight: 600, color: '#334155', fontSize: '12.5px' }}>{requestedBy}</span>
                       </div>
                     </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{dateStr}</td>
-                    <td>{getStatusBadge(request.status)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</td>
+                    
+                    {/* Status Column with Clear Centered Icons */}
+                    <td style={{ textAlign: 'center' }}>
+                      {getStatusBadge(request.status)}
+                    </td>
+
+                    {/* Actions Column */}
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
                         {/* Eye Icon Button for View */}
                         <button
                           type="button"
@@ -511,24 +756,24 @@ export default function RestockRequestsPage({ role: propRole }) {
                             color: '#475569',
                             border: '1px solid #cbd5e1',
                             cursor: 'pointer',
-                            transition: 'all 0.15s ease'
+                            transition: 'all 0.15s ease',
+                            boxSizing: 'border-box'
                           }}
                           title="View Request Details"
                           aria-label="View Details"
                         >
-                          <Eye size={16} />
+                          <Eye size={15} />
                         </button>
 
                         {/* Admin Side: Approve Icon Button */}
                         {isAdmin && isPending && (
                           <button
                             type="button"
-                            className="btn-icon approve"
                             onClick={() => handleApproveRequest(request)}
                             disabled={actionLoading}
                             style={{
                               height: '32px',
-                              padding: '0 10px',
+                              padding: '0 11px',
                               borderRadius: '8px',
                               fontSize: '12px',
                               fontWeight: 700,
@@ -538,14 +783,16 @@ export default function RestockRequestsPage({ role: propRole }) {
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '5px',
+                              justifyContent: 'center',
+                              gap: '4px',
                               boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
-                              transition: 'all 0.15s ease'
+                              transition: 'all 0.15s ease',
+                              boxSizing: 'border-box'
                             }}
                             title="Approve stock request and replenish inventory"
                             aria-label="Approve Request"
                           >
-                            <Check size={15} />
+                            <CheckCircle2 size={13} />
                             <span>Approve</span>
                           </button>
                         )}
@@ -554,7 +801,6 @@ export default function RestockRequestsPage({ role: propRole }) {
                         {isAdmin && isPending && (
                           <button
                             type="button"
-                            className="btn-icon reject"
                             onClick={() => handleRejectRequest(request)}
                             disabled={actionLoading}
                             style={{
@@ -569,12 +815,13 @@ export default function RestockRequestsPage({ role: propRole }) {
                               color: '#b91c1c',
                               border: '1px solid #fecaca',
                               cursor: 'pointer',
-                              transition: 'all 0.15s ease'
+                              transition: 'all 0.15s ease',
+                              boxSizing: 'border-box'
                             }}
                             title="Reject this stock request"
                             aria-label="Reject Request"
                           >
-                            <X size={15} />
+                            <XCircle size={14} />
                           </button>
                         )}
                       </div>

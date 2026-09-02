@@ -698,3 +698,64 @@ select.form-input,
   font-weight: 700 !important;
 }
 
+/* =========================================================================
+   UNIVERSAL ICON & COMPONENT ALIGNMENT STANDARDS
+   ========================================================================= */
+svg,
+svg.lucide {
+  vertical-align: middle;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.management-table td,
+.management-table th {
+  vertical-align: middle !important;
+}
+
+.management-table td > *,
+.management-table th > * {
+  vertical-align: middle;
+}
+
+.badge,
+.status-badge,
+.pill-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 1 !important;
+  gap: 6px;
+}
+
+.badge svg,
+.status-badge svg,
+.pill-badge svg {
+  margin: 0 !important;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.btn,
+.btn-icon,
+.btn-sm,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-success {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
+  gap: 6px !important;
+}
+
+.btn svg,
+.btn-icon svg {
+  margin: 0 !important;
+  vertical-align: middle !important;
+}
+
+

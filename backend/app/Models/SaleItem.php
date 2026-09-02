@@ -15,4 +15,9 @@ class SaleItem extends Model
     {
         return $this->belongsTo(SalesTransaction::class, 'sales_transaction_id');
     }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
 }

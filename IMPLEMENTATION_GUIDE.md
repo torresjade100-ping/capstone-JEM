@@ -59,7 +59,7 @@ Full-stack inventory and online ordering system with:
 
 4. **Login Page** (`frontend/src/pages/LoginPage.jsx`)
    - Professional two-column layout
-   - Demo account buttons for quick testing
+   - Secure credential authentication
    - Error handling
    - Responsive design
 
@@ -202,7 +202,7 @@ npm run dev
 ```
 The app will be available at `http://localhost:5173`
 
-3. **Test with Demo Accounts**
+3. **Test with Seeded Accounts**
 - **Admin**: admin@jemlumber.com / Password123!
 - **Staff**: staff@jemlumber.com / Password123!
 - **Customer**: customer@jemlumber.com / Password123!

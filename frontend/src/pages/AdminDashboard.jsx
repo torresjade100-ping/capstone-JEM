@@ -75,6 +75,16 @@ export default function AdminDashboard() {
     const storedUser = getStoredUser()
     if (storedUser) setUser(storedUser)
     fetchDashboardStats()
+
+    const handleSync = () => {
+      fetchDashboardStats()
+    }
+    window.addEventListener('jem_orders_update', handleSync)
+    window.addEventListener('jem_inventory_update', handleSync)
+    return () => {
+      window.removeEventListener('jem_orders_update', handleSync)
+      window.removeEventListener('jem_inventory_update', handleSync)
+    }
   }, [])
 
   const fetchDashboardStats = async () => {
@@ -250,8 +260,16 @@ export default function AdminDashboard() {
             type="button"
             className={`nav-item ${activePage === 'restock' ? 'active' : ''}`}
             onClick={() => navigateTo('/stock-requests')}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
-            <ClipboardList size={18} /> Stock Requests
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <ClipboardList size={18} /> Stock Requests
+            </span>
+            {stats.pendingRestock > 0 && (
+              <span style={{ background: '#f59e0b', color: '#ffffff', fontSize: '11px', fontWeight: 800, padding: '1px 7px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                {stats.pendingRestock}
+              </span>
+            )}
           </button>
 
 

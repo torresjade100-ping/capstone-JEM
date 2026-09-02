@@ -38,6 +38,8 @@ Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(
     Route::put('orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
     Route::get('inventory', [App\Http\Controllers\Api\Admin\InventoryController::class, 'index']);
     Route::get('inventory/low-stock', [App\Http\Controllers\Api\Admin\InventoryController::class, 'lowStock']);
+    Route::get('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'index']);
+    Route::get('stock-adjustments/product/{productId}', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'byProduct']);
     Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
 });
 

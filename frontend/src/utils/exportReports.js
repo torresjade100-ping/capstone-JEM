@@ -103,23 +103,53 @@ export function exportReportToPDF(reportType, reportData, meta = {}) {
       `
     }
 
-    if (reportData.orders && reportData.orders.length > 0) {
+    if (reportData.itemized_sales && reportData.itemized_sales.length > 0) {
       bodyHtml += `
-        <h3>Orders Record (${reportData.orders.length} orders)</h3>
+        <h3>Itemized Products Purchased by Timestamp (${reportData.itemized_sales.length} items)</h3>
         <table class="report-table">
           <thead>
-            <tr><th>Order #</th><th>Customer</th><th>Status</th><th>Payment</th><th>Total</th></tr>
+            <tr><th>Time</th><th>Order/Tx #</th><th>Source</th><th>Product Name</th><th>Quantity</th><th>Unit Price</th><th>Line Total</th></tr>
           </thead>
           <tbody>
-            ${reportData.orders.map(o => `
+            ${reportData.itemized_sales.map(item => `
               <tr>
-                <td><strong>${o.order_number || `#${o.id}`}</strong></td>
-                <td>${o.customer_name || 'Walk-in Customer'}</td>
-                <td><span class="badge ${o.status}">${o.status}</span></td>
-                <td>${(o.payment_method || 'COD').toUpperCase()}</td>
-                <td>₱${Number(o.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td>${item.time || '—'}</td>
+                <td><strong>${item.order_number}</strong></td>
+                <td>${item.source}</td>
+                <td><strong>${item.product_name}</strong></td>
+                <td>${item.quantity}</td>
+                <td>₱${Number(item.unit_price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                <td>₱${Number(item.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
               </tr>
             `).join('')}
+          </tbody>
+        </table>
+      `
+    }
+
+    if (reportData.orders && reportData.orders.length > 0) {
+      bodyHtml += `
+        <h3>Sales Transactions & Orders Record (${reportData.orders.length})</h3>
+        <table class="report-table">
+          <thead>
+            <tr><th>Time</th><th>Order / Tx #</th><th>Customer / Source</th><th>Products Purchased at this Time</th><th>Payment</th><th>Total</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${reportData.orders.map(o => {
+              const itemsSummary = (o.items && o.items.length > 0)
+                ? o.items.map(it => `${it.quantity}x ${it.name} (₱${Number(it.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })})`).join('<br>')
+                : 'General Purchase'
+              return `
+              <tr>
+                <td>${o.time || (o.created_at ? new Date(o.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—')}</td>
+                <td><strong>${o.order_number || `#${o.id}`}</strong></td>
+                <td>${o.customer_name || 'Walk-in Customer'}<br><small style="color: #64748b;">${o.type || 'Walk-In POS'}</small></td>
+                <td style="font-size: 11px;">${itemsSummary}</td>
+                <td>${(o.payment_method || 'Cash').toUpperCase()}</td>
+                <td><strong>₱${Number(o.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></td>
+                <td><span class="badge ${String(o.status || 'completed').toLowerCase()}">${o.status || 'Completed'}</span></td>
+              </tr>
+            `}).join('')}
           </tbody>
         </table>
       `
@@ -474,10 +504,21 @@ export function exportReportToCSV(reportType, reportData, meta = {}) {
     csvContent += `Average Order Value,₱${Number(reportData.average_order_value || 0).toFixed(2)}\n\n`
 
     if (reportData.orders && reportData.orders.length > 0) {
-      csvContent += `ORDERS BREAKDOWN\n`
-      csvContent += `Order Number,Customer,Status,Payment Method,Total Amount\n`
+      csvContent += `SALES TRANSACTIONS & ORDERS BREAKDOWN\n`
+      csvContent += `Time,Order/Tx #,Source,Customer,Products Purchased,Payment Method,Total Amount,Status\n`
       reportData.orders.forEach(o => {
-        csvContent += `"${o.order_number || o.id}","${o.customer_name || 'Walk-in'}","${o.status || ''}","${o.payment_method || 'COD'}",${Number(o.total || 0).toFixed(2)}\n`
+        const time = o.time || (o.created_at ? new Date(o.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '')
+        const num = o.order_number || o.id || ''
+        const source = o.type || 'Walk-In POS'
+        const cust = o.customer_name || 'Walk-in Customer'
+        const itemsList = (o.items && o.items.length > 0)
+          ? o.items.map(it => `${it.quantity}x ${it.name} (PHP ${Number(it.total || 0).toFixed(2)})`).join('; ')
+          : 'General purchase'
+        const itemsClean = itemsList.replace(/"/g, '""')
+        const pay = o.payment_method || 'Cash'
+        const tot = Number(o.total || 0).toFixed(2)
+        const st = o.status || 'Completed'
+        csvContent += `"${time}","${num}","${source}","${cust}","${itemsClean}","${pay}",${tot},"${st}"\n`
       })
     }
   } else if (reportType === 'inventory') {

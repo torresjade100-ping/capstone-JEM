@@ -25,7 +25,6 @@ export default function SignInScreen({
   onSignIn,
   onForgotPassword,
   onNavigateToSignUp,
-  onQuickFillDemo,
 }) {
   return (
     <SafeAreaView style={styles.authContainer}>
@@ -112,15 +111,6 @@ export default function SignInScreen({
             <Text style={styles.primaryAuthBtnText}>Sign In</Text>
           )}
         </TouchableOpacity>
-
-        {onQuickFillDemo && (
-          <TouchableOpacity 
-            style={[styles.secondaryAuthBtn, { marginTop: 10, height: 42 }]} 
-            onPress={onQuickFillDemo}
-          >
-            <Text style={[styles.secondaryAuthBtnText, { fontSize: 13 }]}>⚡ Quick Fill Customer Account</Text>
-          </TouchableOpacity>
-        )}
 
         <View style={styles.authFooterRow}>
           <Text style={styles.authFooterText}>Don't have an account? </Text>

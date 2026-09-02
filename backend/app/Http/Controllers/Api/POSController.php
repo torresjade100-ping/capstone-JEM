@@ -32,7 +32,7 @@ class POSController extends Controller
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'payment_method' => ['required', 'in:gcash,maya,cod'],
+            'payment_method' => ['required', 'in:gcash,maya,cod,cash'],
             'discount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
@@ -45,13 +45,15 @@ class POSController extends Controller
             foreach ($request->items as $it) {
                 $product = Product::findOrFail($it['product_id']);
                 if ($product->stock_quantity < $it['quantity']) {
-                    abort(422, 'Insufficient stock available for this product.');
+                    abort(422, "Insufficient stock available for product: {$product->name}.");
                 }
                 $it['unit_price'] = (float) $product->base_price;
                 $subtotal += ($it['unit_price'] * $it['quantity']);
             }
             $discount = $request->discount ?? 0;
             $total = $subtotal - $discount;
+
+            $normalizedPaymentMethod = $request->payment_method === 'cash' ? 'cod' : $request->payment_method;
 
             $tx = SalesTransaction::create([
                 'user_id' => $request->user()->id ?? null,
@@ -60,7 +62,7 @@ class POSController extends Controller
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'total' => $total,
-                'payment_method' => $request->payment_method,
+                'payment_method' => $normalizedPaymentMethod,
                 'status' => 'completed',
             ]);
 
@@ -131,7 +133,7 @@ class POSController extends Controller
             // Create payment record
             Payment::create([
                 'order_id' => null,
-                'method' => $request->payment_method,
+                'method' => $normalizedPaymentMethod,
                 'status' => 'completed',
                 'amount' => $total,
                 'reference_number' => 'POS-'.time().rand(100,999),

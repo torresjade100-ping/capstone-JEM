@@ -3,7 +3,7 @@
 ## 🎯 Current System Status: 80-85% Complete
 
 ### Admin Portal (`/admin`)
-**Demo Login**: admin@jemlumber.com / Password123!
+**Default Login**: admin@jemlumber.com / Password123!
 
 | Page | Features | Status |
 |------|----------|--------|
@@ -17,7 +17,7 @@
 | Reports | Daily/monthly/yearly with CSV export | ✅ Ready |
 
 ### Staff Portal (`/staff`)
-**Demo Login**: staff@jemlumber.com / Password123!
+**Default Login**: staff@jemlumber.com / Password123!
 
 | Page | Features | Status |
 |------|----------|--------|
@@ -27,7 +27,7 @@
 | Restock | Submit restock requests | ✅ Ready |
 
 ### Customer App (`/customer`)
-**Demo Login**: customer@jemlumber.com / Password123!
+**Default Login**: customer@jemlumber.com / Password123!
 
 | Feature | Status |
 |---------|--------|

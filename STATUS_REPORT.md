@@ -265,7 +265,7 @@ cd frontend
 npm run dev
 ```
 
-### Test with Demo Accounts
+### Test with Initial Accounts
 ```
 Admin Account:
   Email: admin@jemlumber.com
