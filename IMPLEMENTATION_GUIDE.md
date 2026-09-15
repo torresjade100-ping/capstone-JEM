@@ -203,8 +203,8 @@ npm run dev
 The app will be available at `http://localhost:5173`
 
 3. **Test with Seeded Accounts**
-- **Admin**: admin@jemlumber.com / Password123!
-- **Staff**: staff@jemlumber.com / Password123!
+- **Admin**: admin / admin123
+- **Staff**: staff / staff123
 - **Customer**: customer@jemlumber.com / Password123!
 
 ### Database Setup

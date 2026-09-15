@@ -18,11 +18,21 @@ class Product extends Model
         'name',
         'description',
         'base_price',
+        'cost_price',
+        'selling_price',
         'unit',
         'image',
         'stock_quantity',
         'low_stock_threshold',
         'status',
+    ];
+
+    protected $casts = [
+        'base_price' => 'decimal:2',
+        'cost_price' => 'decimal:2',
+        'selling_price' => 'decimal:2',
+        'stock_quantity' => 'integer',
+        'low_stock_threshold' => 'integer',
     ];
 
     public function category(): BelongsTo
@@ -38,5 +48,15 @@ class Product extends Model
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    public function batches(): HasMany
+    {
+        return $this->hasMany(InventoryBatch::class)->orderBy('received_date', 'desc')->orderBy('id', 'desc');
+    }
+
+    public function activeBatches(): HasMany
+    {
+        return $this->hasMany(InventoryBatch::class)->where('status', 'active')->where('quantity', '>', 0)->orderBy('received_date', 'asc');
     }
 }

@@ -20,8 +20,19 @@ export default function CategoriesTab({
   toggleWishlist,
 }) {
   const [activeCat, setActiveCat] = useState(selectedCategory || 'all');
+  const [activeBrand, setActiveBrand] = useState('all');
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [sortOption, setSortOption] = useState('popular');
+
+  // Extract unique brands dynamically from products
+  const brandsList = useMemo(() => {
+    const set = new Set();
+    products.forEach((p) => {
+      if (p.brand) set.add(p.brand.trim());
+    });
+    return Array.from(set);
+  }, [products]);
 
   // Filter and sort products
   const filteredCatalog = useMemo(() => {
@@ -35,10 +46,16 @@ export default function CategoriesTab({
 
       const matchCat =
         activeCat === 'all' ||
-        p.category_id === activeCat ||
-        (p.category && p.category.toLowerCase().includes(activeCat.toLowerCase()));
+        String(p.category_id || '').toLowerCase().trim() === String(activeCat || '').toLowerCase().trim() ||
+        (p.category && p.category.toLowerCase().trim() === activeCat.toLowerCase().trim());
 
-      return matchSearch && matchCat;
+      const matchBrand =
+        activeBrand === 'all' ||
+        (p.brand && p.brand.toLowerCase().trim() === activeBrand.toLowerCase().trim());
+
+      const matchStock = !inStockOnly || Number(p.stock_quantity || 0) > 0;
+
+      return matchSearch && matchCat && matchBrand && matchStock;
     });
 
     if (sortOption === 'price_low') {
@@ -50,7 +67,7 @@ export default function CategoriesTab({
     }
 
     return list;
-  }, [products, activeCat, catalogSearch, sortOption]);
+  }, [products, activeCat, activeBrand, inStockOnly, catalogSearch, sortOption]);
 
   const handleSelectCategory = (catId, catTitle) => {
     setActiveCat(catId);
@@ -65,14 +82,14 @@ export default function CategoriesTab({
       <View style={styles.categoriesHeader}>
         <Text style={styles.categoriesHeaderTitle}>Materials Catalog</Text>
         <Text style={styles.categoriesHeaderSubtitle}>
-          Browse high-grade construction & hardware supplies
+          Browse high-grade construction &amp; hardware supplies
         </Text>
 
         <View style={[styles.homeSearchBox, { marginTop: 14 }]}>
           <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
           <TextInput
             style={styles.homeSearchInput}
-            placeholder="Search within catalog..."
+            placeholder="Search within catalog (e.g. Holcim, Boysen, 12mm)..."
             placeholderTextColor="#94a3b8"
             value={catalogSearch}
             onChangeText={setCatalogSearch}
@@ -120,7 +137,80 @@ export default function CategoriesTab({
         </ScrollView>
       </View>
 
-      {/* 3. Sort & Results Summary Bar */}
+      {/* 3. Brand Filter & Availability Filters Bar */}
+      <View style={{ backgroundColor: '#f8fafc', paddingVertical: 8, borderBottomWidth: 1, borderColor: COLORS.borderLight }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 6, alignItems: 'center' }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textMuted, marginRight: 2, textTransform: 'uppercase' }}>
+            Brand:
+          </Text>
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 8,
+              backgroundColor: activeBrand === 'all' ? COLORS.navy : '#ffffff',
+              borderWidth: 1,
+              borderColor: activeBrand === 'all' ? COLORS.navy : COLORS.border,
+            }}
+            onPress={() => setActiveBrand('all')}
+          >
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: activeBrand === 'all' ? '#ffffff' : COLORS.textBody }}>
+              All Brands
+            </Text>
+          </TouchableOpacity>
+
+          {brandsList.map((br) => {
+            const isBrActive = activeBrand === br;
+            return (
+              <TouchableOpacity
+                key={br}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 8,
+                  backgroundColor: isBrActive ? COLORS.navy : '#ffffff',
+                  borderWidth: 1,
+                  borderColor: isBrActive ? COLORS.navy : COLORS.border,
+                }}
+                onPress={() => setActiveBrand(isBrActive ? 'all' : br)}
+              >
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: isBrActive ? '#ffffff' : COLORS.textBody }}>
+                  {br}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={{ width: 1, height: 16, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
+
+          {/* In Stock Only Toggle */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 8,
+              backgroundColor: inStockOnly ? COLORS.successBg : '#ffffff',
+              borderWidth: 1,
+              borderColor: inStockOnly ? COLORS.successBorder : COLORS.border,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onPress={() => setInStockOnly(!inStockOnly)}
+          >
+            <Text style={{ fontSize: 12 }}>{inStockOnly ? '✓' : '📦'}</Text>
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: inStockOnly ? COLORS.success : COLORS.textBody }}>
+              In Stock Only
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* 4. Sort & Results Summary Bar */}
       <View
         style={{
           flexDirection: 'row',
@@ -135,7 +225,7 @@ export default function CategoriesTab({
         </Text>
 
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          {SORT_OPTIONS.slice(0, 2).map((opt) => (
+          {SORT_OPTIONS.slice(0, 3).map((opt) => (
             <TouchableOpacity
               key={opt.id}
               style={{
@@ -162,28 +252,36 @@ export default function CategoriesTab({
         </View>
       </View>
 
-      {/* 4. Product Grid or Empty State */}
-      {filteredCatalog.length === 0 ? (
-        <View style={styles.ordersEmptyContainer}>
-          <View style={styles.ordersEmptyIconCircle}>
-            <Text style={{ fontSize: 48 }}>🔍</Text>
+      {/* 5. Scrollable Product Grid or Empty State */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+      >
+        {filteredCatalog.length === 0 ? (
+          <View style={styles.ordersEmptyContainer}>
+            <View style={styles.ordersEmptyIconCircle}>
+              <Text style={{ fontSize: 48 }}>🔍</Text>
+            </View>
+            <Text style={styles.ordersEmptyTitle}>No materials found</Text>
+            <Text style={styles.ordersEmptySubtitle}>
+              We couldn't find any products matching your active filters.
+            </Text>
+            <TouchableOpacity
+              style={styles.startShoppingBtn}
+              onPress={() => {
+                setActiveCat('all');
+                setActiveBrand('all');
+                setInStockOnly(false);
+                setCatalogSearch('');
+              }}
+            >
+              <Text style={styles.startShoppingBtnText}>Reset Filters 🔄</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.ordersEmptyTitle}>No materials found</Text>
-          <Text style={styles.ordersEmptySubtitle}>
-            We couldn't find any products matching "{catalogSearch || activeCat}".
-          </Text>
-          <TouchableOpacity
-            style={styles.startShoppingBtn}
-            onPress={() => {
-              setActiveCat('all');
-              setCatalogSearch('');
-            }}
-          >
-            <Text style={styles.startShoppingBtnText}>Reset Filters</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 16 }}>
+        ) : (
           <View style={styles.featuredProductGrid}>
             {filteredCatalog.map((product) => {
               const isWish = wishlist.includes(product.id);
@@ -280,8 +378,8 @@ export default function CategoriesTab({
               );
             })}
           </View>
-        </View>
-      )}
+        )}
+      </ScrollView>
     </View>
   );
 }

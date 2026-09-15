@@ -27,9 +27,9 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'email' => ['required', 'string', 'max:255', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:25', 'unique:users,phone'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:6'],
             'role' => ['required', Rule::in(['admin', 'staff', 'customer'])],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
         ]);
@@ -48,9 +48,9 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'email' => ['sometimes', 'string', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['sometimes', 'string', 'max:25', Rule::unique('users', 'phone')->ignore($user->id)],
-            'password' => ['sometimes', 'string', 'min:8'],
+            'password' => ['sometimes', 'string', 'min:6'],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
         ]);
         if (isset($data['password'])) $data['password'] = Hash::make($data['password']);

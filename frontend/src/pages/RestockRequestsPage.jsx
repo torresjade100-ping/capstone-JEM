@@ -25,8 +25,15 @@ import {
   getRestockRequests,
   createRestockRequest,
   updateRestockRequest,
-  getSharedStockRequests
+  getSharedStockRequests,
+  getBackordersDemand
 } from '../api'
+import {
+  formatQuantityWithUnit,
+  getUnitBadgeText,
+  getQuantityInputLabel,
+  getQuantityPlaceholder,
+} from '../utils/uom'
 import '../styles/management.css'
 
 export default function RestockRequestsPage({ role: propRole }) {
@@ -58,6 +65,21 @@ export default function RestockRequestsPage({ role: propRole }) {
 
   // Toast feedback banner
   const [toastMessage, setToastMessage] = useState('')
+  const [backordersDemandMap, setBackordersDemandMap] = useState({})
+
+  // Fetch Backorders Demand
+  const fetchDemand = async () => {
+    try {
+      const demandList = await getBackordersDemand()
+      const map = {}
+      if (Array.isArray(demandList)) {
+        demandList.forEach(d => {
+          map[d.product_id] = Number(d.total_units_needed || 0)
+        })
+      }
+      setBackordersDemandMap(map)
+    } catch (e) {}
+  }
 
   // Fetch Requests & Products
   const fetchRequestsData = async () => {
@@ -93,6 +115,7 @@ export default function RestockRequestsPage({ role: propRole }) {
     setLoading(true)
     fetchRequestsData()
     fetchProductsList()
+    fetchDemand()
 
     // 2-second background sync for cross-dashboard real-time updates
     const pollInterval = setInterval(() => {
@@ -462,10 +485,10 @@ export default function RestockRequestsPage({ role: propRole }) {
           <p className="eyebrow" style={{ color: '#f97316', fontWeight: '700', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.05em' }}>
             Inventory Replenishment
           </p>
-          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
             Stock Requests
           </h1>
-          <p style={{ color: '#64748b', fontSize: '13.5px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
             {isStaff
               ? 'Request additional inventory from management for low or out-of-stock items.'
               : 'Review, approve, and track stock replenishment requests submitted by store staff.'}
@@ -509,7 +532,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           style={{
             borderLeft: '4px solid #f59e0b',
             cursor: 'pointer',
-            background: filter === 'pending' ? '#fffbeb' : '#ffffff',
+            background: filter === 'pending' ? 'var(--bg-hover)' : 'var(--bg-surface)',
             transition: 'all 0.15s ease'
           }}
           title="Click to filter pending requests"
@@ -518,14 +541,14 @@ export default function RestockRequestsPage({ role: propRole }) {
             <span style={{ fontSize: '12px', fontWeight: '800', color: '#b45309', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <Clock size={15} color="#d97706" /> Pending Review
             </span>
-            <span style={{ fontSize: '11px', background: '#fef3c7', color: '#b45309', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
+            <span style={{ fontSize: '11px', background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
               Requires Action
             </span>
           </div>
           <div style={{ fontSize: '28px', fontWeight: '800', color: '#d97706', margin: '6px 0 2px' }}>
             {pendingCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Awaiting Admin approval
           </span>
         </div>
@@ -537,7 +560,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           style={{
             borderLeft: '4px solid #10b981',
             cursor: 'pointer',
-            background: filter === 'approved' ? '#f0fdf4' : '#ffffff',
+            background: filter === 'approved' ? 'var(--bg-hover)' : 'var(--bg-surface)',
             transition: 'all 0.15s ease'
           }}
           title="Click to filter approved requests"
@@ -546,14 +569,14 @@ export default function RestockRequestsPage({ role: propRole }) {
             <span style={{ fontSize: '12px', fontWeight: '800', color: '#047857', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <CheckCircle2 size={15} color="#16a34a" /> Approved &amp; Restocked
             </span>
-            <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
+            <span style={{ fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', color: '#059669', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
               Completed
             </span>
           </div>
           <div style={{ fontSize: '28px', fontWeight: '800', color: '#16a34a', margin: '6px 0 2px' }}>
             {approvedCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Added to warehouse inventory
           </span>
         </div>
@@ -565,7 +588,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           style={{
             borderLeft: '4px solid #ef4444',
             cursor: 'pointer',
-            background: filter === 'rejected' ? '#fef2f2' : '#ffffff',
+            background: filter === 'rejected' ? 'var(--bg-hover)' : 'var(--bg-surface)',
             transition: 'all 0.15s ease'
           }}
           title="Click to filter rejected requests"
@@ -578,7 +601,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           <div style={{ fontSize: '28px', fontWeight: '800', color: '#dc2626', margin: '6px 0 2px' }}>
             {rejectedCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Declined by management
           </span>
         </div>
@@ -589,41 +612,41 @@ export default function RestockRequestsPage({ role: propRole }) {
           onClick={() => setFilter('all')}
           style={{
             cursor: 'pointer',
-            background: filter === 'all' ? '#f8fafc' : '#ffffff',
+            background: filter === 'all' ? 'var(--bg-hover)' : 'var(--bg-surface)',
             transition: 'all 0.15s ease'
           }}
           title="Click to show all requests"
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <Package size={15} color="#64748b" /> Total Requests
+            <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Package size={15} color="var(--text-muted)" /> Total Requests
             </span>
           </div>
-          <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a', margin: '6px 0 2px' }}>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', margin: '6px 0 2px' }}>
             {totalCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             All lifetime submissions
           </span>
         </div>
       </div>
 
       {/* Search and Filters */}
-      <div className="management-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', background: '#ffffff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+      <div className="management-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', background: 'var(--bg-surface)', padding: '14px 18px', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <div style={{ position: 'relative', flex: '1 1 280px', display: 'flex', alignItems: 'center' }}>
-          <Search size={17} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
+          <Search size={17} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
           <input
             type="text"
             placeholder="Search by product name, SKU, staff member, or request ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
-            style={{ paddingLeft: '38px', width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', fontSize: '13.5px' }}
+            style={{ paddingLeft: '38px', width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', fontSize: '13.5px', background: 'transparent', color: 'var(--text-primary)' }}
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', paddingRight: '8px' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', paddingRight: '8px' }}
             >
               <X size={16} />
             </button>
@@ -647,14 +670,14 @@ export default function RestockRequestsPage({ role: propRole }) {
 
       {/* Table */}
       {loading ? (
-        <div className="loading" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+        <div className="loading" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
           Loading stock requests...
         </div>
       ) : filteredRequests.length === 0 ? (
-        <div className="empty-state" style={{ padding: '48px 24px', textAlign: 'center', background: '#ffffff', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-          <Package size={40} style={{ color: '#94a3b8', margin: '0 auto 12px' }} />
-          <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '1.1rem' }}>No Stock Requests Found</h3>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
+        <div className="empty-state" style={{ padding: '48px 24px', textAlign: 'center', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
+          <Package size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 12px' }} />
+          <h3 style={{ margin: '0 0 6px', color: 'var(--text-primary)', fontSize: '1.1rem' }}>No Stock Requests Found</h3>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             {isStaff
               ? 'You have not submitted any stock requests matching this filter.'
               : 'There are no stock requests matching this filter criteria.'}
@@ -671,7 +694,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           )}
         </div>
       ) : (
-        <div className="table-responsive" style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div className="table-responsive" style={{ background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
           <table className="management-table">
             <thead>
               <tr>
@@ -691,6 +714,7 @@ export default function RestockRequestsPage({ role: propRole }) {
                 const productName = request.product_name || request.product?.name || 'Product'
                 const sku = request.sku || request.product?.sku || '-'
                 const requestedBy = formatRequestedBy(request)
+                const unit = request.product?.unit || request.unit || 'piece'
                 const requestedQty = request.quantity_requested ?? request.requested_quantity ?? 0
                 const currentStock = request.current_quantity ?? request.product?.stock_quantity ?? 0
                 const statusStr = String(request.status || 'pending').toLowerCase().trim()
@@ -702,30 +726,30 @@ export default function RestockRequestsPage({ role: propRole }) {
                 return (
                   <tr key={request.id}>
                     <td>
-                      <strong style={{ color: '#0f172a' }}>#{request.id}</strong>
+                      <strong style={{ color: 'var(--text-primary)' }}>#{request.id}</strong>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '13.5px' }}>{productName}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>SKU: {sku}</div>
+                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '13.5px' }}>{productName}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>SKU: {sku}</div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ fontWeight: 800, color: '#ea580c', fontSize: '14px', background: '#fff7ed', padding: '3px 8px', borderRadius: '6px', border: '1px solid #ffedd5' }}>
-                        +{requestedQty}
+                      <span style={{ fontWeight: 800, color: '#ea580c', fontSize: '13px', background: '#fff7ed', padding: '3px 8px', borderRadius: '6px', border: '1px solid #ffedd5', whiteSpace: 'nowrap' }}>
+                        +{formatQuantityWithUnit(requestedQty, unit)}
                       </span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ fontWeight: 700, color: currentStock === 0 ? '#dc2626' : '#475569', fontSize: '13px' }}>
-                        {currentStock}
+                      <span style={{ fontWeight: 700, color: currentStock === 0 ? '#ef4444' : 'var(--text-primary)', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                        {formatQuantityWithUnit(currentStock, unit)}
                       </span>
                     </td>
                     <td>{getUrgencyBadge(request.urgency)}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <User size={13} style={{ color: '#94a3b8' }} />
-                        <span style={{ fontWeight: 600, color: '#334155', fontSize: '12.5px' }}>{requestedBy}</span>
+                        <User size={13} style={{ color: 'var(--text-muted)' }} />
+                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: '12.5px' }}>{requestedBy}</span>
                       </div>
                     </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</td>
+                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{dateStr}</td>
                     
                     {/* Status Column with Clear Centered Icons */}
                     <td style={{ textAlign: 'center' }}>
@@ -738,26 +762,11 @@ export default function RestockRequestsPage({ role: propRole }) {
                         {/* Eye Icon Button for View */}
                         <button
                           type="button"
-                          className="btn-icon"
+                          className="action-btn action-btn-view"
                           onClick={() => {
                             setSelectedRequest(request)
                             setReviewNotes(request.admin_notes || '')
                             setShowDetails(true)
-                          }}
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            padding: 0,
-                            borderRadius: '8px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: '#f8fafc',
-                            color: '#475569',
-                            border: '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxSizing: 'border-box'
                           }}
                           title="View Request Details"
                           aria-label="View Details"
@@ -840,15 +849,15 @@ export default function RestockRequestsPage({ role: propRole }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>Create Stock Request</h2>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>Create Stock Request</h2>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   Submit request to Admin for review and inventory restock.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={20} />
               </button>
@@ -869,7 +878,7 @@ export default function RestockRequestsPage({ role: propRole }) {
             <form onSubmit={handleCreateRequest}>
               {/* Product Selection */}
               <div className="form-group" style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   Select Product to Restock *
                 </label>
                 <select
@@ -877,14 +886,14 @@ export default function RestockRequestsPage({ role: propRole }) {
                   onChange={(e) => setFormProductId(e.target.value)}
                   className="form-input"
                   required
-                  style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0 12px', background: '#fff' }}
+                  style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '0 12px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
                 >
                   <option value="">-- Choose a product from catalog --</option>
                   {products.map((p) => {
                     const currentStock = p.stock_quantity ?? p.quantity ?? 0
                     return (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Current Stock: {currentStock} {p.unit || 'units'})
+                        {p.name} (Current Stock: {formatQuantityWithUnit(currentStock, p.unit)})
                       </option>
                     )
                   })}
@@ -893,37 +902,70 @@ export default function RestockRequestsPage({ role: propRole }) {
 
               {/* Live Product Info Box */}
               {selectedProductObj && (
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '12.5px', color: '#475569' }}>
+                <div style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
                   <div><strong>SKU:</strong> {selectedProductObj.sku || `SKU-${selectedProductObj.id}`}</div>
                   <div><strong>Category:</strong> {selectedProductObj.category?.name || selectedProductObj.category || 'General'}</div>
-                  <div><strong>Current Available Stock:</strong> {selectedProductObj.stock_quantity ?? 0} {selectedProductObj.unit || 'units'}</div>
+                  <div><strong>Assigned Unit of Measure:</strong> <span style={{ color: '#ea580c', fontWeight: 700 }}>{selectedProductObj.unit || 'piece'}</span></div>
+                  <div><strong>Current Available Stock:</strong> {formatQuantityWithUnit(selectedProductObj.stock_quantity ?? 0, selectedProductObj.unit)}</div>
+                </div>
+              )}
+
+              {/* Backorder Demand Alert */}
+              {selectedProductObj && backordersDemandMap[selectedProductObj.id] > 0 && (
+                <div style={{
+                  background: '#fff7ed',
+                  border: '1px solid #fed7aa',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  marginBottom: '14px',
+                  fontSize: '12.5px',
+                  color: '#c2410c'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div>
+                      <strong>⚠️ Customer Backorders Waiting:</strong> {backordersDemandMap[selectedProductObj.id]} units
+                      <div style={{ fontSize: '11px', color: '#9a3412', marginTop: '2px' }}>
+                        Customer orders are waiting for stock. Receiving this restock will auto-fulfill their orders.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      style={{ background: '#ea580c', color: '#fff', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}
+                      onClick={() => setFormQuantity(backordersDemandMap[selectedProductObj.id])}
+                    >
+                      Fill {backordersDemandMap[selectedProductObj.id]} pcs
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* Quantity and Urgency */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div className="form-group">
-                  <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
-                    Requested Quantity *
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    <span>{getQuantityInputLabel(selectedProductObj?.unit, 'Requested Qty')} *</span>
+                    <span style={{ fontSize: '11px', color: '#ea580c' }}>in {getUnitBadgeText(selectedProductObj?.unit, true)}</span>
                   </label>
                   <input
                     type="number"
                     min="1"
+                    placeholder={getQuantityPlaceholder(selectedProductObj?.unit, 20)}
                     value={formQuantity}
                     onChange={(e) => setFormQuantity(e.target.value)}
                     required
-                    style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0 12px', boxSizing: 'border-box' }}
+                    style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '0 12px', boxSizing: 'border-box', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                     Priority / Urgency
                   </label>
                   <select
                     value={formUrgency}
                     onChange={(e) => setFormUrgency(e.target.value)}
-                    style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0 12px', background: '#fff' }}
+                    style={{ width: '100%', height: '40px', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '0 12px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
                   >
                     <option value="normal">Normal</option>
                     <option value="high">High</option>
@@ -934,7 +976,7 @@ export default function RestockRequestsPage({ role: propRole }) {
 
               {/* Staff Notes */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   Reason / Notes for Management (Optional)
                 </label>
                 <textarea
@@ -942,7 +984,7 @@ export default function RestockRequestsPage({ role: propRole }) {
                   placeholder="Low physical stock on showroom shelf, bulk customer inquiry coming up..."
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px' }}
+                  style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
                 />
 
               </div>
@@ -977,10 +1019,10 @@ export default function RestockRequestsPage({ role: propRole }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>
                   Stock Request #{selectedRequest.id}
                 </h2>
-                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   {isAdmin && (!selectedRequest.status || selectedRequest.status === 'pending')
                     ? 'Review staff request and take action.'
                     : 'Stock request record details.'}
@@ -989,45 +1031,49 @@ export default function RestockRequestsPage({ role: propRole }) {
               <button
                 type="button"
                 onClick={() => setShowDetails(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Request Summary Info */}
-            <div className="request-details" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '18px' }}>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Product:</span>
-                <strong style={{ color: '#1e293b' }}>{selectedRequest.product_name || selectedRequest.product?.name}</strong>
+            <div className="request-details" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px', marginBottom: '18px' }}>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Product:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{selectedRequest.product_name || selectedRequest.product?.name}</strong>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>SKU:</span>
-                <span style={{ color: '#334155', fontFamily: 'monospace' }}>{selectedRequest.sku || selectedRequest.product?.sku || '-'}</span>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>SKU:</span>
+                <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{selectedRequest.sku || selectedRequest.product?.sku || '-'}</span>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Requested Quantity:</span>
-                <strong style={{ color: '#ea580c', fontSize: '15px' }}>{selectedRequest.quantity_requested ?? selectedRequest.requested_quantity} units</strong>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Requested Quantity:</span>
+                <strong style={{ color: '#ea580c', fontSize: '15px' }}>
+                  {formatQuantityWithUnit(selectedRequest.quantity_requested ?? selectedRequest.requested_quantity, selectedRequest.product?.unit || selectedRequest.unit)}
+                </strong>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Current Stock Level:</span>
-                <span>{selectedRequest.current_quantity ?? selectedRequest.product?.stock_quantity ?? 0} units</span>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Current Stock Level:</span>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {formatQuantityWithUnit(selectedRequest.current_quantity ?? selectedRequest.product?.stock_quantity ?? 0, selectedRequest.product?.unit || selectedRequest.unit)}
+                </span>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Requested By:</span>
-                <strong>{formatRequestedBy(selectedRequest)}</strong>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Requested By:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{formatRequestedBy(selectedRequest)}</strong>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Priority:</span>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Priority:</span>
                 <span>{getUrgencyBadge(selectedRequest.urgency)}</span>
               </div>
-              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #edf2f7' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Status:</span>
+              <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Status:</span>
                 <span>{getStatusBadge(selectedRequest.status)}</span>
               </div>
               <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Date Submitted:</span>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Date Submitted:</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
                   {selectedRequest.created_at ? new Date(selectedRequest.created_at).toLocaleString() : 'Today'}
                 </span>
               </div>
@@ -1036,10 +1082,10 @@ export default function RestockRequestsPage({ role: propRole }) {
             {/* Staff Notes */}
             {selectedRequest.staff_notes && (
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                   Staff Reason / Notes:
                 </label>
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#334155' }}>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
                   {selectedRequest.staff_notes}
                 </div>
               </div>
@@ -1048,10 +1094,10 @@ export default function RestockRequestsPage({ role: propRole }) {
             {/* Historical Admin Notes */}
             {selectedRequest.admin_notes && (
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
                   Admin Review Notes:
                 </label>
-                <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#1e293b' }}>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
                   {selectedRequest.admin_notes}
                 </div>
               </div>
@@ -1060,7 +1106,7 @@ export default function RestockRequestsPage({ role: propRole }) {
             {/* Admin Action Section (When Pending) */}
             {isAdmin && (!selectedRequest.status || selectedRequest.status === 'pending') ? (
               <div style={{ marginTop: '16px' }}>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   Add Admin Review Notes:
                 </label>
                 <textarea
@@ -1069,7 +1115,7 @@ export default function RestockRequestsPage({ role: propRole }) {
 
                   onChange={(e) => setReviewNotes(e.target.value)}
                   rows="3"
-                  style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px', marginBottom: '16px' }}
+                  style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '13px', marginBottom: '16px', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                   <button

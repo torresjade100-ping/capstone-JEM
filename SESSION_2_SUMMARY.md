@@ -206,7 +206,7 @@ cd frontend && npm run dev
 ```
 
 ### Test Admin Workflow
-1. Login: admin@jemlumber.com / Password123!
+1. Login: admin / admin123
 2. Click "Products" → View, Add, Edit, Archive products
 3. Click "Users" → View users, create new, change roles
 4. Click "Orders" → View orders, transition status
@@ -216,7 +216,7 @@ cd frontend && npm run dev
 8. Click "Suppliers" → Manage supplier information
 
 ### Test Staff Workflow
-1. Login: staff@jemlumber.com / Password123!
+1. Login: staff / staff123
 2. Click "Walk-In POS" → Add products to cart, process sale
 3. Click "Orders" → View pending orders, transition status
 4. Click "Restock" → Submit restock requests for low stock items

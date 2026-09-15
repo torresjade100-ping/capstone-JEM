@@ -1,18 +1,170 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
+/* ==========================================================================
+   1. CENTRALIZED THEME SYSTEM (LIGHT & DARK MODE TOKENS)
+   ========================================================================== */
 :root {
-  font-family: 'Manrope', sans-serif;
-  color: #273238;
-  background: #f5f6f3;
+  font-family: 'Manrope', 'Plus Jakarta Sans', sans-serif;
   font-synthesis: none;
-  --ink: #273238;
-  --muted: #7a8586;
-  --line: #e4e7e2;
-  --accent: #e45f2b;
-  --soft-accent: #fff0e8;
-  --navy: #26383d;
+
+  /* Theme indicator */
+  --color-scheme: light;
+
+  /* Surfaces & Backgrounds */
+  --bg-main: #f5f6f3;
+  --bg-secondary: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-active: #e2e8f0;
+
+  /* Typography (Sampled from Screenshot 1) */
+  --text-primary: #17293a;
+  --text-secondary: #64737b;
+  --text-muted: #94a3b8;
+
+  /* Borders & Dividers (Sampled from Screenshot 1) */
+  --border-color: rgba(23, 41, 58, 0.08);
+  --border-subtle: rgba(23, 41, 58, 0.05);
+
+  /* Forms & Inputs */
+  --input-bg: #ffffff;
+  --input-text: #17293a;
+  --input-border: #cbd5e1;
+  --input-placeholder: #94a3b8;
+  --disabled-bg: #f1f5f9;
+  --disabled-text: #94a3b8;
+
+  /* Primary Brand (Preserved JEM Terracotta/Orange from Screenshot 1) */
+  --primary: #f97316;
+  --primary-hover: #ea580c;
+  --primary-soft: #fff7ed;
+  --primary-border: #fed7aa;
+  --navy: #17293a;
+  --navy-soft: #23384c;
+
+  /* Status Colors */
+  --success: #22c55e;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --warning: #f59e0b;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --error: #ef4444;
+  --error-bg: #fee2e2;
+  --error-text: #991b1b;
+  --info: #3b82f6;
+  --info-bg: #dbeafe;
+  --info-text: #1e40af;
+
+  /* Elevation Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 18px rgba(23, 41, 58, 0.02);
+  --shadow-lg: 0 10px 25px rgba(23, 41, 58, 0.06);
+
+  /* Backward Compatibility Aliases */
+  --page: var(--bg-main);
+  --card: var(--bg-surface);
+  --ink: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border-color);
+  --accent: var(--primary);
+  --soft-accent: var(--primary-soft);
+  --orange: var(--primary);
+  --orange-soft: var(--primary-soft);
+  --green: var(--success);
+  --red: var(--error);
+  --blue: var(--info);
 }
 
+/* ==========================================================================
+   2. DARK MODE PALETTE (Robotics Laboratory & Dark Navy Theme)
+   ========================================================================== */
+[data-theme="dark"],
+.dark-theme {
+  --color-scheme: dark;
+
+  /* Requested Surfaces */
+  --bg-main: #020617;          /* Very dark navy/black */
+  --bg-secondary: #030712;     /* Slightly darker navy for sidebar/contrast */
+  --bg-surface: #0F172A;       /* Main cards / surfaces */
+  --bg-elevated: #111827;      /* Elevated panels & surfaces */
+  --bg-hover: #1E293B;         /* Hover background */
+  --bg-active: #334155;        /* Active background */
+  --sidebar-bg: #030712;       /* Sidebar background */
+  --header-bg: #0B1120;        /* Header background */
+
+  /* Typography */
+  --text-primary: #F8FAFC;     /* White/off-white for headings */
+  --text-secondary: #94A3B8;   /* Muted blue-gray for secondary text */
+  --text-muted: #64748B;       /* Muted text */
+
+  /* Borders & Forms */
+  --border-color: #1E293B;     /* Subtle blue-gray borders */
+  --border-subtle: #162032;    /* Dark subtle border */
+  --input-bg: #0B1120;         /* Input background */
+  --input-text: #F8FAFC;       /* Input text */
+  --input-border: #1E293B;     /* Input border */
+  --input-placeholder: #64748B;/* Placeholder */
+  --disabled-bg: #0B1120;
+  --disabled-text: #475569;
+
+  /* Primary Brand (Unified JEM Hardware Orange / Terracotta Accent) */
+  --primary: #f97316;          /* Vivid Brand Orange */
+  --primary-hover: #ea580c;    /* Darker brand orange */
+  --primary-soft: rgba(249, 115, 22, 0.16);
+  --primary-border: rgba(249, 115, 22, 0.35);
+  --navy: #030712;
+  --navy-soft: #0B1120;
+
+  /* Functional Status Colors */
+  --success: #10B981;          /* Emerald/Green */
+  --success-bg: rgba(16, 185, 129, 0.16);
+  --success-text: #34D399;
+  --warning: #F59E0B;          /* Amber/Orange */
+  --warning-bg: rgba(245, 158, 11, 0.16);
+  --warning-text: #FBBF24;
+  --error: #EF4444;            /* Red/Crimson */
+  --error-bg: rgba(239, 68, 68, 0.16);
+  --error-text: #F87171;
+  --info: #3B82F6;             /* Vivid Blue */
+  --info-bg: rgba(59, 130, 246, 0.16);
+  --info-text: #60A5FA;
+  --purple: #8B5CF6;           /* Purple/Indigo Secondary Accent */
+  --purple-bg: rgba(139, 92, 246, 0.16);
+  --purple-text: #A78BFA;
+
+  /* Shadows & Glows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.8);
+  --glow-orange: 0 0 20px rgba(249, 115, 22, 0.25);
+  --glow-blue: 0 0 20px rgba(59, 130, 246, 0.25);
+
+  /* Aliases & Mappings */
+  --page: var(--bg-main);
+  --card: var(--bg-surface);
+  --ink: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border-color);
+  --accent: var(--primary);
+  --soft-accent: var(--primary-soft);
+  --orange: var(--primary);
+  --orange-soft: var(--primary-soft);
+  --jem-bg: var(--bg-main);
+  --jem-card: var(--bg-surface);
+  --jem-text-primary: var(--text-primary);
+  --jem-text-secondary: var(--text-secondary);
+  --jem-text-muted: var(--text-muted);
+  --jem-border: var(--border-color);
+  --jem-border-light: var(--border-subtle);
+  --jem-navy-surface: var(--bg-elevated);
+  --jem-navy-light: var(--bg-hover);
+}
+
+/* ==========================================================================
+   3. GLOBAL RESET & BASE STYLING
+   ========================================================================== */
 * {
   box-sizing: border-box;
 }
@@ -22,17 +174,49 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
 }
 
 body {
   min-width: 320px;
-  background: #f5f6f3;
-  color: var(--ink);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
   overflow-x: hidden;
+  font-family: inherit;
 }
 
+/* Subtle theme transition when toggling */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.22s ease, border-color 0.22s ease, color 0.18s ease, box-shadow 0.22s ease !important;
+}
+
+/* Themed Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Form Controls Base */
 button, input, select, textarea {
   font: inherit;
+  color: inherit;
 }
 
 button {
@@ -40,23 +224,24 @@ button {
 }
 
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid rgba(228, 95, 43, 0.4);
+  outline: 2px solid rgba(249, 115, 22, 0.5);
   outline-offset: 2px;
 }
 
+/* Brand components */
 .brand-mark {
   width: 36px;
   height: 36px;
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: var(--accent);
-  color: white;
+  background: var(--primary);
+  color: #ffffff;
   font-family: Georgia, serif;
   font-size: 24px;
   font-weight: 700;
   font-style: italic;
-  box-shadow: 0 8px 18px rgba(228, 95, 43, 0.2);
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.28);
   flex: 0 0 auto;
 }
 
@@ -68,7 +253,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .brand-row strong {
   display: block;
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -76,14 +261,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .brand-row small {
   display: block;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 10px;
   margin-top: 3px;
 }
 
 .eyebrow {
   margin: 0 0 9px;
-  color: var(--accent);
+  color: var(--primary);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -91,23 +276,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .input, .select {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: white;
-  color: var(--ink);
+  background: var(--input-bg);
+  color: var(--input-text);
   padding: 12px 13px;
   font-size: 13px;
 }
 
 .input:focus, .select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(228, 95, 43, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
   outline: none;
+}
+
+.input::placeholder {
+  color: var(--input-placeholder);
 }
 
 .button {
@@ -130,17 +319,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .button-dark {
   color: white;
   background: var(--navy);
+  border: 1px solid var(--border-color);
 }
 
 .button-dark:hover {
-  background: #17292e;
+  background: var(--navy-soft);
 }
 
 .button-accent {
   color: white;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .button-accent:hover {
-  background: #c94d20;
+  background: var(--primary-hover);
 }

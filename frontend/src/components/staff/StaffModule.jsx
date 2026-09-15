@@ -293,25 +293,25 @@ function PosPanel({ products, onDone }) {
 
       {showConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 440, width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: '#17293a' }}>Confirm Walk-In Transaction</h3>
-            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 12, padding: 24, maxWidth: 440, width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>Confirm Walk-In Transaction</h3>
+            <div style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-color)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Total Amount:</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Total Amount:</span>
                 <strong style={{ fontSize: 15, color: '#f97316' }}>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Amount Paid:</span>
-                <strong style={{ fontSize: 13 }}>₱{paidNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Amount Paid:</span>
+                <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>₱{paidNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Change:</span>
-                <strong style={{ fontSize: 13, color: changeDue > 0 ? '#16a34a' : '#64748b' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Change:</span>
+                <strong style={{ fontSize: 13, color: changeDue > 0 ? '#16a34a' : 'var(--text-muted)' }}>
                   {changeDue > 0 ? `₱${changeDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '₱0.00 (No Change)'}
                 </strong>
               </div>
             </div>
-            <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 16px' }}>
               Confirming will complete this transaction and automatically deduct items from inventory.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>

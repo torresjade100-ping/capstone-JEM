@@ -110,7 +110,40 @@ class RestockRequestController extends Controller
 
                 // Update actual product stock
                 $product->stock_quantity = $qtyAfter;
+                if ($request->filled('cost_price')) {
+                    $product->cost_price = (float) $request->cost_price;
+                }
+                if ($request->filled('selling_price')) {
+                    $product->selling_price = (float) $request->selling_price;
+                    $product->base_price = (float) $request->selling_price;
+                }
                 $product->save();
+
+                // Create a new distinct Inventory Batch for this restock
+                try {
+                    $batchCost = (float) ($request->input('cost_price') ?? $product->cost_price ?? 0);
+                    $batchSelling = (float) ($request->input('selling_price') ?? $product->selling_price ?? $product->base_price ?? 0);
+                    $supplierName = $request->input('supplier_name') ?? $product->brand?->name ?? 'Restock Supplier';
+                    $batchNo = sprintf('BAT-%s-%04d-%03d', date('Ymd'), $product->id, rand(100, 999));
+
+                    \App\Models\InventoryBatch::create([
+                        'product_id' => $product->id,
+                        'batch_number' => $batchNo,
+                        'supplier_id' => $request->input('supplier_id'),
+                        'supplier_name' => $supplierName,
+                        'cost_price' => $batchCost,
+                        'selling_price' => $batchSelling,
+                        'initial_quantity' => $qtyRequested,
+                        'quantity' => $qtyRequested,
+                        'received_date' => $request->input('received_date', date('Y-m-d')),
+                        'expiration_date' => $request->input('expiration_date'),
+                        'status' => 'active',
+                        'notes' => "Fulfilled from Stock Request #{$restockRequest->id}" . ($restockRequest->notes ? " - {$restockRequest->notes}" : ''),
+                        'created_by' => $request->user()->id ?? null,
+                    ]);
+                } catch (\Throwable $e) {
+                    // non-blocking
+                }
 
                 // If variant exists, update variant stock
                 if ($restockRequest->product_variant_id) {
@@ -130,10 +163,22 @@ class RestockRequestController extends Controller
                         'quantity_before' => $qtyBefore,
                         'quantity_changed' => $qtyRequested,
                         'quantity_after' => $qtyAfter,
-                        'reason' => "Stock request #{$restockRequest->id} confirmed & approved by " . $request->user()->name,
+                        'reason' => "Stock request #{$restockRequest->id} approved & new batch added by " . $request->user()->name,
                     ]);
                 } catch (\Throwable $e) {
                     // ignore if table structure differs
+                }
+
+                // Auto-allocate restocked inventory to waiting backorders (FIFO)
+                try {
+                    app(\App\Services\BackorderService::class)->allocateStock(
+                        $product->id,
+                        $restockRequest->product_variant_id,
+                        $qtyRequested,
+                        $request->user()
+                    );
+                } catch (\Throwable $e) {
+                    // non-blocking
                 }
             }
         }

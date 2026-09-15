@@ -9,8 +9,9 @@ import {
   HelpCircle, Info, MessageSquare, SlidersHorizontal, Grid, List,
   Lock, ArrowUpRight, RotateCcw, ThumbsUp
 } from 'lucide-react'
-import { addSharedMobileOrder, getSharedOrders } from '../api'
+import { addSharedMobileOrder, getSharedOrders, getProducts } from '../api'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
+import ThemeToggle from '../components/ThemeToggle'
 import '../styles/customer.css'
 
 
@@ -19,307 +20,605 @@ import '../styles/customer.css'
 // REALISTIC HARDWARE & CONSTRUCTION CATALOG DATA (PHILIPPINE STANDARDS)
 // ============================================================================
 const HARDWARE_CATALOG = [
+  // Sheet 1: Marine & Ordinary Plywood, Boards
   {
     id: 1,
-    name: 'Coco Lumber 2×3×10 (Seasoned)',
-    brand: 'JEM Timber',
-    category: 'Lumber & Wood',
+    name: 'Marine Plywood 3/4"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
     category_id: 'lumber',
-    base_price: 120,
-    unit: 'piece',
-    stock_quantity: 180,
+    base_price: 1080,
+    cost_price: 830,
+    unit: 'sheet',
+    stock_quantity: 50,
     rating: 4.9,
-    reviews_count: 342,
+    reviews_count: 142,
     badge: 'Best Seller',
     badgeClass: 'best-seller',
     emoji: '🪵',
-    description: 'Selected well-seasoned Philippine coco lumber 2x3x10ft ideal for structural formworks, scaffolding, trusses, and general framing works.',
+    description: '3/4" Waterproof marine-grade plywood suitable for boat building, exterior ceilings, and concrete formworks.',
     specs: {
-      Dimensions: '2" × 3" × 10 ft',
-      Moisture: 'Air-dried seasoned',
-      Treatment: 'Anti-termite treated',
-      Application: 'Formworks & Framing',
-      Origin: 'Quezon Province'
+      Thickness: '3/4" (18mm)',
+      Grade: 'Marine Grade A/A',
+      Glue: 'WBP Phenolic Waterproof Glue',
+      Application: 'Formworks, Boats, Wet Areas'
     },
     images: ['🪵', '📐', '🏗️']
   },
   {
     id: 2,
-    name: 'Portland Cement Type 1 (40kg)',
-    brand: 'Holcim Excel',
-    category: 'Cement & Masonry',
-    category_id: 'cement',
-    base_price: 285,
-    unit: 'bag',
-    stock_quantity: 350,
+    name: 'Marine Plywood 1/2"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 690,
+    cost_price: 535,
+    unit: 'sheet',
+    stock_quantity: 60,
+    rating: 4.8,
+    reviews_count: 98,
+    badge: 'Popular',
+    badgeClass: 'best-seller',
+    emoji: '🪵',
+    description: '1/2" Marine plywood with water-resistant glue lines, ideal for bathroom partitions and outdoor cabinetry.',
+    specs: {
+      Thickness: '1/2" (12mm)',
+      Grade: 'Marine Grade',
+      Application: 'Partitions, Cabinetry, Eaves'
+    },
+    images: ['🪵', '📐', '🏗️']
+  },
+  {
+    id: 3,
+    name: 'Marine Plywood 1/4"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 395,
+    cost_price: 235,
+    unit: 'sheet',
+    stock_quantity: 75,
+    rating: 4.8,
+    reviews_count: 84,
+    badge: 'In Stock',
+    badgeClass: 'jem-choice',
+    emoji: '🪵',
+    description: '1/4" Marine plywood board for ceiling panels and interior moisture-resistant lining.',
+    specs: {
+      Thickness: '1/4" (6mm)',
+      Application: 'Ceiling Panels, Linings'
+    },
+    images: ['🪵', '📐', '🏗️']
+  },
+  {
+    id: 4,
+    name: 'Ordinary Plywood 3/4"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 990,
+    cost_price: 770,
+    unit: 'sheet',
+    stock_quantity: 50,
+    rating: 4.8,
+    reviews_count: 115,
+    badge: 'Heavy Duty',
+    badgeClass: 'jem-choice',
+    emoji: '🪵',
+    description: '3/4" Standard ordinary plywood for heavy furniture, sub-flooring, shelving, and interior partitions.',
+    specs: {
+      Thickness: '3/4" (18mm)',
+      Type: 'Ordinary Hardwood Plywood',
+      Application: 'Furniture, Shelves, Floors'
+    },
+    images: ['🪵', '📐', '🏗️']
+  },
+  {
+    id: 5,
+    name: 'Ordinary Plywood 1/2"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 590,
+    cost_price: 470,
+    unit: 'sheet',
+    stock_quantity: 60,
+    rating: 4.8,
+    reviews_count: 90,
+    badge: 'In Stock',
+    badgeClass: 'jem-choice',
+    emoji: '🪵',
+    description: '1/2" Ordinary plywood for furniture backings, room dividers, and general carpentry.',
+    specs: {
+      Thickness: '1/2" (12mm)',
+      Application: 'Partitions, Furniture'
+    },
+    images: ['🪵', '📐', '🏗️']
+  },
+  {
+    id: 6,
+    name: 'Hardiflex Board 3.5mm',
+    brand: 'Hardiflex',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 280,
+    cost_price: 230,
+    unit: 'sheet',
+    stock_quantity: 65,
     rating: 4.9,
-    reviews_count: 528,
-    badge: 'JEM Choice',
+    reviews_count: 120,
+    badge: 'Fire Safe',
     badgeClass: 'jem-choice',
     emoji: '🧱',
-    description: 'Premium general purpose hydraulic cement formulated with advanced mineral additives for high early strength and smooth concrete workability.',
+    description: '3.5mm Hardiflex fiber cement board for fire-resistant, termite-proof interior ceilings.',
     specs: {
-      Weight: '40 kg bag',
-      Standard: 'PNS 07 / ASTM C150 Type 1',
-      SettingTime: 'Initial: 120 min | Final: 240 min',
-      Compressive: '28-Day > 32.5 MPa',
-      Application: 'Columns, Slabs, Beams, Hollow Blocks'
+      Thickness: '3.5mm',
+      Material: 'Fiber Cement',
+      Features: 'Termite & Fire Resistant'
     },
     images: ['🧱', '🏗️', '📦']
   },
   {
-    id: 3,
-    name: 'GI Corrugated Roofing Sheet G24 (8ft)',
-    brand: 'Union Galvasteel',
-    category: 'Roofing & Steel',
-    category_id: 'roofing',
-    base_price: 380,
+    id: 7,
+    name: 'Smart Board 3.5mm',
+    brand: 'SmartBoard',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 290,
+    cost_price: 240,
     unit: 'sheet',
-    stock_quantity: 24,
-    rating: 4.7,
-    reviews_count: 198,
-    badge: 'Low Stock',
-    badgeClass: 'low-stock',
-    emoji: '🏠',
-    description: 'Commercial grade hot-dipped galvanized iron corrugated roofing sheet gauge 24 (0.50mm) providing superior corrosion resistance and monsoon defense.',
+    stock_quantity: 55,
+    rating: 4.8,
+    reviews_count: 65,
+    badge: 'SCG Quality',
+    badgeClass: 'best-seller',
+    emoji: '🧱',
+    description: '3.5mm SCG SmartBoard fiber cement ceiling sheet with water and termite resistance.',
     specs: {
-      Thickness: '0.50mm (Gauge 24)',
-      Length: '8 feet (2.44 meters)',
-      Coating: 'Zinc Galvanized Z120',
-      Profile: 'Standard Wave Corrugation',
-      Warranty: '10 Years Rust Defense'
+      Thickness: '3.5mm',
+      Brand: 'SCG SmartBoard'
+    },
+    images: ['🧱', '🏗️', '📦']
+  },
+  {
+    id: 8,
+    name: 'Phenolic Board 1/2"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 1095,
+    cost_price: 830,
+    unit: 'sheet',
+    stock_quantity: 45,
+    rating: 4.9,
+    reviews_count: 87,
+    badge: 'Formwork',
+    badgeClass: 'best-seller',
+    emoji: '🪵',
+    description: '1/2" Film-faced phenolic board for reusable smooth concrete formworks.',
+    specs: {
+      Thickness: '1/2"',
+      Coating: 'Black Phenolic Film'
+    },
+    images: ['🪵', '🏗️', '📐']
+  },
+  {
+    id: 9,
+    name: 'Phenolic Board 3/4"',
+    brand: 'JEM Lumber',
+    category: 'Lumber & Boards',
+    category_id: 'lumber',
+    base_price: 1395,
+    cost_price: 1200,
+    unit: 'sheet',
+    stock_quantity: 40,
+    rating: 4.9,
+    reviews_count: 76,
+    badge: 'High Rise Grade',
+    badgeClass: 'best-seller',
+    emoji: '🪵',
+    description: '3/4" Heavy-duty black film phenolic board engineered for multi-pour concrete casting.',
+    specs: {
+      Thickness: '3/4"',
+      Coating: 'Heavy Duty Phenolic Film'
+    },
+    images: ['🪵', '🏗️', '📐']
+  },
+
+  // Sheet 2: Welded Screen, Screens, Green Screen 3ft & 4ft
+  {
+    id: 10,
+    name: 'Welded Screen 1/2" × 4ft × 25M',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 140,
+    cost_price: 105,
+    unit: 'meter',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 54,
+    badge: 'Best Seller',
+    badgeClass: 'best-seller',
+    emoji: '🏠',
+    description: '1/2" mesh galvanized welded wire screen (4ft width) sold per meter or wholesale roll (₱4,285).',
+    specs: {
+      Mesh: '1/2" square',
+      Width: '4 feet',
+      Length: '25 meters / roll'
     },
     images: ['🏠', '🛠️', '✨']
   },
   {
-    id: 4,
-    name: 'PVC Sanitary Pipe Series 1000 4" × 3m',
-    brand: 'Emerald Pipes',
-    category: 'Plumbing Supplies',
-    category_id: 'plumbing',
-    base_price: 195,
-    unit: 'length',
-    stock_quantity: 145,
-    rating: 4.6,
-    reviews_count: 132,
-    badge: 'Sale 15% OFF',
-    badgeClass: 'sale',
-    emoji: '🔧',
-    description: 'High-impact unplasticized polyvinyl chloride (uPVC) sanitary drainage and vent pipe built to ISO and PNS specifications for residential plumbing.',
-    specs: {
-      Diameter: '4 inches (110 mm)',
-      Length: '3.0 meters',
-      Series: 'Series 1000 Heavy Duty',
-      JointType: 'Solvent Cement Socket',
-      Compliance: 'PNS 1957 / ISO 4435'
-    },
-    images: ['🔧', '🚿', '📏']
-  },
-  {
-    id: 5,
-    name: 'THHN Copper Electrical Wire 2.0mm² (150m)',
-    brand: 'Phelps Dodge',
-    category: 'Electrical Supplies',
-    category_id: 'electrical',
-    base_price: 2450,
-    unit: 'box',
-    stock_quantity: 42,
-    rating: 4.9,
-    reviews_count: 87,
-    badge: 'Best Seller',
-    badgeClass: 'best-seller',
-    emoji: '⚡',
-    description: '100% pure electrolytic soft annealed copper building wire with thermoplastic insulation and tough nylon jacket for high heat and oil resistance.',
-    specs: {
-      Gauge: '2.0mm² (#14 AWG)',
-      Length: '150 meters per box',
-      VoltageRating: '600 Volts / 90°C',
-      Certification: 'BPS Certified / UL Listed',
-      Conductor: '99.99% Pure Copper'
-    },
-    images: ['⚡', '💡', '🔌']
-  },
-  {
-    id: 6,
-    name: 'Boysen Permacoat Latex Paint White 4L',
-    brand: 'Boysen Paints',
-    category: 'Paint & Accessories',
-    category_id: 'paint',
-    base_price: 740,
-    unit: 'gallon',
-    stock_quantity: 65,
-    rating: 4.8,
-    reviews_count: 215,
-    badge: 'JEM Choice',
-    badgeClass: 'jem-choice',
-    emoji: '🎨',
-    description: '100% acrylic latex paint with excellent hiding power, dirt pick-up resistance, and mold prevention for interior and exterior concrete and masonry walls.',
-    specs: {
-      Volume: '4 Liters (1 Gallon)',
-      Finish: 'Semi-Gloss / Flat White',
-      Coverage: '25-30 sq.m per coat',
-      DryingTime: 'Touch: 30 min | Recoat: 2 hrs',
-      Cleanup: 'Clean Water'
-    },
-    images: ['🎨', '🖌️', '✨']
-  },
-  {
-    id: 7,
-    name: 'Deformed Steel Rebar 12mm × 6m Grade 40',
-    brand: 'SteelAsia',
-    category: 'Roofing & Steel',
-    category_id: 'roofing',
-    base_price: 285,
-    unit: 'length',
-    stock_quantity: 210,
-    rating: 4.9,
-    reviews_count: 310,
-    badge: 'Best Seller',
-    badgeClass: 'best-seller',
-    emoji: '🏗️',
-    description: 'Micro-alloyed high-tensile hot rolled deformed steel reinforcing bars for concrete structures, seismic-resistant foundation footings, and columns.',
-    specs: {
-      Diameter: '12 mm',
-      Length: '6.0 meters',
-      Grade: 'Grade 40 (275 MPa)',
-      Standard: 'PNS 49:2002',
-      Weight: '5.33 kg / piece'
-    },
-    images: ['🏗️', '🔩', '📐']
-  },
-  {
-    id: 8,
-    name: 'Bosch Angle Grinder 4" 750W (GWS 750)',
-    brand: 'Bosch Professional',
-    category: 'Tools & Equipment',
-    category_id: 'tools',
-    base_price: 2890,
-    unit: 'unit',
-    stock_quantity: 18,
-    rating: 4.9,
-    reviews_count: 94,
-    badge: 'JEM Choice',
-    badgeClass: 'jem-choice',
-    emoji: '⚙️',
-    description: 'Professional high-torque 750W 4-inch angle grinder with compact ergonomic grip, burst-proof guard, and dust protection motor ventilation.',
-    specs: {
-      PowerInput: '750 Watts',
-      DiscDiameter: '100 mm (4")',
-      NoLoadSpeed: '11,000 RPM',
-      SpindleThread: 'M10',
-      Warranty: '1 Year Bosch Warranty'
-    },
-    images: ['⚙️', '🧰', '⚡']
-  },
-  {
-    id: 9,
-    name: 'HardieFlex Fiber Cement Board 4.5mm (4x8ft)',
-    brand: 'James Hardie',
-    category: 'Cement & Masonry',
-    category_id: 'cement',
-    base_price: 495,
-    unit: 'sheet',
-    stock_quantity: 90,
-    rating: 4.8,
-    reviews_count: 142,
-    badge: 'Sale 10% OFF',
-    badgeClass: 'sale',
-    emoji: '📋',
-    description: 'Durable, moisture-resistant, and fire-retardant fiber cement board engineered for interior ceilings, eaves, and dry wall partitions.',
-    specs: {
-      Thickness: '4.5 mm',
-      Dimensions: '4 ft × 8 ft (1220 × 2440mm)',
-      FireRating: 'Class 0 Fire Rated',
-      PestResistance: '100% Termite Resistant',
-      Weight: '20.5 kg / sheet'
-    },
-    images: ['📋', '🏠', '🔨']
-  },
-  {
-    id: 10,
-    name: 'Common Wire Nails 4" (CWN) 1kg Pack',
-    brand: 'JEM Hardware',
-    category: 'Hardware & Fasteners',
-    category_id: 'hardware',
-    base_price: 85,
-    unit: 'kg',
-    stock_quantity: 260,
-    rating: 4.9,
-    reviews_count: 412,
-    badge: 'Best Seller',
-    badgeClass: 'best-seller',
-    emoji: '📌',
-    description: 'Bright carbon steel common wire nails with diamond points and checkered heads designed for heavy timber framing and scaffold construction.',
-    specs: {
-      Length: '4 inches (100 mm)',
-      HeadType: 'Checkered Flat Head',
-      Point: 'Diamond Bevel Point',
-      PackWeight: '1.0 kg approx. 65 pcs',
-      Material: 'High-Tensile Wire'
-    },
-    images: ['📌', '🔨', '📦']
-  },
-  {
     id: 11,
-    name: 'Industrial Safety Helmet & High-Vis Vest Set',
-    brand: 'SafetyPro',
-    category: 'Safety Equipment',
-    category_id: 'safety',
-    base_price: 360,
-    unit: 'set',
-    stock_quantity: 75,
-    rating: 4.8,
-    reviews_count: 88,
-    badge: 'JEM Choice',
+    name: 'Aluminum Screen 3ft',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 180,
+    cost_price: 135,
+    unit: 'meter',
+    stock_quantity: 80,
+    rating: 4.9,
+    reviews_count: 82,
+    badge: 'Rust Proof',
     badgeClass: 'jem-choice',
-    emoji: '🦺',
-    description: 'OSHA/DOLE compliant hard hat with 4-point ratchet suspension combined with heavy-duty breathable reflective safety vest.',
+    emoji: '🏠',
+    description: '3-foot width rust-proof aluminum insect screen wire mesh for residential windows and screen doors.',
     specs: {
-      HelmetMaterial: 'High-Density Polyethylene (HDPE)',
-      VestClass: 'Class 2 High-Visibility',
-      Color: 'Safety Yellow / Orange',
-      Certification: 'ANSI Z89.1 / EN 397',
-      Size: 'Adjustable universal fit'
+      Material: 'Aluminum Wire',
+      Width: '3 feet'
     },
-    images: ['🦺', '👷', '🛡️']
+    images: ['🏠', '🛠️', '✨']
   },
   {
     id: 12,
-    name: 'Makita Cordless Driver Drill 12V Max CXT',
-    brand: 'Makita',
-    category: 'Tools & Equipment',
-    category_id: 'tools',
-    base_price: 4350,
-    unit: 'set',
-    stock_quantity: 12,
-    rating: 4.9,
-    reviews_count: 67,
-    badge: 'JEM Choice',
+    name: 'Mosquito Screen 3ft',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 75,
+    cost_price: 45,
+    unit: 'meter',
+    stock_quantity: 150,
+    rating: 4.7,
+    reviews_count: 95,
+    badge: 'Value',
     badgeClass: 'jem-choice',
-    emoji: '🛠️',
-    description: 'Ultra-compact cordless driver drill with 2-speed gearbox, 20 clutch torque settings, built-in LED worklight, and 2x 1.5Ah batteries with charger.',
+    emoji: '🏠',
+    description: '3-foot nylon mosquito mesh for affordable, durable insect and pest protection on windows.',
     specs: {
-      Voltage: '12V Max Lithium-Ion',
-      MaxTorque: '30 N·m (270 in.lbs)',
-      ChuckCapacity: '0.8 - 10 mm (3/8")',
-      Included: '2x Batteries, Rapid Charger, Hard Case',
-      Warranty: '1 Year Makita Warranty'
+      Material: 'Nylon Mesh',
+      Width: '3 feet'
     },
-    images: ['🛠️', '🔋', '💼']
+    images: ['🏠', '🛠️', '✨']
+  },
+  {
+    id: 13,
+    name: 'Green Screen 1/2" (3ft × 30M)',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 155,
+    cost_price: 110,
+    unit: 'meter',
+    stock_quantity: 90,
+    rating: 4.8,
+    reviews_count: 40,
+    badge: 'Garden & Farm',
+    badgeClass: 'jem-choice',
+    emoji: '🏠',
+    description: '3-foot wide 1/2" medium mesh green plastic net for agricultural and construction perimeter netting.',
+    specs: {
+      Mesh: '1/2"',
+      Width: '3 feet'
+    },
+    images: ['🏠', '🛠️', '✨']
+  },
+  {
+    id: 14,
+    name: 'Green Screen 90M Single 4ft Net',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 60,
+    cost_price: 40,
+    unit: 'meter',
+    stock_quantity: 150,
+    rating: 4.7,
+    reviews_count: 88,
+    badge: 'Top Shading',
+    badgeClass: 'best-seller',
+    emoji: '🏠',
+    description: '4-foot single ply agricultural shade net / safety net for construction perimeter and sun shading.',
+    specs: {
+      Width: '4 feet',
+      Type: 'Single 90M Net'
+    },
+    images: ['🏠', '🛠️', '✨']
+  },
+
+  // Sheet 3: PE Pipes & Fittings, PVC Blue Fittings, GI Nipples
+  {
+    id: 15,
+    name: 'PE Pipe 1/2"',
+    brand: 'Generic',
+    category: 'Pipes',
+    category_id: 'pipes',
+    base_price: 45,
+    cost_price: 32,
+    unit: 'meter',
+    stock_quantity: 200,
+    rating: 4.8,
+    reviews_count: 110,
+    badge: 'Potable Water',
+    badgeClass: 'best-seller',
+    emoji: '🚿',
+    description: '1/2" High-density polyethylene flexible pipe for outdoor potable water lines and irrigation.',
+    specs: {
+      Diameter: '1/2" (20mm OD)',
+      Material: 'HDPE Polyethylene'
+    },
+    images: ['🚿', '🔧', '🛠️']
+  },
+  {
+    id: 16,
+    name: 'PE Pipe 3/4"',
+    brand: 'Generic',
+    category: 'Pipes',
+    category_id: 'pipes',
+    base_price: 65,
+    cost_price: 48,
+    unit: 'meter',
+    stock_quantity: 200,
+    rating: 4.8,
+    reviews_count: 95,
+    badge: 'Heavy Flow',
+    badgeClass: 'jem-choice',
+    emoji: '🚿',
+    description: '3/4" Heavy-duty PE pipe for main water distribution lines and deep well water delivery.',
+    specs: {
+      Diameter: '3/4" (25mm OD)',
+      Material: 'HDPE Polyethylene'
+    },
+    images: ['🚿', '🔧', '🛠️']
+  },
+  {
+    id: 17,
+    name: 'Blue Elbow Plain 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 15,
+    cost_price: 10,
+    unit: 'piece',
+    stock_quantity: 150,
+    rating: 4.8,
+    reviews_count: 130,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    emoji: '🔧',
+    description: '1/2" PVC blue plain 90-degree socket elbow for potable pressure water piping.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Slip / Solvent Weld'
+    },
+    images: ['🔧', '🚿', '📦']
+  },
+  {
+    id: 18,
+    name: 'Blue Elbow Threaded 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 20,
+    cost_price: 14,
+    unit: 'piece',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 90,
+    badge: 'Threaded',
+    badgeClass: 'jem-choice',
+    emoji: '🔧',
+    description: '1/2" PVC blue 90-degree threaded elbow for standard bibcock and shower connections.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Female Threaded'
+    },
+    images: ['🔧', '🚿', '📦']
+  },
+  {
+    id: 19,
+    name: 'GI Nipple 1/2" × 2" S-20',
+    brand: 'Generic',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 18,
+    cost_price: 12,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 75,
+    badge: 'Schedule 20',
+    badgeClass: 'jem-choice',
+    emoji: '🔩',
+    description: 'Galvanized iron pipe nipple 1/2" diameter by 2" length Schedule 20 with threaded ends.',
+    specs: {
+      Size: '1/2" × 2"',
+      Schedule: 'S-20 Galvanized'
+    },
+    images: ['🔩', '🔧', '📦']
+  },
+  {
+    id: 20,
+    name: 'GI Nipple 1/2" × 4" S-40',
+    brand: 'Generic',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 34,
+    cost_price: 23,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 65,
+    badge: 'Schedule 40',
+    badgeClass: 'jem-choice',
+    emoji: '🔩',
+    description: 'Heavy-gauge galvanized iron nipple 1/2" x 4" Schedule 40 for high pressure water lines.',
+    specs: {
+      Size: '1/2" × 4"',
+      Schedule: 'S-40 Heavy'
+    },
+    images: ['🔩', '🔧', '📦']
+  },
+
+  // Sheet 4: Hose Clamps, Poly Rope, Cup Hooks
+  {
+    id: 21,
+    name: 'Hose Clamp 1/2"',
+    brand: 'Generic',
+    category: 'Hardware & Fasteners',
+    category_id: 'hardware',
+    base_price: 15,
+    cost_price: 9,
+    unit: 'piece',
+    stock_quantity: 150,
+    rating: 4.8,
+    reviews_count: 140,
+    badge: 'Stainless',
+    badgeClass: 'best-seller',
+    emoji: '🔩',
+    description: 'Stainless steel adjustable worm-drive hose clamp 1/2" for garden and compressor hoses.',
+    specs: {
+      Range: '1/2"',
+      Material: 'Stainless Steel Band'
+    },
+    images: ['🔩', '🔧', '📦']
+  },
+  {
+    id: 22,
+    name: 'Poly Rope 6mm',
+    brand: 'Generic',
+    category: 'Ropes & Accessories',
+    category_id: 'accessories',
+    base_price: 14,
+    cost_price: 9,
+    unit: 'meter',
+    stock_quantity: 250,
+    rating: 4.8,
+    reviews_count: 145,
+    badge: 'Tali',
+    badgeClass: 'best-seller',
+    emoji: '🪢',
+    description: '6mm Polypropylene multi-purpose rope sold per meter or whole roll (₱750).',
+    specs: {
+      Diameter: '6mm',
+      Material: 'Virgin Polypropylene'
+    },
+    images: ['🪢', '📦', '✨']
+  },
+  {
+    id: 23,
+    name: 'Cup Hook 3/4"',
+    brand: 'Generic',
+    category: 'Hardware & Fasteners',
+    category_id: 'hardware',
+    base_price: 3,
+    cost_price: 1.5,
+    unit: 'piece',
+    stock_quantity: 300,
+    rating: 4.8,
+    reviews_count: 210,
+    badge: 'Brass Plated',
+    badgeClass: 'jem-choice',
+    emoji: '🔩',
+    description: '3/4" Brass-plated screw-in cup hook for ceiling hanging and kitchen organizers.',
+    specs: {
+      Size: '3/4"',
+      Finish: 'Brass Plated'
+    },
+    images: ['🔩', '📦', '✨']
+  },
+
+  // Sheet 5: PVC Sanitary, Tile Trim, Trapal
+  {
+    id: 24,
+    name: 'PVC Sanitary P-Trap 2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 65,
+    cost_price: 45,
+    unit: 'piece',
+    stock_quantity: 80,
+    rating: 4.9,
+    reviews_count: 80,
+    badge: 'Anti-Odor',
+    badgeClass: 'best-seller',
+    emoji: '🔧',
+    description: '2" PVC sanitary P-Trap with cleanout plug to prevent sewer gas backflow in floor drains and sinks.',
+    specs: {
+      Diameter: '2"',
+      Includes: 'Removable Cleanout Plug'
+    },
+    images: ['🔧', '🚿', '📦']
+  },
+  {
+    id: 25,
+    name: 'Tile Trim Aluminum 8ft',
+    brand: 'Generic',
+    category: 'Tile Trims & Finishes',
+    category_id: 'finishing',
+    base_price: 175,
+    cost_price: 120,
+    unit: 'length',
+    stock_quantity: 80,
+    rating: 4.9,
+    reviews_count: 92,
+    badge: 'Premium Edge',
+    badgeClass: 'best-seller',
+    emoji: '🎨',
+    description: '8-foot Premium extruded aluminum tile edge trim for protective and elegant ceramic wall & floor corners.',
+    specs: {
+      Length: '8 feet (2.44m)',
+      Material: 'Anodized Aluminum'
+    },
+    images: ['🎨', '✨', '📦']
+  },
+  {
+    id: 26,
+    name: 'Trapal Baga Heavy Duty',
+    brand: 'Generic',
+    category: 'Tarpaulins & Covers',
+    category_id: 'tarpaulin',
+    base_price: 85,
+    cost_price: 58,
+    unit: 'meter',
+    stock_quantity: 150,
+    rating: 4.9,
+    reviews_count: 160,
+    badge: 'Heavy Duty',
+    badgeClass: 'best-seller',
+    emoji: '⛺',
+    description: 'Trapal baga thick heavy-duty waterproof laminated tarpaulin sheet for truck hauling, roofs, and temporary shelter.',
+    specs: {
+      Type: 'Heavy-Duty Laminated Trapal',
+      Protection: '100% Waterproof UV Shield'
+    },
+    images: ['⛺', '🌧️', '📦']
   }
 ]
 
 const CATEGORIES_DATA = [
-  { id: 'all', name: 'All Products', icon: '🏪', count: 12 },
-  { id: 'cement', name: 'Cement & Masonry', icon: '🧱', count: 48 },
-  { id: 'lumber', name: 'Lumber & Wood', icon: '🪵', count: 32 },
-  { id: 'roofing', name: 'Roofing & Steel', icon: '🏠', count: 26 },
-  { id: 'tools', name: 'Tools & Equipment', icon: '⚙️', count: 64 },
-  { id: 'electrical', name: 'Electrical Supplies', icon: '⚡', count: 52 },
-  { id: 'plumbing', name: 'Plumbing Supplies', icon: '🔧', count: 38 },
-  { id: 'paint', name: 'Paint & Accessories', icon: '🎨', count: 40 },
-  { id: 'hardware', name: 'Hardware & Fasteners', icon: '📌', count: 85 },
-  { id: 'safety', name: 'Safety Equipment', icon: '🦺', count: 19 }
+  { id: 'all', name: 'All Products', icon: '🏪', count: 50 },
+  { id: 'lumber', name: 'Lumber & Boards', icon: '🪵', count: 13 },
+  { id: 'screens', name: 'Screens & Netting', icon: '🏠', count: 11 },
+  { id: 'pipes', name: 'Pipes', icon: '🚿', count: 2 },
+  { id: 'plumbing', name: 'Plumbing & Fittings', icon: '🔧', count: 19 },
+  { id: 'hardware', name: 'Hardware & Fasteners', icon: '🔩', count: 15 },
+  { id: 'accessories', name: 'Ropes & Accessories', icon: '🪢', count: 9 },
+  { id: 'finishing', name: 'Tile Trims & Finishes', icon: '🎨', count: 4 },
+  { id: 'tarpaulin', name: 'Tarpaulins & Covers', icon: '⛺', count: 2 }
 ]
 
 const PROMO_BANNERS = [
@@ -415,7 +714,7 @@ export default function CustomerApp() {
   const [onboardingIndex, setOnboardingIndex] = useState(0)
 
   // Catalog, Search & Filter State
-  const [products] = useState(HARDWARE_CATALOG)
+  const [products, setProducts] = useState(HARDWARE_CATALOG)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState('grid')
@@ -428,6 +727,45 @@ export default function CustomerApp() {
 
   // Product Details Screen State
   const [selectedProduct, setSelectedProduct] = useState(HARDWARE_CATALOG[0])
+
+  useEffect(() => {
+    let isMounted = true
+    getProducts({ per_page: 100 })
+      .then(res => {
+        if (!isMounted) return
+        const list = Array.isArray(res) ? res : (res?.data?.data || res?.data || [])
+        if (list.length > 0) {
+          const mapped = list.map(p => ({
+            id: p.id,
+            name: p.name,
+            brand: p.brand?.name || 'JEM Lumber',
+            category: p.category?.name || 'Lumber & Boards',
+            category_id: p.category?.name ? p.category.name.toLowerCase().split(' ')[0] : 'lumber',
+            base_price: Number(p.selling_price || p.base_price || 0),
+            unit: p.unit || 'piece',
+            stock_quantity: p.stock_quantity ?? 50,
+            rating: 4.8,
+            reviews_count: 40 + (p.id * 2),
+            badge: p.stock_quantity < 20 ? 'Low Stock' : (p.id <= 4 ? 'Best Seller' : 'In Stock'),
+            badgeClass: p.stock_quantity < 20 ? 'low-stock' : 'best-seller',
+            emoji: p.category?.name?.toLowerCase().includes('lumber') ? '🪵' : (p.category?.name?.toLowerCase().includes('screen') || p.category?.name?.toLowerCase().includes('roof') ? '🏠' : (p.category?.name?.toLowerCase().includes('pipe') ? '🚿' : (p.category?.name?.toLowerCase().includes('plumb') ? '🔧' : (p.category?.name?.toLowerCase().includes('tarpaulin') ? '⛺' : (p.category?.name?.toLowerCase().includes('paint') ? '🎨' : '🔩'))))),
+            description: p.description || 'Quality hardware supply manufactured strictly to Philippine National Standards.',
+            specs: {
+              Unit: p.unit || 'piece',
+              Size: p.variants?.[0]?.size || 'Standard',
+              Status: p.status || 'Active'
+            },
+            images: ['📦', '✨', '🏷️']
+          }))
+          setProducts(mapped)
+          if (mapped.length > 0) {
+            setSelectedProduct(mapped[0])
+          }
+        }
+      })
+      .catch(() => {})
+    return () => { isMounted = false }
+  }, [])
   const [detailQuantity, setDetailQuantity] = useState(1)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
 
@@ -625,7 +963,9 @@ export default function CustomerApp() {
   // Filtered Products for Catalog & Search
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory || p.category.toLowerCase().includes(selectedCategory.toLowerCase())
+      const matchCat = selectedCategory === 'all' || 
+        p.category_id === selectedCategory || 
+        (p.category || '').toLowerCase().trim() === selectedCategory.toLowerCase().trim()
       const q = searchQuery.toLowerCase().trim()
       const matchQuery = !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
       const matchBrand = selectedBrands.length === 0 || selectedBrands.includes(p.brand)
@@ -790,6 +1130,7 @@ export default function CustomerApp() {
         </div>
 
         <div className="prototype-actions">
+          <ThemeToggle variant="pill" />
           <button
             className={`prototype-toggle-frame ${deviceFrameMode ? 'active' : ''}`}
             onClick={() => setDeviceFrameMode(!deviceFrameMode)}
@@ -954,25 +1295,42 @@ export default function CustomerApp() {
             <div className="auth-container">
               <div>
                 <div className="auth-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                    <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#f97316', color: '#fff', fontWeight: '900', fontSize: '11px', display: 'grid', placeItems: 'center' }}>
-                      JEM
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ position: 'relative', width: '32px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="32" height="36" viewBox="0 0 100 112" style={{ position: 'absolute', top: 0, left: 0 }}>
+                        <path
+                          d="M50 10 L88 32 L88 80 L50 102 L12 80 L12 32 Z"
+                          fill="#f97316"
+                          stroke="#f97316"
+                          strokeWidth="10"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span style={{ position: 'relative', color: '#fff', fontWeight: '900', fontSize: '11px', letterSpacing: '0.4px', textAlign: 'center' }}>
+                        JEM
+                      </span>
                     </div>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#fff' }}>JEM Hardware</div>
-                      <div style={{ fontSize: '10px', fontWeight: '700', color: '#f97316' }}>&amp; Construction Supply</div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', letterSpacing: '-0.2px' }}>JEM Hardware</div>
+                      <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#f97316', marginTop: '1px' }}>&amp; Construction Supply</div>
                     </div>
                   </div>
-                  <h2 className="auth-title">
+                  <h2 className="auth-title" style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.3px', marginBottom: authMode === 'register' ? '24px' : '6px' }}>
                     {authMode === 'login' && 'Welcome back! 👋'}
-                    {authMode === 'register' && 'Create Account 🚀'}
+                    {authMode === 'register' && 'Create An Account'}
                     {authMode === 'forgot' && 'Reset Your Password'}
                   </h2>
-                  <p className="auth-subtitle">
-                    {authMode === 'login' && 'Sign in to continue shopping'}
-                    {authMode === 'register' && 'Join JEM Hardware for exclusive contractor deals'}
-                    {authMode === 'forgot' && 'Enter your registered mobile or email to receive a secure OTP code.'}
-                  </p>
+                  {authMode === 'login' && (
+                    <p className="auth-subtitle" style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+                      Sign in to continue shopping
+                    </p>
+                  )}
+                  {authMode === 'forgot' && (
+                    <p className="auth-subtitle" style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>
+                      Enter your registered mobile or email to receive a secure OTP code.
+                    </p>
+                  )}
                 </div>
 
 
@@ -2609,6 +2967,13 @@ export default function CustomerApp() {
 
               {/* Account Options Menu */}
               <div className="profile-menu-card">
+                <div className="profile-menu-item" style={{ cursor: 'default', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="profile-menu-left">
+                    <Sparkles size={18} color="#f97316" />
+                    <span>Theme Appearance</span>
+                  </div>
+                  <ThemeToggle variant="pill" />
+                </div>
                 {[
                   { icon: <ClipboardList size={18} color="#f97316" />, label: 'My Order History', action: () => navigateTo('orders', 'orders') },
                   { icon: <Heart size={18} color="#ef4444" />, label: 'Saved Wishlist Items', action: () => navigateTo('wishlist') },

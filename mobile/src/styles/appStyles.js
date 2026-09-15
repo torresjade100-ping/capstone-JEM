@@ -37,10 +37,55 @@ export const COLORS = {
   dangerBorder: '#fecaca',
 };
 
+export const DARK_COLORS = {
+  primary: '#f97316',
+  primaryDark: '#ea580c',
+  primaryLight: 'rgba(249, 115, 22, 0.15)',
+  primaryBorder: 'rgba(249, 115, 22, 0.35)',
+  
+  navyDark: '#0B0D11',
+  navy: '#151922',
+  navyCard: '#1B202B',
+  navyMuted: '#2C3442',
+
+  bgPage: '#0F1115',
+  surface: '#1B202B',
+  surfaceSubtle: '#222936',
+  
+  textMain: '#F5F7FA',
+  textBody: '#A7AFBF',
+  textMuted: '#737C8C',
+  textLight: '#5A6372',
+  
+  border: '#303746',
+  borderLight: '#252C39',
+  
+  success: '#22C55E',
+  successBg: 'rgba(34, 197, 94, 0.15)',
+  successBorder: 'rgba(34, 197, 94, 0.3)',
+  
+  warning: '#F59E0B',
+  warningBg: 'rgba(245, 158, 11, 0.15)',
+  
+  danger: '#EF4444',
+  dangerBg: 'rgba(239, 68, 68, 0.15)',
+  dangerBorder: 'rgba(239, 68, 68, 0.3)',
+};
+
+export const getThemeColors = (isDark) => isDark ? DARK_COLORS : COLORS;
+
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: '100%',
+    maxHeight: '100%',
+    overflow: 'hidden',
     backgroundColor: COLORS.bgPage,
+  },
+  mainTabContent: {
+    flex: 1,
+    height: '100%',
+    overflow: 'hidden',
   },
   mainScroll: {
     flex: 1,

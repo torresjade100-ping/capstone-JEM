@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { getStoredUser, logout, getSharedOrders } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
+import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -53,6 +54,7 @@ export default function StaffDashboard() {
     if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
     if (cleanPath.startsWith('/pos')) return 'pos'
     if (cleanPath.startsWith('/orders')) return 'orders'
+    if (cleanPath.startsWith('/backorders')) return 'backorders'
     if (cleanPath.startsWith('/stock-requests') || cleanPath.startsWith('/stock-request') || cleanPath.startsWith('/restock')) return 'restock'
     if (cleanPath.startsWith('/feedback')) return 'feedback'
     return 'dashboard'
@@ -116,7 +118,11 @@ export default function StaffDashboard() {
     }
 
     if (activePage === 'orders') {
-      return <OrdersManagement role="staff" />
+      return <OrdersManagement role="staff" defaultTab="orders" />
+    }
+
+    if (activePage === 'backorders') {
+      return <OrdersManagement role="staff" defaultTab="backorders" />
     }
 
     if (activePage === 'restock') {
@@ -155,9 +161,9 @@ export default function StaffDashboard() {
 
           <div className="jem-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '18px' }}>
             {stats.map((stat) => (
-              <div key={stat.label} className="jem-stat-card" style={{ background: 'white', borderRadius: '16px', padding: '18px 16px', border: '1px solid rgba(23,41,58,0.08)', boxShadow: '0 8px 18px rgba(23,41,58,0.02)' }}>
-                <div style={{ color: '#64737b', fontSize: '0.73rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{stat.label}</div>
-                <div style={{ marginTop: '10px', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.06em', color: '#17293a' }}>
+              <div key={stat.label} className="jem-stat-card" style={{ background: 'var(--bg-surface)', borderRadius: '16px', padding: '18px 16px', border: '1px solid var(--border-color)', boxShadow: '0 8px 18px var(--shadow-sm)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.73rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{stat.label}</div>
+                <div style={{ marginTop: '10px', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.06em', color: 'var(--text-primary)' }}>
                   {stat.format === 'currency'
                     ? `₱${Number(stat.value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                     : stat.value}
@@ -167,11 +173,11 @@ export default function StaffDashboard() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 0.8fr)', gap: '18px', marginBottom: '18px' }}>
-            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid rgba(23,41,58,0.08)', padding: '18px 18px 14px' }}>
+            <div className="jem-chart-card" style={{ background: 'var(--bg-surface)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 8px 18px var(--shadow-sm)', padding: '18px 18px 14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
                 <div>
                   <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Sales activity</div>
-                  <div style={{ marginTop: '6px', fontSize: '1.35rem', fontWeight: 800, color: '#17293a' }}>This week</div>
+                  <div style={{ marginTop: '6px', fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>This week</div>
                 </div>
               </div>
 
@@ -183,29 +189,29 @@ export default function StaffDashboard() {
                         width: '100%',
                         maxWidth: '26px',
                         height: d.value ? `${Math.max((d.value / maxSales) * 100, 10)}%` : '4px',
-                        background: d.value ? '#f97316' : '#e2e8f0',
+                        background: d.value ? '#f97316' : 'var(--border-color)',
                         borderRadius: '10px 10px 4px 4px'
                       }} />
                     </div>
-                    <span style={{ fontSize: '0.68rem', color: '#64737b' }}>{d.label}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{d.label}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div style={{ background: 'white', borderRadius: '16px', border: '1px solid rgba(23,41,58,0.08)', padding: '18px' }}>
+            <div className="jem-orders-stream-card" style={{ background: 'var(--bg-surface)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 8px 18px var(--shadow-sm)', padding: '18px' }}>
               <div style={{ color: '#f97316', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Orders Stream</div>
               <div style={{ marginTop: '14px', display: 'grid', gap: '8px' }}>
                 {safeOrders.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '13px' }}>
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
                     No incoming orders currently.
                   </div>
                 ) : (
                   safeOrders.slice(0, 3).map((ord) => (
-                    <div key={ord.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
+                    <div key={ord.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-hover)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '10px 12px' }}>
                       <div>
-                        <div style={{ fontWeight: 700, color: '#17293a', fontSize: '0.85rem' }}>{ord.order_number || `#${ord.id}`}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#64737b' }}>{ord.customer_name || 'Customer'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{ord.order_number || `#${ord.id}`}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{ord.customer_name || 'Customer'}</div>
                       </div>
                       <span style={{ color: '#f97316', fontWeight: 800, fontSize: '0.9rem' }}>
                         ₱{Number(ord.total || 0).toLocaleString()}
@@ -264,8 +270,9 @@ export default function StaffDashboard() {
           max-height: 100vh;
           overflow: hidden;
           display: flex;
-          background: #f5f4f1;
-          color: #17293a;
+          background: var(--bg-main);
+          color: var(--text-primary);
+          transition: background-color 0.2s ease, color 0.2s ease;
         }
 
         .jem-staff-sidebar {
@@ -279,7 +286,7 @@ export default function StaffDashboard() {
           align-self: flex-start;
           z-index: 20;
           box-sizing: border-box;
-          background: #17293a;
+          background: var(--navy, #17293a);
           color: #dfe7e4;
           padding: 22px 16px 18px;
           display: flex;
@@ -456,18 +463,19 @@ export default function StaffDashboard() {
           min-width: 0;
           height: 100vh;
           max-height: 100vh;
-          background: #f5f4f1;
+          background: var(--bg-main);
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          transition: background-color 0.2s ease;
         }
 
         .jem-header {
           flex-shrink: 0;
           height: 72px;
           min-height: 72px;
-          background: rgba(255,255,255,0.96);
-          border-bottom: 1px solid rgba(23,41,58,0.08);
+          background: var(--bg-surface);
+          border-bottom: 1px solid var(--border-color);
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -476,6 +484,7 @@ export default function StaffDashboard() {
           position: relative;
           z-index: 100;
           overflow: visible;
+          transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .jem-header-title {
@@ -492,12 +501,12 @@ export default function StaffDashboard() {
           font-size: 2rem;
           line-height: 1;
           letter-spacing: -0.06em;
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .jem-header-title p {
           margin: 0;
-          color: #64737b;
+          color: var(--text-secondary);
           font-size: 0.78rem;
         }
 
@@ -514,9 +523,9 @@ export default function StaffDashboard() {
           width: 38px;
           height: 38px;
           border-radius: 50%;
-          border: 1px solid rgba(23,41,58,0.08);
-          background: white;
-          color: #17293a;
+          border: 1px solid var(--border-color);
+          background: var(--bg-surface);
+          color: var(--text-primary);
           display: grid;
           place-items: center;
           position: relative;
@@ -537,7 +546,7 @@ export default function StaffDashboard() {
           width: 38px;
           height: 38px;
           border-radius: 50%;
-          background: #17293a;
+          background: #f97316;
           color: white;
           font-weight: 700;
           display: grid;
@@ -580,7 +589,7 @@ export default function StaffDashboard() {
           margin: 0;
           font-size: 1.7rem;
           letter-spacing: -0.06em;
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .jem-orders-list {
@@ -593,11 +602,13 @@ export default function StaffDashboard() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: white;
-          border: 1px solid rgba(23,41,58,0.08);
+          background: var(--bg-surface);
+          border: 1px solid var(--border-color);
           border-radius: 12px;
           padding: 16px 18px;
-          box-shadow: 0 6px 18px rgba(23,41,58,0.03);
+          box-shadow: 0 6px 18px var(--shadow-sm);
+          color: var(--text-primary);
+          transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .jem-order-row strong,
@@ -606,7 +617,7 @@ export default function StaffDashboard() {
         }
 
         .jem-order-row span {
-          color: #64737b;
+          color: var(--text-secondary);
           font-size: 0.72rem;
           margin-top: 4px;
         }
@@ -616,28 +627,106 @@ export default function StaffDashboard() {
         }
 
         .jem-empty-state {
-          min-height: 260px;
+          min-height: 180px;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           gap: 12px;
-          background: rgba(255,255,255,0.55);
-          color: #64737b;
-          border: 1px dashed rgba(23,41,58,0.12);
+          background: var(--bg-surface);
+          color: var(--text-muted);
+          border: 1px solid var(--border-color);
           border-radius: 16px;
+          box-shadow: 0 8px 18px var(--shadow-sm);
           text-align: center;
-          padding: 24px;
+          padding: 32px 24px;
+          transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .jem-empty-state.compact {
           min-height: 180px;
         }
 
+        .jem-empty-state svg {
+          color: var(--text-muted);
+        }
+
         .jem-empty-state p {
           margin: 0;
-          max-width: 320px;
+          max-width: 360px;
           line-height: 1.6;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+        }
+
+        [data-theme="dark"] .jem-staff-shell {
+          background: #020617;
+          color: #F8FAFC;
+        }
+        [data-theme="dark"] .jem-staff-sidebar {
+          background: #090e17;
+          border-right: 1px solid #1E293B;
+        }
+        [data-theme="dark"] .jem-brand-mark {
+          background: #f97316;
+          box-shadow: 0 0 16px rgba(249, 115, 22, 0.45);
+        }
+        [data-theme="dark"] .jem-badge {
+          background: rgba(249, 115, 22, 0.16);
+          border: 1px solid rgba(249, 115, 22, 0.35);
+          color: #ffb37c;
+        }
+        [data-theme="dark"] .jem-nav-item.active {
+          background: rgba(249, 115, 22, 0.18);
+          color: #ffb37c;
+          box-shadow: inset 3px 0 0 #f97316;
+        }
+        [data-theme="dark"] .jem-nav-item.active svg {
+          color: #f97316;
+        }
+        [data-theme="dark"] .jem-nav-indicator {
+          background: #f97316;
+        }
+        [data-theme="dark"] .jem-eyebrow {
+          color: #f97316;
+        }
+        [data-theme="dark"] .jem-main {
+          background: #020617;
+        }
+        [data-theme="dark"] .jem-header {
+          background: #0B1120;
+          border-bottom: 1px solid #1E293B;
+        }
+        [data-theme="dark"] .jem-header-title h1 {
+          color: #F8FAFC;
+        }
+        [data-theme="dark"] .jem-header-title p {
+          color: #94A3B8;
+        }
+        [data-theme="dark"] .jem-panel-header h2 {
+          color: #F8FAFC;
+        }
+        [data-theme="dark"] .jem-stat-card,
+        [data-theme="dark"] .jem-chart-card,
+        [data-theme="dark"] .jem-orders-stream-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45) !important;
+        }
+        [data-theme="dark"] .jem-stat-card > div:first-child {
+          color: #94A3B8 !important;
+        }
+        [data-theme="dark"] .jem-stat-card > div:last-child {
+          color: #F8FAFC !important;
+        }
+        [data-theme="dark"] .jem-empty-state {
+          background: #0F172A;
+          color: #94A3B8;
+          border: 1px solid #1E293B;
+        }
+        [data-theme="dark"] .jem-empty-state svg,
+        [data-theme="dark"] .jem-empty-state p {
+          color: #94A3B8;
         }
 
         @media (max-width: 900px) {
@@ -748,8 +837,9 @@ export default function StaffDashboard() {
 
 
             <div className="jem-header-tools">
+              <ThemeToggle />
               <NotificationDropdown role="staff" iconSize={16} />
-              <div className="jem-user-avatar" aria-label="Current user">{user?.name ? user.name.charAt(0).toUpperCase() : 'S'}</div>
+              <div className="jem-user-avatar" aria-label="Current user">{user?.name ? user.name.charAt(0).toUpperCase() : 'O'}</div>
             </div>
           </header>
 

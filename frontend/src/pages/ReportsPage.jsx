@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { FileText, Download, ShoppingBag, Clock, Tag, RefreshCw, Layers, CheckCircle2 } from 'lucide-react'
 import { API_BASE_URL, getSharedOrders } from '../api'
 import { exportReportToPDF, exportReportToCSV } from '../utils/exportReports'
+import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
 import '../styles/management.css'
 
 export default function ReportsPage() {
@@ -257,8 +258,8 @@ export default function ReportsPage() {
                       key={method}
                       style={{
                         padding: '10px 16px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
+                        background: 'var(--bg-hover)',
+                        border: '1px solid var(--border-color)',
                         borderRadius: '10px',
                         fontSize: '13.5px',
                         display: 'flex',
@@ -268,8 +269,8 @@ export default function ReportsPage() {
                     >
                       <span style={{ fontSize: '16px' }}>{method === 'cash' ? '💵' : method === 'gcash' ? '📱' : '💳'}</span>
                       <div>
-                        <strong style={{ textTransform: 'uppercase', color: '#0f172a' }}>{method}</strong>:{' '}
-                        <span style={{ color: '#475569' }}>{count} transactions</span>
+                        <strong style={{ textTransform: 'uppercase', color: 'var(--text-primary)' }}>{method}</strong>:{' '}
+                        <span style={{ color: 'var(--text-secondary)' }}>{count} transactions</span>
                         <strong style={{ color: '#ea580c', marginLeft: 4 }}>{total}</strong>
                       </div>
                     </div>
@@ -287,15 +288,15 @@ export default function ReportsPage() {
                 <thead>
                   <tr>
                     <th>Product Name</th>
-                    <th>Units Sold</th>
+                    <th>Quantity Sold</th>
                     <th>Total Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportData.top_products.map((product, idx) => (
                     <tr key={idx}>
-                      <td><strong>{product.name}</strong></td>
-                      <td>{product.quantity} units</td>
+                      <td><strong style={{ color: 'var(--text-primary)' }}>{product.name}</strong></td>
+                      <td>{formatQuantityWithUnit(product.quantity, product.unit)}</td>
                       <td style={{ fontWeight: 700, color: '#ea580c' }}>
                         ₱{Number(product.revenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
@@ -325,12 +326,12 @@ export default function ReportsPage() {
                 <tbody>
                   {reportData.itemized_sales.map((item, idx) => (
                     <tr key={idx}>
-                      <td style={{ color: '#64748b', fontSize: '12px' }}>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <Clock size={12} /> {item.time || '—'}
                         </span>
                       </td>
-                      <td><strong>{item.order_number}</strong></td>
+                      <td><strong style={{ color: 'var(--text-primary)' }}>{item.order_number}</strong></td>
                       <td>
                         <span style={{
                           display: 'inline-block',
@@ -345,10 +346,10 @@ export default function ReportsPage() {
                           {item.source}
                         </span>
                       </td>
-                      <td><strong>{item.product_name}</strong></td>
-                      <td>{item.quantity}</td>
+                      <td><strong style={{ color: 'var(--text-primary)' }}>{item.product_name}</strong></td>
+                      <td>{formatQuantityWithUnit(item.quantity, item.unit)}</td>
                       <td>₱{Number(item.unit_price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ fontWeight: 700, color: '#17293a' }}>
+                      <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                         ₱{Number(item.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -404,7 +405,7 @@ export default function ReportsPage() {
                                   color: '#1e293b'
                                 }}
                               >
-                                <span><strong>{it.quantity}x</strong> {it.name}</span>
+                                <span><strong>{formatQuantityWithUnit(it.quantity, it.unit)}</strong> × {it.name}</span>
                                 <span style={{ color: '#64748b', marginLeft: 8 }}>₱{Number(it.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                               </div>
                             ))}
@@ -493,8 +494,8 @@ export default function ReportsPage() {
                       <tr key={product.id || product.name}>
                         <td><strong>{product.name}</strong></td>
                         <td>{product.category || 'General'}</td>
-                        <td><strong>{qty}</strong></td>
-                        <td>₱{price.toFixed(2)}</td>
+                        <td><strong>{formatQuantityWithUnit(qty, product.unit)}</strong></td>
+                        <td>₱{price.toFixed(2)} / {getUnitBadgeText(product.unit, false)}</td>
                         <td>₱{val.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                         <td>
                           <span className={`badge ${isOut ? 'status-out' : isLow ? 'status-low' : 'status-in'}`}>

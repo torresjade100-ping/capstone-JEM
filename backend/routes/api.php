@@ -38,6 +38,10 @@ Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(
     Route::put('orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
     Route::get('inventory', [App\Http\Controllers\Api\Admin\InventoryController::class, 'index']);
     Route::get('inventory/low-stock', [App\Http\Controllers\Api\Admin\InventoryController::class, 'lowStock']);
+    Route::get('inventory/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
+    Route::post('inventory/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'store']);
+    Route::get('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
+    Route::post('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'store']);
     Route::get('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'index']);
     Route::get('stock-adjustments/product/{productId}', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'byProduct']);
     Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
@@ -83,20 +87,35 @@ Route::middleware(['auth:sanctum', 'active', 'role:customer'])->group(function (
     Route::get('orders/{id}', [App\Http\Controllers\Api\OrderController::class, 'show']);
 });
 
+// Customer endpoints - Profile & Addresses
+Route::post('customer/profile', [AuthController::class, 'updateProfile']);
+Route::get('customer/addresses', [App\Http\Controllers\Api\CustomerAddressController::class, 'index']);
+Route::post('customer/addresses', [App\Http\Controllers\Api\CustomerAddressController::class, 'store']);
+Route::put('customer/addresses/{id}', [App\Http\Controllers\Api\CustomerAddressController::class, 'update']);
+Route::delete('customer/addresses/{id}', [App\Http\Controllers\Api\CustomerAddressController::class, 'destroy']);
+Route::patch('customer/addresses/{id}/default', [App\Http\Controllers\Api\CustomerAddressController::class, 'setDefault']);
+
 // Mobile App Customer API routes (direct connectivity from mobile app)
 Route::post('mobile/orders', [App\Http\Controllers\Api\OrderController::class, 'storeMobileOrder']);
+Route::post('mobile/orders/{id}/cancel', [App\Http\Controllers\Api\OrderController::class, 'cancelMobileOrder']);
 Route::get('mobile/orders', [App\Http\Controllers\Api\Admin\OrderController::class, 'index']);
 Route::post('mobile/feedback', [App\Http\Controllers\Api\FeedbackController::class, 'storeMobileFeedback']);
+Route::get('mobile/notifications', [App\Http\Controllers\Api\NotificationController::class, 'index']);
+Route::post('mobile/notifications/read-all', [App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+Route::post('mobile/notifications/{id}/read', [App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+
 
 
 
 // Staff/Admin routes for orders, backorders, batch processing, delivery
 Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('admin')->group(function () {
+    Route::get('backorders-demand', [App\Http\Controllers\Api\Admin\BackorderController::class, 'productDemandSummary']);
     Route::get('backorders', [App\Http\Controllers\Api\Admin\BackorderController::class, 'index']);
     Route::get('backorders/{id}', [App\Http\Controllers\Api\Admin\BackorderController::class, 'show']);
     Route::post('backorders', [App\Http\Controllers\Api\Admin\BackorderController::class, 'createFromOrder']);
     Route::put('backorders/{id}', [App\Http\Controllers\Api\Admin\BackorderController::class, 'update']);
     Route::post('backorders/{id}/fulfill', [App\Http\Controllers\Api\Admin\BackorderController::class, 'fulfillPartial']);
+    Route::post('backorders/{id}/cancel', [App\Http\Controllers\Api\Admin\BackorderController::class, 'cancel']);
 
     Route::post('orders/batch/status', [App\Http\Controllers\Api\Admin\OrderBatchController::class, 'bulkUpdateStatus']);
     Route::post('orders/batch/manifest', [App\Http\Controllers\Api\Admin\OrderBatchController::class, 'generateManifest']);

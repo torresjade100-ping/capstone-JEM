@@ -19,6 +19,8 @@ class ProductUpdateRequest extends FormRequest
             'name' => ['sometimes','string','max:255'],
             'description' => ['nullable','string'],
             'base_price' => ['sometimes','numeric','min:0'],
+            'cost_price' => ['sometimes','numeric','min:0'],
+            'selling_price' => ['sometimes','numeric','min:0'],
             'unit' => ['nullable','string','max:50'],
             'stock_quantity' => ['sometimes','integer','min:0'],
             'low_stock_threshold' => ['sometimes','integer','min:0'],

@@ -87,7 +87,7 @@ export default function FeedbackModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never">
             {/* 1. Star Rating Selector */}
             <View style={{ alignItems: 'center', marginVertical: 14 }}>
               <Text style={{ fontSize: 13.5, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 }}>

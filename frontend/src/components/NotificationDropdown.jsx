@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Bell,
   BellOff,
@@ -13,7 +14,9 @@ import {
   MessageSquare,
   Sparkles,
   Info,
-  Plus
+  Plus,
+  Users,
+  ArrowRight,
 } from 'lucide-react'
 import {
   getNotifications,
@@ -21,7 +24,7 @@ import {
   markAllNotificationsRead,
   clearAllNotifications,
   createNotification,
-  getStoredUser
+  getStoredUser,
 } from '../api'
 import '../styles/notifications.css'
 
@@ -38,25 +41,161 @@ function formatRelativeTime(dateString) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function getNotificationIcon(type) {
-  switch (type) {
-    case 'stock_alert':
-      return <AlertTriangle size={17} />
-    case 'order':
-      return <ShoppingCart size={17} />
-    case 'stock_request_confirmed':
-      return <CheckCircle2 size={17} style={{ color: '#16a34a' }} />
-    case 'stock_request':
-    case 'stock_request_update':
-    case 'restock':
-      return <ClipboardList size={17} />
-    case 'payment':
-      return <CreditCard size={17} />
-    case 'feedback':
-      return <MessageSquare size={17} />
-    default:
-      return <Info size={17} />
+/**
+ * Maps any notification to its corresponding destination URL
+ */
+export function getNotificationDestination(notification, role = 'admin') {
+  if (!notification) return '/dashboard'
+
+  const type = String(notification.type || '').toLowerCase()
+  const title = String(notification.title || '').toLowerCase()
+  const message = String(notification.message || '').toLowerCase()
+  const data = notification.data || {}
+
+  // 1. Feedback notification -> Feedback page
+  if (
+    type.includes('feedback') ||
+    type.includes('review') ||
+    type.includes('rating') ||
+    title.includes('feedback') ||
+    title.includes('review') ||
+    title.includes('star') ||
+    message.includes('feedback') ||
+    message.includes('review') ||
+    data.feedback_id
+  ) {
+    return '/feedback'
   }
+
+  // 2. Order / POS / Delivery notification -> Orders page
+  if (
+    type.includes('order') ||
+    type.includes('sale') ||
+    type.includes('pos') ||
+    type.includes('delivery') ||
+    type.includes('checkout') ||
+    type.includes('payment') ||
+    title.includes('order') ||
+    title.includes('pos') ||
+    title.includes('payment') ||
+    message.includes('order #') ||
+    data.order_id ||
+    data.order_number ||
+    data.transaction_id
+  ) {
+    return '/orders'
+  }
+
+  // 3. Restock / Stock Requests notification -> Restock Requests page
+  if (
+    type.includes('restock') ||
+    type.includes('stock_request') ||
+    title.includes('restock') ||
+    title.includes('stock request') ||
+    message.includes('stock request') ||
+    message.includes('restock') ||
+    data.request_id ||
+    data.restock_request_id
+  ) {
+    return '/stock-requests'
+  }
+
+  // 4. Inventory / Low Stock Alert notification
+  if (
+    type.includes('stock_alert') ||
+    type.includes('inventory') ||
+    type.includes('low_stock') ||
+    type.includes('out_of_stock') ||
+    title.includes('stock alert') ||
+    title.includes('low stock') ||
+    title.includes('out of stock')
+  ) {
+    return role === 'admin' ? '/inventory' : '/stock-requests'
+  }
+
+  // 5. User / Customer Management notification -> User Management page
+  if (
+    type.includes('user') ||
+    type.includes('customer') ||
+    type.includes('account') ||
+    title.includes('user') ||
+    title.includes('customer') ||
+    message.includes('customer') ||
+    message.includes('user') ||
+    data.user_id
+  ) {
+    return role === 'admin' ? '/users' : '/dashboard'
+  }
+
+  // 6. Products notification
+  if (type.includes('product') || title.includes('product')) {
+    return role === 'admin' ? '/products' : '/pos'
+  }
+
+  // 7. Suppliers / Purchase Orders
+  if (type.includes('supplier') || type.includes('purchase_order')) {
+    return role === 'admin' ? '/suppliers' : '/dashboard'
+  }
+
+  // 8. Reports
+  if (type.includes('report')) {
+    return role === 'admin' ? '/reports' : '/dashboard'
+  }
+
+  return '/dashboard'
+}
+
+/**
+ * Human-readable label for target destination
+ */
+export function getNotificationDestinationLabel(notification, role = 'admin') {
+  const dest = getNotificationDestination(notification, role)
+  switch (dest) {
+    case '/feedback':
+      return 'Feedback'
+    case '/orders':
+      return 'Orders'
+    case '/stock-requests':
+      return 'Stock Requests'
+    case '/inventory':
+      return 'Inventory'
+    case '/users':
+      return 'Users'
+    case '/products':
+      return 'Products'
+    case '/suppliers':
+      return 'Suppliers'
+    case '/reports':
+      return 'Reports'
+    default:
+      return 'Details'
+  }
+}
+
+function getNotificationIcon(type) {
+  const t = String(type || '').toLowerCase()
+  if (t.includes('feedback') || t.includes('review') || t.includes('rating')) {
+    return <MessageSquare size={17} />
+  }
+  if (t.includes('order') || t.includes('pos') || t.includes('sale') || t.includes('checkout')) {
+    return <ShoppingCart size={17} />
+  }
+  if (t.includes('stock_request_confirmed')) {
+    return <CheckCircle2 size={17} style={{ color: '#16a34a' }} />
+  }
+  if (t.includes('restock') || t.includes('stock_request')) {
+    return <ClipboardList size={17} />
+  }
+  if (t.includes('stock_alert') || t.includes('inventory') || t.includes('low_stock') || t.includes('out_of_stock')) {
+    return <AlertTriangle size={17} />
+  }
+  if (t.includes('user') || t.includes('customer') || t.includes('account')) {
+    return <Users size={17} />
+  }
+  if (t.includes('payment')) {
+    return <CreditCard size={17} />
+  }
+  return <Info size={17} />
 }
 
 export default function NotificationDropdown({
@@ -65,6 +204,7 @@ export default function NotificationDropdown({
   iconSize = 18,
   onNotificationSelect = null,
 }) {
+  const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [filter, setFilter] = useState('all') // 'all' | 'unread' | 'read'
@@ -75,13 +215,26 @@ export default function NotificationDropdown({
   const user = getStoredUser()
   const effectiveRole = role || user?.role || 'admin'
 
-  // Load notifications from API
+  // Load notifications from API and deduplicate
   const fetchNotifs = async () => {
     try {
       const res = await getNotifications(effectiveRole)
       const raw = Array.isArray(res) ? res : res?.data || []
       const items = Array.isArray(raw) ? raw : raw?.data || []
-      setNotifications(items)
+
+      // Deduplicate notifications
+      const seen = new Set()
+      const deduped = []
+      items.forEach((item) => {
+        if (!item || !item.id) return
+        const key = String(item.id)
+        if (!seen.has(key)) {
+          seen.add(key)
+          deduped.push(item)
+        }
+      })
+
+      setNotifications(deduped)
     } catch (err) {
       setNotifications([])
     }
@@ -149,33 +302,47 @@ export default function NotificationDropdown({
     }
   }, [isOpen])
 
-
   const unreadCount = notifications.filter((item) => !item.read).length
 
-  // Mark single notification as read
-  const handleMarkAsRead = async (item, event) => {
-    event?.stopPropagation()
-    if (item.read) {
-      if (onNotificationSelect) onNotificationSelect(item)
-      return
-    }
+  /**
+   * Handle clicking ANYWHERE on a notification item:
+   * 1. Marks notification as read in state & backend API
+   * 2. Updates unread badge count
+   * 3. Closes dropdown
+   * 4. Automatically redirects to correct page based on notification type & data
+   */
+  const handleNotificationClick = async (item, event) => {
+    event?.preventDefault?.()
+    event?.stopPropagation?.()
 
-    // Update local state immediately
-    setNotifications((prev) =>
-      prev.map((notif) => (notif.id === item.id ? { ...notif, read: true } : notif))
-    )
+    // 1. Mark as read immediately in local state
+    if (!item.read) {
+      setNotifications((prev) =>
+        prev.map((notif) => (notif.id === item.id ? { ...notif, read: true } : notif))
+      )
 
-    // Call API if not a local sample id
-    if (typeof item.id === 'number' || (typeof item.id === 'string' && !item.id.startsWith('sample-'))) {
-      try {
-        await markNotificationRead(item.id)
-      } catch (err) {
-        console.warn('Failed to mark notification as read on backend:', err)
+      // Call API if real backend notification
+      if (typeof item.id === 'number' || (typeof item.id === 'string' && !item.id.startsWith('sample-'))) {
+        try {
+          await markNotificationRead(item.id)
+        } catch (err) {
+          console.warn('Failed to mark notification as read on backend:', err)
+        }
       }
     }
 
+    // 2. Close the dropdown
+    setIsOpen(false)
+
+    // 3. Optional callback
     if (onNotificationSelect) {
       onNotificationSelect(item)
+    }
+
+    // 4. Resolve destination and navigate
+    const destination = getNotificationDestination(item, effectiveRole)
+    if (destination) {
+      navigate(destination)
     }
   }
 
@@ -203,41 +370,58 @@ export default function NotificationDropdown({
     }
   }
 
-  // Add sample test notification
-  const handleAddTestNotif = async () => {
-    const testTypes = ['stock_alert', 'order', 'payment', 'restock', 'feedback']
-    const randomType = testTypes[Math.floor(Math.random() * testTypes.length)]
-    const randomTitles = {
-      stock_alert: 'Stock Alert: Coco Lumber 2×3×10',
-      order: `New Walk-in Order #${Math.floor(1000 + Math.random() * 9000)}`,
-      payment: `Payment Received (₱${Math.floor(500 + Math.random() * 4000)}.00)`,
-      restock: 'Restock Request Received',
-      feedback: 'New Customer Review (5 stars)',
+  // Add sample test notification with instant dispatch for specific test scenarios
+  const handleAddTestNotif = async (chosenType = null) => {
+    const testTypes = ['feedback', 'order', 'restock', 'user']
+    const type = chosenType || testTypes[Math.floor(Math.random() * testTypes.length)]
+
+    const sampleMap = {
+      feedback: {
+        title: '⭐ New Customer Feedback (5 Stars)',
+        message: 'Contractor Juan Dela Cruz submitted a 5-star review for Order #JEM-2026-1001: "Fast delivery to site!"',
+        data: { feedback_id: 1, order_number: 'JEM-2026-1001', rating: 5 },
+      },
+      order: {
+        title: `🛒 New Customer Order #JEM-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        message: `Order totaling ₱${Math.floor(2500 + Math.random() * 6000).toLocaleString()}.00 placed via GCash.`,
+        data: { order_id: 1, order_number: `JEM-2026-${Date.now().toString().slice(-4)}`, total: 3500 },
+      },
+      restock: {
+        title: '📦 New Restock Request: Coco Lumber 2×3×10',
+        message: 'Staff submitted a restock request for Coco Lumber (50 units). Awaiting approval.',
+        data: { request_id: 1, product_id: 1, quantity: 50 },
+      },
+      user: {
+        title: '👤 New Customer Registered',
+        message: 'New contractor account created: Engr. Miguel Santos (miguel@sitebuilders.ph).',
+        data: { user_id: 2, user_name: 'Engr. Miguel Santos', role: 'customer' },
+      },
     }
 
+    const payload = sampleMap[type] || sampleMap.feedback
+
     const newNotif = {
-      id: 'sample-' + Date.now(),
-      title: randomTitles[randomType],
-      message: `System notification generated at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
-      type: randomType,
+      id: 'sample-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      title: payload.title,
+      message: payload.message,
+      type: type,
+      data: payload.data,
       read: false,
       created_at: new Date().toISOString(),
     }
 
-    setNotifications((prev) => [newNotif, ...prev])
+    // Prepend to current list without duplicates
+    setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)])
 
-    // Try saving to backend
+    // Try saving to backend database
     try {
       await createNotification({
-        type: randomType,
-        data: {
-          title: newNotif.title,
-          message: newNotif.message,
-        },
+        type: type,
+        title: newNotif.title,
+        message: newNotif.message,
+        data: newNotif.data,
       })
-    } catch (err) {
-      // ignore
-    }
+    } catch (err) {}
   }
 
   const filteredNotifications = notifications.filter((item) => {
@@ -248,7 +432,7 @@ export default function NotificationDropdown({
 
   return (
     <div className="notification-wrapper" ref={dropdownRef}>
-      {/* Real-time Floating Pop-up Toast for Staff & Admin */}
+      {/* Real-time Floating Pop-up Toast for Staff & Admin with One-Click Navigation */}
       {toastNotif && (
         <div
           style={{
@@ -257,32 +441,39 @@ export default function NotificationDropdown({
             right: '24px',
             zIndex: 999999,
             background: '#ffffff',
-            border: '1px solid #86efac',
-            borderRadius: '12px',
+            border: '1px solid #fed7aa',
+            borderRadius: '14px',
             padding: '14px 18px',
-            boxShadow: '0 20px 25px -5px rgba(22, 163, 74, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            boxShadow: '0 20px 25px -5px rgba(249, 115, 22, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
             display: 'flex',
             alignItems: 'flex-start',
             gap: '12px',
             maxWidth: '380px',
-            borderLeft: '5px solid #16a34a',
-            animation: 'slideIn 0.3s ease-out'
+            borderLeft: '5px solid #f97316',
+            animation: 'slideIn 0.3s ease-out',
+            cursor: 'pointer',
           }}
-          onClick={() => {
-            setIsOpen(true)
-            setToastNotif(null)
-          }}
+          onClick={(e) => handleNotificationClick(toastNotif, e)}
+          title={`Click to open ${getNotificationDestinationLabel(toastNotif, effectiveRole)}`}
         >
-          <div style={{ background: '#dcfce7', color: '#16a34a', padding: '8px', borderRadius: '50%', display: 'flex', flexShrink: 0, marginTop: '2px' }}>
-            <CheckCircle2 size={18} />
+          <div style={{ background: '#ffedd5', color: '#ea580c', padding: '8px', borderRadius: '50%', display: 'flex', flexShrink: 0, marginTop: '2px' }}>
+            {getNotificationIcon(toastNotif.type)}
           </div>
-          <div style={{ flex: 1, cursor: 'pointer' }}>
-            <h4 style={{ margin: '0 0 3px', fontSize: '13.5px', color: '#0f172a', fontWeight: 800 }}>
-              {toastNotif.title}
-            </h4>
-            <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '2px' }}>
+              <h4 style={{ margin: 0, fontSize: '13px', color: '#0f172a', fontWeight: 800 }}>
+                {toastNotif.title}
+              </h4>
+              <span style={{ fontSize: '9px', fontWeight: 800, background: '#ea580c', color: '#fff', padding: '1px 5px', borderRadius: '4px' }}>
+                {getNotificationDestinationLabel(toastNotif, effectiveRole).toUpperCase()}
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: '11.5px', color: '#475569', lineHeight: 1.4 }}>
               {toastNotif.message}
             </p>
+            <span style={{ fontSize: '10.5px', color: '#ea580c', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '4px' }}>
+              Click to view page <ArrowRight size={11} />
+            </span>
           </div>
           <button
             type="button"
@@ -292,7 +483,7 @@ export default function NotificationDropdown({
             }}
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px', display: 'flex' }}
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       )}
@@ -310,7 +501,6 @@ export default function NotificationDropdown({
           <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}
       </button>
-
 
       {/* Notification Dropdown Panel */}
       {isOpen && (
@@ -371,39 +561,52 @@ export default function NotificationDropdown({
             </button>
           </div>
 
-          {/* Notification List */}
+          {/* Notification List: Entire item is clickable with automatic redirection */}
           <div className="notification-list">
             {filteredNotifications.length > 0 ? (
-              filteredNotifications.map((item) => (
-                <div
-                  key={item.id}
-                  className={`notification-item ${!item.read ? 'unread' : 'read'}`}
-                  onClick={(e) => handleMarkAsRead(item, e)}
-                  title={!item.read ? 'Click to mark as read' : undefined}
-                >
-                  {/* Category icon */}
-                  <div className={`notif-icon-wrap ${item.type || 'system'}`}>
-                    {getNotificationIcon(item.type)}
-                  </div>
-
-                  {/* Content */}
-                  <div className="notif-content">
-                    <div className="notif-header-row">
-                      <h5 className="notif-title">{item.title}</h5>
-                      {!item.read && <span className="notif-status-badge new">NEW</span>}
+              filteredNotifications.map((item) => {
+                const destLabel = getNotificationDestinationLabel(item, effectiveRole)
+                return (
+                  <div
+                    key={item.id}
+                    className={`notification-item ${!item.read ? 'unread' : 'read'}`}
+                    onClick={(e) => handleNotificationClick(item, e)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        handleNotificationClick(item, e)
+                      }
+                    }}
+                    title={`Click to open ${destLabel}`}
+                  >
+                    {/* Category icon */}
+                    <div className={`notif-icon-wrap ${item.type || 'system'}`}>
+                      {getNotificationIcon(item.type)}
                     </div>
-                    <p className="notif-message">{item.message}</p>
-                    <div className="notif-footer-row">
-                      <span className="notif-time">
-                        <Clock size={11} /> {formatRelativeTime(item.created_at)}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Unread indicator dot */}
-                  {!item.read && <div className="unread-indicator-dot" />}
-                </div>
-              ))
+                    {/* Content */}
+                    <div className="notif-content">
+                      <div className="notif-header-row">
+                        <h5 className="notif-title">{item.title}</h5>
+                        {!item.read && <span className="notif-status-badge new">NEW</span>}
+                      </div>
+                      <p className="notif-message">{item.message}</p>
+                      <div className="notif-footer-row">
+                        <span className="notif-time">
+                          <Clock size={11} /> {formatRelativeTime(item.created_at)}
+                        </span>
+                        <span className="notif-destination-pill">
+                          {destLabel} <ArrowRight size={10} />
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Unread indicator dot */}
+                    {!item.read && <div className="unread-indicator-dot" />}
+                  </div>
+                )
+              })
             ) : (
               <div className="notification-empty">
                 <div className="empty-icon-circle">
@@ -417,92 +620,59 @@ export default function NotificationDropdown({
                 <p>
                   {filter === 'unread'
                     ? "You're all caught up! There are no unread alerts at the moment."
-                    : "When new orders, stock alerts, or store updates occur, they'll appear here."}
+                    : "When new orders, stock alerts, or feedback occur, they'll appear here."}
                 </p>
               </div>
             )}
           </div>
 
-          {/* Footer */}
+          {/* Footer with quick test buttons for all 4 notification types */}
           <div className="notification-footer">
-            <button type="button" onClick={handleAddTestNotif}>
-              + Add test alert
-            </button>
+            <div className="test-alert-pills">
+              <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 700 }}>Test Alert:</span>
+              <button
+                type="button"
+                className="test-pill"
+                onClick={() => handleAddTestNotif('feedback')}
+                title="Add Test Feedback Notification (Opens /feedback)"
+              >
+                💬 Feedback
+              </button>
+              <button
+                type="button"
+                className="test-pill"
+                onClick={() => handleAddTestNotif('order')}
+                title="Add Test Order Notification (Opens /orders)"
+              >
+                🛒 Order
+              </button>
+              <button
+                type="button"
+                className="test-pill"
+                onClick={() => handleAddTestNotif('restock')}
+                title="Add Test Restock Notification (Opens /stock-requests)"
+              >
+                📦 Restock
+              </button>
+              <button
+                type="button"
+                className="test-pill"
+                onClick={() => handleAddTestNotif('user')}
+                title="Add Test User Notification (Opens /users)"
+              >
+                👤 User
+              </button>
+            </div>
             {notifications.length > 0 && (
-              <button type="button" onClick={handleClearAll} style={{ color: '#94a3b8' }}>
+              <button
+                type="button"
+                className="clear-btn"
+                onClick={handleClearAll}
+              >
                 Clear all
               </button>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Real-Time Floating Popup Toast Banner */}
-      {toastNotif && (
-        <div style={{
-          position: 'fixed',
-          top: '24px',
-          right: '24px',
-          zIndex: 99999,
-          background: '#17293a',
-          color: '#ffffff',
-          padding: '16px 20px',
-          borderRadius: '16px',
-          boxShadow: '0 20px 40px -10px rgba(0,0,0,0.35), 0 0 0 1px rgba(249,115,22,0.3)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '14px',
-          maxWidth: '420px',
-          cursor: 'pointer'
-        }}
-        onClick={() => {
-          setToastNotif(null)
-          if (window.location.pathname !== '/orders') {
-            window.location.href = '/orders'
-          }
-        }}
-        >
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: '20px',
-            flexShrink: 0,
-            boxShadow: '0 4px 12px rgba(249,115,22,0.3)'
-          }}>
-            🛒
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-              <strong style={{ fontSize: '13.5px', color: '#ffb17e' }}>{toastNotif.title}</strong>
-              <span style={{ fontSize: '9.5px', fontWeight: '800', background: '#f97316', color: '#fff', padding: '1px 6px', borderRadius: '4px' }}>NEW ORDER</span>
-            </div>
-            <p style={{ fontSize: '12px', margin: 0, color: '#e2e8f0', lineHeight: 1.35 }}>
-              {toastNotif.message}
-            </p>
-            <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
-              Click to open Orders Management ›
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setToastNotif(null) }}
-            style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              color: '#cbd5e1',
-              cursor: 'pointer',
-              borderRadius: '6px',
-              padding: '4px',
-              display: 'grid',
-              placeItems: 'center'
-            }}
-          >
-            <X size={15} />
-          </button>
         </div>
       )}
     </div>

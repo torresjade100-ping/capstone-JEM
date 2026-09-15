@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { ArrowUpRight, AlertCircle } from 'lucide-react'
 import { login } from '../api'
+import ThemeToggle from '../components/ThemeToggle'
 import '../styles/login.css'
 
 export default function LoginPage() {
@@ -29,6 +30,10 @@ export default function LoginPage() {
       <div className="login-bg-blur" />
       <div className="login-bg-overlay" />
 
+      <div style={{ position: 'absolute', top: 20, right: 24, zIndex: 100 }}>
+        <ThemeToggle variant="pill" />
+      </div>
+
       <div className="login-panel">
         {/* Left side - Branding */}
         <div className="login-art">
@@ -52,11 +57,6 @@ export default function LoginPage() {
                   <small>Coco Lumber &amp; Construction Supply</small>
                 </div>
               </div>
-              <div className="login-heading">
-                <p className="eyebrow" style={{ color: '#f97316', fontWeight: '800' }}>Internal Operations Portal</p>
-                <h2>Staff &amp; Admin Sign In</h2>
-                <p>Access inventory management, POS, and customer mobile orders.</p>
-              </div>
             </div>
 
             {error && (
@@ -67,13 +67,13 @@ export default function LoginPage() {
             )}
 
             <div className="form-group">
-              <label>Email address</label>
+              <label>Email or Username</label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="form-input"
-                placeholder="Enter your email"
+                placeholder=""
                 required
                 disabled={loading}
               />
@@ -86,7 +86,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="form-input"
-                placeholder="••••••••"
+                placeholder=""
                 required
                 disabled={loading}
               />

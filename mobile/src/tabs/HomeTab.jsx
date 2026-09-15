@@ -93,7 +93,14 @@ export default function HomeTab({
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+      {/* 2. Scrollable Body Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+      >
         {/* 2. Hero Banner Promo Carousel */}
         <TouchableOpacity
           activeOpacity={0.9}
@@ -294,7 +301,7 @@ export default function HomeTab({
             );
           })}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }

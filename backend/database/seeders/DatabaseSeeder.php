@@ -18,22 +18,22 @@ class DatabaseSeeder extends Seeder
     {
         // 1. System Users (Admin, Staff, Customer)
         $admin = User::firstOrCreate(
-            ['email' => 'admin@jemlumber.com'],
+            ['email' => 'admin'],
             [
                 'name' => 'System Administrator',
                 'phone' => '+639171234567',
-                'password' => Hash::make('Password123!'),
+                'password' => Hash::make('admin123'),
                 'role' => 'admin',
                 'status' => 'active',
             ]
         );
 
         $staff = User::firstOrCreate(
-            ['email' => 'staff@jemlumber.com'],
+            ['email' => 'staff'],
             [
                 'name' => 'Operations Staff',
                 'phone' => '+639181234567',
-                'password' => Hash::make('Password123!'),
+                'password' => Hash::make('staff123'),
                 'role' => 'staff',
                 'status' => 'active',
             ]
@@ -67,8 +67,10 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Lumber', 'description' => 'Coco lumber, treated wood, framing lumber, and plywood', 'status' => 'active'],
             ['name' => 'Cement & Masonry', 'description' => 'Portland cement, masonry cement, gravel, sand, and hollow blocks', 'status' => 'active'],
             ['name' => 'Roofing & Steel', 'description' => 'Corrugated GI sheets, plain sheets, deformed steel bars, and c-purlins', 'status' => 'active'],
-            ['name' => 'Plumbing', 'description' => 'PVC pipes, blue pipes, fittings, valves, and water supply supplies', 'status' => 'active'],
-            ['name' => 'Nails & Fasteners', 'description' => 'Common wire nails, concrete nails, tox screws, bolts, and anchors', 'status' => 'active'],
+            ['name' => 'Pipes', 'description' => 'PVC sanitary pipes, blue potable pipes, orange conduit pipes, and PE pipes', 'status' => 'active'],
+            ['name' => 'Plumbing', 'description' => 'Elbows, tees, couplings, valves, faucets, and plumbing fixtures', 'status' => 'active'],
+            ['name' => 'Nails', 'description' => 'Common wire nails, concrete nails, finishing nails, umbrella nails', 'status' => 'active'],
+            ['name' => 'Fasteners & Screws', 'description' => 'Tox screws, self-tapping screws, bolts, and anchors', 'status' => 'active'],
             ['name' => 'Paint & Finishes', 'description' => 'Latex paints, enamels, primers, rollers, brushes, and thinners', 'status' => 'active'],
             ['name' => 'Electrical', 'description' => 'THHN electrical wires, utility boxes, breakers, switches, and conduits', 'status' => 'active'],
             ['name' => 'Tools & Equipment', 'description' => 'Power tools, hand tools, measuring tapes, safety equipment, and blades', 'status' => 'active'],
@@ -93,5 +95,8 @@ class DatabaseSeeder extends Seeder
         foreach ($brandsData as $br) {
             Brand::firstOrCreate(['name' => $br['name']], $br);
         }
+
+        // 4. JEM Hardware & Coco Lumber Real Physical Inventory
+        $this->call(JemInventorySeeder::class);
     }
 }

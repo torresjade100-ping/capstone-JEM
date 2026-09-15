@@ -19,16 +19,24 @@ import {
   Check,
 } from 'lucide-react'
 import { getProducts, createPosCheckout } from '../api'
+import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
 
 const fallbackCatalog = [
-  { id: 1, name: 'Coco Lumber 2×3×10', category: 'Lumber', price: 120, unit: 'piece', stock: 342, emoji: '🪵' },
-  { id: 2, name: 'Portland Cement 40kg', category: 'Cement', price: 290, unit: 'bag', stock: 15, emoji: '🏗️' },
-  { id: 3, name: 'GI Sheet 24 Gauge 8ft', category: 'Roofing', price: 720, unit: 'sheet', stock: 88, emoji: '🏠' },
-  { id: 4, name: 'PVC Pipe 4" x 3m', category: 'Plumbing', price: 240, unit: 'piece', stock: 156, emoji: '🔧' },
-  { id: 5, name: 'Common Wire Nails 4"', category: 'Nails', price: 85, unit: 'kg', stock: 160, emoji: '📌' },
-  { id: 6, name: 'Boysen Latex Paint White', category: 'Paint', price: 740, unit: 'gal', stock: 42, emoji: '🎨' },
-  { id: 7, name: 'THHN Wire 2.0mm 150m', category: 'Electrical', price: 2450, unit: 'roll', stock: 18, emoji: '⚡' },
-  { id: 8, name: 'Marine Plywood 1/2"', category: 'Lumber', price: 680, unit: 'sheet', stock: 24, emoji: '🪵' },
+  { id: 1, name: 'Marine Plywood 3/4"', category: 'Lumber', price: 1080, unit: 'sheet', stock: 50, emoji: '🪵' },
+  { id: 2, name: 'Marine Plywood 1/2"', category: 'Lumber', price: 690, unit: 'sheet', stock: 60, emoji: '🪵' },
+  { id: 3, name: 'Ordinary Plywood 3/4"', category: 'Lumber', price: 990, unit: 'sheet', stock: 50, emoji: '🪵' },
+  { id: 4, name: 'Hardiflex Board 3.5mm', category: 'Lumber', price: 280, unit: 'sheet', stock: 65, emoji: '🧱' },
+  { id: 5, name: 'Smart Board 3.5mm', category: 'Lumber', price: 290, unit: 'sheet', stock: 55, emoji: '🧱' },
+  { id: 6, name: 'Welded Screen 1/2" × 4ft × 25M', category: 'Roofing', price: 140, unit: 'meter', stock: 120, emoji: '🏠' },
+  { id: 7, name: 'Aluminum Screen 3ft', category: 'Roofing', price: 180, unit: 'meter', stock: 80, emoji: '🏠' },
+  { id: 8, name: 'PE Pipe 1/2"', category: 'Pipes', price: 45, unit: 'meter', stock: 200, emoji: '🚿' },
+  { id: 9, name: 'Blue Elbow Plain 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧' },
+  { id: 10, name: 'GI Nipple 1/2" × 2" S-20', category: 'Plumbing', price: 18, unit: 'piece', stock: 100, emoji: '🔩' },
+  { id: 11, name: 'Hose Clamp 1/2"', category: 'Hardware', price: 15, unit: 'piece', stock: 150, emoji: '🔩' },
+  { id: 12, name: 'Poly Rope 6mm', category: 'Hardware', price: 14, unit: 'meter', stock: 250, emoji: '🪢' },
+  { id: 13, name: 'PVC Sanitary P-Trap 2"', category: 'Plumbing', price: 65, unit: 'piece', stock: 80, emoji: '🔧' },
+  { id: 14, name: 'Tile Trim Aluminum 8ft', category: 'Paint', price: 175, unit: 'length', stock: 80, emoji: '🎨' },
+  { id: 15, name: 'Trapal Baga Heavy Duty', category: 'Roofing', price: 85, unit: 'meter', stock: 150, emoji: '⛺' },
 ]
 
 function getProductEmoji(product) {
@@ -44,17 +52,25 @@ function getProductEmoji(product) {
   return '📦'
 }
 
-function cleanCategory(catName) {
+function cleanCategory(catName, prodName = '') {
   if (!catName) return 'General'
-  const c = catName.trim()
-  if (c.toLowerCase().includes('cement')) return 'Cement'
-  if (c.toLowerCase().includes('roof')) return 'Roofing'
-  if (c.toLowerCase().includes('nail')) return 'Nails'
-  if (c.toLowerCase().includes('paint')) return 'Paint'
-  if (c.toLowerCase().includes('plumb')) return 'Plumbing'
-  if (c.toLowerCase().includes('electr')) return 'Electrical'
-  if (c.toLowerCase().includes('lumber')) return 'Lumber'
-  return c
+  const c = catName.trim().toLowerCase()
+  const p = (prodName || '').toLowerCase()
+
+  // Exact / Specific check for Pipes first
+  if (c === 'pipes' || c.includes('pipe') || p.includes('pipe') || p.includes('tubo')) return 'Pipes'
+
+  // Exact / Specific check for Nails
+  if (c === 'nails' || c.includes('nail') || p.includes('nail') || p.includes('lansang') || p.includes('pako')) return 'Nails'
+
+  if (c.includes('cement') || c.includes('masonry')) return 'Cement'
+  if (c.includes('roof') || c.includes('steel') || c.includes('rebar')) return 'Roofing'
+  if (c.includes('paint')) return 'Paint'
+  if (c.includes('plumb')) return 'Plumbing'
+  if (c.includes('electr') || c.includes('wire')) return 'Electrical'
+  if (c.includes('lumber') || c.includes('wood') || c.includes('plywood')) return 'Lumber'
+  if (c.includes('tool')) return 'Tools'
+  return catName.trim()
 }
 
 export default function POSPage({ onTransactionComplete }) {
@@ -71,7 +87,7 @@ export default function POSPage({ onTransactionComplete }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState(null)
 
-  const defaultCategories = ['All', 'Lumber', 'Cement', 'Roofing', 'Plumbing', 'Nails', 'Paint', 'Electrical']
+  const defaultCategories = ['All', 'Lumber', 'Cement', 'Roofing', 'Pipes', 'Plumbing', 'Nails', 'Paint', 'Electrical', 'Tools']
 
   const getSavedCatalog = () => {
     try {
@@ -90,12 +106,12 @@ export default function POSPage({ onTransactionComplete }) {
         const rawList = Array.isArray(payload) ? payload : payload?.data || []
         if (rawList.length > 0) {
           const mapped = rawList.map((p) => {
-            const cleanedCat = cleanCategory(p.category?.name || 'General')
+            const cleanedCat = cleanCategory(p.category?.name || 'General', p.name)
             return {
               id: p.id,
               name: p.name,
               category: cleanedCat,
-              price: Number(p.base_price || 0),
+              price: Number(p.selling_price ?? p.base_price ?? 0),
               unit: p.unit || 'piece',
               stock: Number(p.stock_quantity ?? p.stock ?? 0),
               emoji: getProductEmoji({ name: p.name, category: cleanedCat }),
@@ -332,14 +348,14 @@ export default function POSPage({ onTransactionComplete }) {
           margin: 0 0 4px;
           font-size: 1.55rem;
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
           letter-spacing: -0.03em;
         }
 
         .pos-header-block p {
           margin: 0;
           font-size: 0.85rem;
-          color: #8a9694;
+          color: var(--text-secondary);
         }
 
         /* Toolbar with Search and Category Pills */
@@ -360,23 +376,23 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-search-input {
           width: 100%;
           height: 40px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid var(--border-color);
           border-radius: 10px;
           padding: 0 14px 0 38px;
           font-size: 0.86rem;
-          color: #17293a;
-          background: #ffffff;
+          color: var(--text-primary);
+          background: var(--input-bg);
           outline: none;
           transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .pos-search-input:focus {
-          border-color: #f97316;
-          box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+          border-color: var(--primary, #f97316);
+          box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
         }
 
         .pos-search-input::placeholder {
-          color: #94a3b8;
+          color: var(--text-muted);
         }
 
         .pos-search-icon {
@@ -384,7 +400,7 @@ export default function POSPage({ onTransactionComplete }) {
           left: 12px;
           top: 50%;
           transform: translateY(-50%);
-          color: #94a3b8;
+          color: var(--text-muted);
           pointer-events: none;
         }
 
@@ -398,10 +414,10 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-pill-btn {
           height: 38px;
           padding: 0 14px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid var(--border-color);
           border-radius: 8px;
-          background: #ffffff;
-          color: #17293a;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
           font-size: 0.82rem;
           font-weight: 600;
           cursor: pointer;
@@ -412,14 +428,16 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-pill-btn:hover:not(.active) {
-          background: #f8fafc;
-          border-color: #cbd5e1;
+          background: var(--bg-hover);
+          border-color: var(--border-color);
+          color: var(--text-primary);
         }
 
         .pos-pill-btn.active {
-          background: #17293a;
+          background: var(--primary, #f97316);
           color: #ffffff;
-          border-color: #17293a;
+          border-color: var(--primary, #f97316);
+          box-shadow: 0 2px 8px rgba(249, 115, 22, 0.35);
         }
 
         /* Products Grid */
@@ -436,8 +454,8 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-color);
           border-radius: 12px;
           padding: 14px;
           text-align: left;
@@ -451,16 +469,16 @@ export default function POSPage({ onTransactionComplete }) {
 
         .pos-card:hover:not(.disabled) {
           transform: translateY(-3px);
-          box-shadow: 0 10px 22px rgba(23, 41, 58, 0.08);
-          border-color: #f97316;
+          box-shadow: var(--shadow-md, 0 10px 22px rgba(0, 0, 0, 0.25));
+          border-color: var(--primary, #f97316);
         }
 
         .pos-card.disabled,
         .pos-card.out-of-stock {
-          opacity: 0.58;
+          opacity: 0.55;
           cursor: not-allowed;
-          background: #f8fafc;
-          border-color: #e2e8f0;
+          background: var(--bg-surface);
+          border-color: var(--border-color);
           box-shadow: none !important;
           transform: none !important;
         }
@@ -468,7 +486,8 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-card-art {
           width: 100%;
           height: 88px;
-          background: #f1f5f9;
+          background: var(--bg-hover);
+          border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
           border-radius: 8px;
           display: flex;
           align-items: center;
@@ -480,20 +499,21 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-card.out-of-stock .pos-card-art {
-          background: #fecdd3;
+          background: var(--error-bg, rgba(239, 68, 68, 0.15));
+          border-color: rgba(239, 68, 68, 0.3);
         }
 
         .pos-card-title {
           margin: 0 0 2px;
           font-size: 0.9rem;
           font-weight: 700;
-          color: #17293a;
+          color: var(--text-primary);
           line-height: 1.3;
         }
 
         .pos-card-cat {
           font-size: 0.74rem;
-          color: #8a9694;
+          color: var(--text-muted);
           margin-bottom: 8px;
           display: block;
         }
@@ -508,12 +528,12 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-card-price {
           font-size: 1.05rem;
           font-weight: 800;
-          color: #f97316;
+          color: var(--primary, #f97316);
         }
 
         .pos-card-unit {
           font-size: 0.74rem;
-          color: #8a9694;
+          color: var(--text-muted);
         }
 
         .pos-stock-badge {
@@ -529,27 +549,27 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-stock-badge.in-stock {
-          background: #ecfdf5;
-          color: #059669;
-          border: 1px solid #a7f3d0;
+          background: var(--success-bg, rgba(16, 185, 129, 0.15));
+          color: var(--success-text, #34d399);
+          border: 1px solid rgba(16, 185, 129, 0.3);
         }
 
         .pos-stock-badge.low-stock {
-          background: #fffbeb;
-          color: #d97706;
-          border: 1px solid #fde68a;
+          background: var(--warning-bg, rgba(245, 158, 11, 0.15));
+          color: var(--warning-text, #fbbf24);
+          border: 1px solid rgba(245, 158, 11, 0.3);
         }
 
         .pos-stock-badge.out-of-stock {
-          background: #fef2f2;
-          color: #dc2626;
-          border: 1px solid #fecaca;
+          background: var(--error-bg, rgba(239, 68, 68, 0.15));
+          color: var(--error-text, #f87171);
+          border: 1px solid rgba(239, 68, 68, 0.3);
         }
 
         /* Cart Panel (Current Transaction) */
         .pos-cart-panel {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-color);
           border-radius: 14px;
           display: flex;
           flex-direction: column;
@@ -557,13 +577,13 @@ export default function POSPage({ onTransactionComplete }) {
           max-height: calc(100vh - 110px);
           position: sticky;
           top: 0;
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.03);
+          box-shadow: var(--shadow-md, 0 6px 20px rgba(0, 0, 0, 0.15));
           overflow: hidden;
         }
 
         .pos-cart-header {
           padding: 16px 20px;
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 1px solid var(--border-color);
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -574,12 +594,12 @@ export default function POSPage({ onTransactionComplete }) {
           margin: 0;
           font-size: 1rem;
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
           letter-spacing: -0.02em;
         }
 
         .pos-cart-badge {
-          background: #f97316;
+          background: var(--primary, #f97316);
           color: #ffffff;
           font-size: 0.72rem;
           font-weight: 800;
@@ -602,11 +622,11 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-cart-body::-webkit-scrollbar-track {
-          background: #f8fafc;
+          background: var(--bg-surface);
         }
 
         .pos-cart-body::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
+          background: var(--border-color);
           border-radius: 4px;
         }
 
@@ -617,7 +637,7 @@ export default function POSPage({ onTransactionComplete }) {
           align-items: center;
           justify-content: center;
           text-align: center;
-          color: #8a9694;
+          color: var(--text-muted);
           padding: 30px 10px;
         }
 
@@ -627,33 +647,33 @@ export default function POSPage({ onTransactionComplete }) {
           width: 48px;
           height: 48px;
           margin-bottom: 10px;
-          color: #94a3b8;
+          color: var(--text-muted);
         }
 
         .pos-empty-state h4 {
           margin: 0 0 4px;
           font-size: 0.95rem;
           font-weight: 700;
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .pos-empty-state p {
           margin: 0;
           font-size: 0.8rem;
-          color: #8a9694;
+          color: var(--text-secondary);
         }
 
         /* Filled cart items */
         .pos-cart-item {
-          border: 1px solid #f1f5f9;
-          background: #f8fafc;
+          border: 1px solid var(--border-color);
+          background: var(--bg-hover);
           border-radius: 10px;
           padding: 10px 12px;
           transition: border-color 0.15s;
         }
 
         .pos-cart-item:hover {
-          border-color: #cbd5e1;
+          border-color: var(--primary-border, #f97316);
         }
 
         .pos-cart-item-header {
@@ -668,31 +688,31 @@ export default function POSPage({ onTransactionComplete }) {
           margin: 0;
           font-size: 0.84rem;
           font-weight: 700;
-          color: #17293a;
+          color: var(--text-primary);
           line-height: 1.3;
         }
 
         .pos-cart-item-header p {
           margin: 2px 0 0;
           font-size: 0.72rem;
-          color: #64737b;
+          color: var(--text-secondary);
         }
 
         .pos-cart-item-header button {
           background: transparent;
           border: none;
-          color: #94a3b8;
+          color: var(--text-muted);
           cursor: pointer;
           padding: 2px;
           border-radius: 4px;
           display: grid;
           place-items: center;
-          transition: color 0.15s;
+          transition: color 0.15s, background 0.15s;
         }
 
         .pos-cart-item-header button:hover {
-          color: #ef4444;
-          background: #fee2e2;
+          color: var(--error, #ef4444);
+          background: var(--error-bg, rgba(239, 68, 68, 0.15));
         }
 
         .pos-cart-item-controls {
@@ -706,8 +726,8 @@ export default function POSPage({ onTransactionComplete }) {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+          background: var(--input-bg);
+          border: 1px solid var(--border-color);
           border-radius: 6px;
           padding: 2px 6px;
         }
@@ -718,7 +738,7 @@ export default function POSPage({ onTransactionComplete }) {
           cursor: pointer;
           display: grid;
           place-items: center;
-          color: #17293a;
+          color: var(--text-primary);
           padding: 2px;
           border-radius: 4px;
           transition: background 0.1s;
@@ -730,12 +750,12 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-qty-grp button:hover:not(:disabled) {
-          background: #f1f5f9;
+          background: var(--bg-hover);
         }
 
         .pos-qty-val {
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
           min-width: 18px;
           text-align: center;
           font-size: 0.8rem;
@@ -743,15 +763,15 @@ export default function POSPage({ onTransactionComplete }) {
 
         .pos-item-total {
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
           font-size: 0.86rem;
         }
 
         /* Bottom Checkout Section */
         .pos-checkout-section {
-          border-top: 1px solid #e2e8f0;
+          border-top: 1px solid var(--border-color);
           padding: 16px 20px;
-          background: #ffffff;
+          background: var(--bg-surface);
           flex-shrink: 0;
         }
 
@@ -765,13 +785,13 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-total-line span {
           font-size: 1rem;
           font-weight: 700;
-          color: #64737b;
+          color: var(--text-secondary);
         }
 
         .pos-total-line strong {
           font-size: 1.25rem;
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .pos-field-group {
@@ -782,7 +802,7 @@ export default function POSPage({ onTransactionComplete }) {
           display: block;
           font-size: 0.74rem;
           font-weight: 700;
-          color: #64737b;
+          color: var(--text-secondary);
           margin-bottom: 5px;
           text-transform: uppercase;
           letter-spacing: 0.04em;
@@ -792,19 +812,24 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-num-input {
           width: 100%;
           height: 38px;
-          border: 1px solid #cbd5e1;
+          border: 1px solid var(--border-color);
           border-radius: 8px;
-          background: #ffffff;
-          color: #17293a;
+          background: var(--input-bg);
+          color: var(--text-primary);
           padding: 0 12px;
           font-size: 0.85rem;
           outline: none;
           transition: border-color 0.15s;
         }
 
+        .pos-select-input option {
+          background: var(--bg-surface);
+          color: var(--text-primary);
+        }
+
         .pos-select-input:focus,
         .pos-num-input:focus {
-          border-color: #f97316;
+          border-color: var(--primary, #f97316);
         }
 
         .pos-submit-btn {
@@ -812,7 +837,7 @@ export default function POSPage({ onTransactionComplete }) {
           height: 44px;
           border: none;
           border-radius: 10px;
-          background: #f97316;
+          background: var(--primary, #f97316);
           color: #ffffff;
           font-size: 0.9rem;
           font-weight: 800;
@@ -827,7 +852,7 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-submit-btn:hover:not(:disabled) {
-          background: #ea580c;
+          background: var(--primary-hover, #ea580c);
           transform: translateY(-1px);
           box-shadow: 0 6px 16px rgba(249, 115, 22, 0.35);
         }
@@ -843,7 +868,7 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-modal-backdrop {
           position: fixed;
           inset: 0;
-          background: rgba(15, 23, 42, 0.65);
+          background: rgba(0, 0, 0, 0.75);
           backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
@@ -854,14 +879,14 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-modal-card {
-          background: #ffffff;
+          background: var(--bg-surface);
           border-radius: 16px;
           width: 100%;
           max-width: 500px;
           max-height: 90vh;
           overflow-y: auto;
-          box-shadow: 0 20px 45px rgba(0, 0, 0, 0.2);
-          border: 1px solid rgba(255, 255, 255, 0.8);
+          box-shadow: var(--shadow-lg, 0 20px 45px rgba(0, 0, 0, 0.5));
+          border: 1px solid var(--border-color);
           display: flex;
           flex-direction: column;
           animation: posScaleUp 0.18s ease-out;
@@ -869,7 +894,7 @@ export default function POSPage({ onTransactionComplete }) {
 
         .pos-modal-header {
           padding: 20px 24px 16px;
-          border-bottom: 1px solid #f1f5f9;
+          border-bottom: 1px solid var(--border-color);
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -880,7 +905,7 @@ export default function POSPage({ onTransactionComplete }) {
           margin: 0;
           font-size: 1.15rem;
           font-weight: 800;
-          color: #17293a;
+          color: var(--text-primary);
           letter-spacing: -0.02em;
           display: flex;
           align-items: center;
@@ -888,7 +913,7 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-modal-close-btn {
-          background: #f1f5f9;
+          background: var(--bg-hover);
           border: none;
           width: 32px;
           height: 32px;
@@ -896,13 +921,13 @@ export default function POSPage({ onTransactionComplete }) {
           cursor: pointer;
           display: grid;
           place-items: center;
-          color: #64748b;
+          color: var(--text-secondary);
           transition: all 0.15s;
         }
 
         .pos-modal-close-btn:hover {
-          background: #e2e8f0;
-          color: #0f172a;
+          background: var(--bg-active);
+          color: var(--text-primary);
         }
 
         .pos-modal-body {
@@ -913,8 +938,8 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-items-review-box {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
+          background: var(--bg-hover);
+          border: 1px solid var(--border-color);
           border-radius: 10px;
           padding: 12px 14px;
           max-height: 180px;
@@ -926,7 +951,7 @@ export default function POSPage({ onTransactionComplete }) {
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.08em;
-          color: #64748b;
+          color: var(--text-secondary);
           margin-bottom: 8px;
         }
 
@@ -936,7 +961,7 @@ export default function POSPage({ onTransactionComplete }) {
           justify-content: space-between;
           padding: 6px 0;
           font-size: 0.84rem;
-          border-bottom: 1px dashed #e2e8f0;
+          border-bottom: 1px dashed var(--border-color);
         }
 
         .pos-review-row:last-child {
@@ -944,17 +969,17 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-review-row strong {
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .pos-review-row span {
-          color: #64748b;
+          color: var(--text-secondary);
           font-size: 0.78rem;
         }
 
         .pos-summary-table {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-color);
           border-radius: 12px;
           overflow: hidden;
         }
@@ -964,7 +989,7 @@ export default function POSPage({ onTransactionComplete }) {
           align-items: center;
           justify-content: space-between;
           padding: 12px 16px;
-          border-bottom: 1px solid #f1f5f9;
+          border-bottom: 1px solid var(--border-color);
         }
 
         .pos-summary-row:last-child {
@@ -972,55 +997,55 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-summary-row.highlight {
-          background: #fff7ed;
+          background: var(--primary-soft, rgba(249, 115, 22, 0.12));
         }
 
         .pos-summary-label {
           font-size: 0.88rem;
           font-weight: 600;
-          color: #64748b;
+          color: var(--text-secondary);
         }
 
         .pos-summary-value {
           font-size: 0.95rem;
           font-weight: 700;
-          color: #17293a;
+          color: var(--text-primary);
         }
 
         .pos-summary-value.total {
           font-size: 1.3rem;
           font-weight: 800;
-          color: #ea580c;
+          color: var(--primary, #f97316);
         }
 
         .pos-summary-value.change {
           font-size: 1.15rem;
           font-weight: 800;
-          color: #059669;
+          color: var(--success-text, #10b981);
         }
 
         .pos-summary-value.no-change {
           font-size: 0.95rem;
           font-weight: 700;
-          color: #64748b;
+          color: var(--text-muted);
         }
 
         .pos-notice-box {
           display: flex;
           align-items: flex-start;
           gap: 10px;
-          background: #eff6ff;
-          border: 1px solid #bfdbfe;
+          background: var(--info-bg, rgba(59, 130, 246, 0.12));
+          border: 1px solid var(--info-border, rgba(59, 130, 246, 0.25));
           border-radius: 10px;
           padding: 12px 14px;
           font-size: 0.82rem;
-          color: #1e40af;
+          color: var(--info-text, #60a5fa);
           line-height: 1.4;
         }
 
         .pos-modal-footer {
           padding: 16px 24px 20px;
-          border-top: 1px solid #f1f5f9;
+          border-top: 1px solid var(--border-color);
           display: flex;
           align-items: center;
           justify-content: flex-end;
@@ -1030,10 +1055,10 @@ export default function POSPage({ onTransactionComplete }) {
         .pos-btn-secondary {
           height: 42px;
           padding: 0 18px;
-          border: 1px solid #cbd5e1;
+          border: 1px solid var(--border-color);
           border-radius: 8px;
-          background: #ffffff;
-          color: #334155;
+          background: var(--bg-hover);
+          color: var(--text-primary);
           font-size: 0.88rem;
           font-weight: 700;
           cursor: pointer;
@@ -1041,7 +1066,7 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-btn-secondary:hover {
-          background: #f1f5f9;
+          background: var(--bg-active);
         }
 
         .pos-btn-primary {
@@ -1049,7 +1074,7 @@ export default function POSPage({ onTransactionComplete }) {
           padding: 0 22px;
           border: none;
           border-radius: 8px;
-          background: #f97316;
+          background: var(--primary, #f97316);
           color: #ffffff;
           font-size: 0.88rem;
           font-weight: 800;
@@ -1062,7 +1087,7 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-btn-primary:hover:not(:disabled) {
-          background: #ea580c;
+          background: var(--primary-hover, #ea580c);
         }
 
         .pos-btn-primary:disabled {
@@ -1072,17 +1097,17 @@ export default function POSPage({ onTransactionComplete }) {
 
         /* Receipt Card in Success View */
         .pos-receipt-paper {
-          background: #ffffff;
-          border: 2px dashed #cbd5e1;
+          background: var(--bg-hover);
+          border: 2px dashed var(--border-color);
           border-radius: 12px;
           padding: 20px;
           font-family: monospace;
-          color: #1e293b;
+          color: var(--text-primary);
         }
 
         .pos-receipt-header {
           text-align: center;
-          border-bottom: 1px dashed #cbd5e1;
+          border-bottom: 1px dashed var(--border-color);
           padding-bottom: 12px;
           margin-bottom: 12px;
         }
@@ -1091,13 +1116,13 @@ export default function POSPage({ onTransactionComplete }) {
           margin: 0 0 4px;
           font-size: 1.1rem;
           font-weight: 800;
-          color: #0f172a;
+          color: var(--text-primary);
         }
 
         .pos-receipt-header p {
           margin: 0;
           font-size: 0.8rem;
-          color: #64748b;
+          color: var(--text-secondary);
         }
 
         .pos-receipt-line {
@@ -1108,7 +1133,7 @@ export default function POSPage({ onTransactionComplete }) {
         }
 
         .pos-receipt-divider {
-          border-top: 1px dashed #cbd5e1;
+          border-top: 1px dashed var(--border-color);
           margin: 10px 0;
         }
 
@@ -1117,15 +1142,16 @@ export default function POSPage({ onTransactionComplete }) {
           position: fixed;
           top: 84px;
           right: 26px;
-          background: #0f172a;
-          color: white;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          border: 1px solid var(--border-color);
           border-radius: 10px;
           padding: 12px 18px;
           font-size: 0.84rem;
           display: flex;
           align-items: center;
           gap: 10px;
-          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+          box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.3));
           z-index: 10000;
           animation: posSlideIn 0.2s ease-out;
         }
@@ -1201,7 +1227,7 @@ export default function POSPage({ onTransactionComplete }) {
 
           <div className="pos-grid">
             {visibleProducts.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
                 <PackageX size={40} style={{ margin: '0 auto 10px', opacity: 0.6 }} />
                 <p style={{ margin: 0, fontWeight: 600 }}>No products found matching "{search}"</p>
               </div>
@@ -1229,7 +1255,7 @@ export default function POSPage({ onTransactionComplete }) {
 
                     <div className="pos-card-price-row">
                       <strong className="pos-card-price">₱{product.price.toLocaleString('en-PH')}</strong>
-                      <span className="pos-card-unit">/{product.unit}</span>
+                      <span className="pos-card-unit">/{getUnitBadgeText(product.unit, false)}</span>
                     </div>
 
                     {isOutOfStock ? (
@@ -1238,11 +1264,11 @@ export default function POSPage({ onTransactionComplete }) {
                       </span>
                     ) : isLowStock ? (
                       <span className="pos-stock-badge low-stock">
-                        <AlertTriangle size={12} /> {product.stock} {product.unit} left
+                        <AlertTriangle size={12} /> {formatQuantityWithUnit(product.stock, product.unit)} left
                       </span>
                     ) : (
                       <span className="pos-stock-badge in-stock">
-                        <Check size={12} /> {product.stock} {product.unit} available
+                        <Check size={12} /> {formatQuantityWithUnit(product.stock, product.unit)} available
                       </span>
                     )}
                   </div>
@@ -1265,7 +1291,7 @@ export default function POSPage({ onTransactionComplete }) {
             {cart.length === 0 ? (
               <div className="pos-empty-state">
                 <div className="pos-empty-cart-icon">
-                  <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="9" cy="21" r="1"></circle>
                     <circle cx="20" cy="21" r="1"></circle>
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
@@ -1285,7 +1311,7 @@ export default function POSPage({ onTransactionComplete }) {
                     <div className="pos-cart-item-header">
                       <div>
                         <h5>{item.name}</h5>
-                        <p>₱{item.price.toLocaleString('en-PH')} / {item.unit}</p>
+                        <p>₱{item.price.toLocaleString('en-PH')} / {getUnitBadgeText(item.unit, false)}</p>
                       </div>
                       <button type="button" onClick={() => removeCartItem(item.id)} aria-label="Remove item">
                         <Trash2 size={14} />
@@ -1297,7 +1323,9 @@ export default function POSPage({ onTransactionComplete }) {
                         <button type="button" onClick={() => updateCartQuantity(item.id, item.quantity - 1)}>
                           <Minus size={12} />
                         </button>
-                        <span className="pos-qty-val">{item.quantity}</span>
+                        <span className="pos-qty-val" style={{ minWidth: '42px', fontSize: '0.78rem' }}>
+                          {formatQuantityWithUnit(item.quantity, item.unit)}
+                        </span>
                         <button
                           type="button"
                           disabled={isMaxReached}
@@ -1396,7 +1424,7 @@ export default function POSPage({ onTransactionComplete }) {
                     <div>
                       <strong>{item.name}</strong>
                       <div>
-                        <span>{item.quantity} {item.unit} × ₱{item.price.toLocaleString('en-PH')}</span>
+                        <span>{formatQuantityWithUnit(item.quantity, item.unit)} × ₱{item.price.toLocaleString('en-PH')}</span>
                       </div>
                     </div>
                     <strong>₱{(item.price * item.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
@@ -1487,9 +1515,9 @@ export default function POSPage({ onTransactionComplete }) {
       {completedTransaction && (
         <div className="pos-modal-backdrop" onClick={() => setCompletedTransaction(null)}>
           <div className="pos-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="pos-modal-header" style={{ background: '#f0fdf4' }}>
-              <h3 style={{ color: '#166534' }}>
-                <CheckCircle2 size={22} color="#16a34a" />
+            <div className="pos-modal-header" style={{ background: 'var(--success-bg, rgba(16, 185, 129, 0.16))' }}>
+              <h3 style={{ color: 'var(--success-text, #34d399)' }}>
+                <CheckCircle2 size={22} color="var(--success-text, #34d399)" />
                 Transaction Completed!
               </h3>
               <button
@@ -1506,14 +1534,14 @@ export default function POSPage({ onTransactionComplete }) {
                 <div className="pos-receipt-header">
                   <h4>JEM HARDWARE SUPPLIES</h4>
                   <p>Walk-In POS Sales Receipt</p>
-                  <p style={{ marginTop: 4, fontSize: '0.75rem' }}>Tx #{completedTransaction.number}</p>
-                  <p style={{ fontSize: '0.75rem' }}>{completedTransaction.date}</p>
+                  <p style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Tx #{completedTransaction.number}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{completedTransaction.date}</p>
                 </div>
 
                 <div style={{ marginBottom: 8 }}>
                   {completedTransaction.items.map((it, idx) => (
                     <div className="pos-receipt-line" key={idx}>
-                      <span>{it.quantity}x {it.name}</span>
+                      <span>{formatQuantityWithUnit(it.quantity, it.unit)} × {it.name}</span>
                       <span>₱{it.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                     </div>
                   ))}
@@ -1536,13 +1564,13 @@ export default function POSPage({ onTransactionComplete }) {
                   <span>₱{completedTransaction.amountPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                 </div>
 
-                <div className="pos-receipt-line" style={{ fontWeight: 800, color: completedTransaction.change > 0 ? '#166534' : '#64748b' }}>
+                <div className="pos-receipt-line" style={{ fontWeight: 800, color: completedTransaction.change > 0 ? 'var(--success-text, #34d399)' : 'var(--text-secondary)' }}>
                   <span>CHANGE:</span>
                   <span>{completedTransaction.change > 0 ? `₱${completedTransaction.change.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '₱0.00 (No Change)'}</span>
                 </div>
 
                 <div className="pos-receipt-divider"></div>
-                <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#64748b', marginTop: 8 }}>
+                <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
                   Thank you for shopping at JEM Hardware!
                   <br />
                   Items deducted from inventory.

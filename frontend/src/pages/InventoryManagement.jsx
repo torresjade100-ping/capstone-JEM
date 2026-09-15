@@ -5,7 +5,13 @@ import {
   CheckCircle2, XCircle, Clock, Power
 } from 'lucide-react'
 import Swal from 'sweetalert2'
-import { API_BASE_URL, getSuppliers, adjustStock, getStockAdjustments, toggleProductStatus } from '../api'
+import { API_BASE_URL, getSuppliers, adjustStock, getStockAdjustments, toggleProductStatus, getProductBatches, createProductBatch } from '../api'
+import {
+  formatQuantityWithUnit,
+  getUnitBadgeText,
+  getQuantityInputLabel,
+  getQuantityPlaceholder,
+} from '../utils/uom'
 import '../styles/management.css'
 
 export default function InventoryManagement() {
@@ -16,6 +22,8 @@ export default function InventoryManagement() {
   const [statusFilter, setStatusFilter] = useState('all') // all, in_stock, low_stock, out_of_stock
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [activityFilter, setActivityFilter] = useState('all') // all, active, inactive
+
+  // Stock Adjustment Modal
   const [showAdjustment, setShowAdjustment] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
   const [adjustmentData, setAdjustmentData] = useState({
@@ -26,10 +34,27 @@ export default function InventoryManagement() {
   })
   const [submitting, setSubmitting] = useState(false)
 
-  // History Modal State
+  // New Batch Restock Modal
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchProduct, setBatchProduct] = useState(null)
+  const [batchFormData, setBatchFormData] = useState({
+    product_id: '',
+    supplier_id: '',
+    quantity: '',
+    cost_price: '',
+    selling_price: '',
+    received_date: new Date().toISOString().split('T')[0],
+    expiration_date: '',
+    notes: ''
+  })
+  const [submittingBatch, setSubmittingBatch] = useState(false)
+
+  // History Modal State (Batches + Movement Logs)
   const [showHistory, setShowHistory] = useState(false)
   const [historyItem, setHistoryItem] = useState(null)
+  const [historyTab, setHistoryTab] = useState('batches') // 'batches' | 'movements'
   const [historyLogs, setHistoryLogs] = useState([])
+  const [productBatchesData, setProductBatchesData] = useState(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
   const token = localStorage.getItem('jem_api_token')
@@ -77,14 +102,25 @@ export default function InventoryManagement() {
           if (qty === 0) stockStatus = 'out_of_stock'
           else if (qty <= threshold) stockStatus = 'low_stock'
 
+          const selling = Number(item.selling_price ?? item.unit_price ?? item.price ?? item.product?.selling_price ?? item.product?.base_price ?? 0)
+          const cost = Number(item.cost_price ?? item.product?.cost_price ?? (selling * 0.7) ?? 0)
+          const margin = item.margin_percent ?? (selling > 0 ? Math.round(((selling - cost) / selling) * 100) : 0)
+          const batchesCount = item.batches_count ?? item.batches?.length ?? 1
+
           return {
             id: item.id || item.product_id,
             product_id: item.product_id || item.id,
             product_name: item.name || item.product?.name || item.product_name || `Hardware Supply #${item.product_id || item.id}`,
             category: item.category || item.product?.category?.name || 'General Construction',
+            category_id: item.category_id || item.product?.category_id || null,
             supplier: item.supplier || item.brand || item.product?.supplier?.name || item.product?.brand?.name || '—',
+            supplier_id: item.supplier_id || item.product?.supplier_id || null,
             unit: item.unit || item.product?.unit || 'piece',
-            unit_price: Number(item.unit_price ?? item.price ?? item.product?.base_price ?? 0),
+            unit_price: selling,
+            cost_price: cost,
+            selling_price: selling,
+            margin_percent: margin,
+            batches_count: batchesCount,
             quantity: qty,
             stock_quantity: qty,
             low_stock_threshold: threshold,
@@ -142,7 +178,9 @@ export default function InventoryManagement() {
         item.supplier.toLowerCase().includes(q)
 
       const matchesStatus = statusFilter === 'all' || item.stock_status === statusFilter
-      const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter
+      const matchesCategory = categoryFilter === 'all' || 
+        (item.category || '').toLowerCase().trim() === categoryFilter.toLowerCase().trim() ||
+        String(item.category_id) === String(categoryFilter)
       const matchesActivity = activityFilter === 'all' || (activityFilter === 'active' ? item.status === 'active' : item.status === 'inactive')
 
       return matchesSearch && matchesStatus && matchesCategory && matchesActivity
@@ -235,16 +273,112 @@ export default function InventoryManagement() {
     }
   }
 
-  // Handle Open History Modal
+  // Handle Open Restock Batch Modal
+  const handleOpenNewBatch = (item = null) => {
+    setBatchProduct(item)
+    const baseSelling = item ? (item.selling_price ?? item.unit_price ?? '') : ''
+    const baseCost = item ? (item.cost_price ?? (baseSelling ? (Number(baseSelling) * 0.7).toFixed(2) : '')) : ''
+    setBatchFormData({
+      product_id: item ? (item.product_id || item.id) : (inventory[0]?.product_id || inventory[0]?.id || ''),
+      supplier_id: item?.supplier_id || (suppliers[0]?.id || ''),
+      quantity: '',
+      cost_price: baseCost,
+      selling_price: baseSelling,
+      received_date: new Date().toISOString().split('T')[0],
+      expiration_date: '',
+      notes: ''
+    })
+    setShowBatchModal(true)
+  }
+
+  // Handle Submit New Batch
+  const handleSaveNewBatch = async (e) => {
+    e.preventDefault()
+    const prodId = batchFormData.product_id || batchProduct?.product_id || batchProduct?.id
+    if (!prodId) {
+      Swal.fire({ icon: 'error', title: 'Product Required', text: 'Please select a product for this batch.' })
+      return
+    }
+    const qty = parseInt(batchFormData.quantity, 10)
+    if (!qty || qty <= 0) {
+      Swal.fire({ icon: 'error', title: 'Invalid Quantity', text: 'Received batch quantity must be at least 1 unit.' })
+      return
+    }
+    const cost = parseFloat(batchFormData.cost_price)
+    if (isNaN(cost) || cost < 0) {
+      Swal.fire({ icon: 'error', title: 'Invalid Cost Price', text: 'Please enter a valid cost price per unit.' })
+      return
+    }
+    const selling = parseFloat(batchFormData.selling_price)
+    if (isNaN(selling) || selling <= 0) {
+      Swal.fire({ icon: 'error', title: 'Invalid Selling Price', text: 'Please enter a valid selling price per unit.' })
+      return
+    }
+
+    try {
+      setSubmittingBatch(true)
+      const supplierObj = suppliers.find(s => String(s.id) === String(batchFormData.supplier_id))
+      const payload = {
+        product_id: Number(prodId),
+        supplier_id: batchFormData.supplier_id ? Number(batchFormData.supplier_id) : null,
+        supplier_name: supplierObj?.name || '',
+        quantity: qty,
+        cost_price: cost,
+        selling_price: selling,
+        received_date: batchFormData.received_date || new Date().toISOString().split('T')[0],
+        expiration_date: batchFormData.expiration_date || null,
+        notes: batchFormData.notes || 'Restock shipment batch'
+      }
+
+      await createProductBatch(prodId, payload)
+
+      Swal.fire({
+        icon: 'success',
+        title: 'New Batch Received! 📦',
+        text: `Successfully created new inventory batch of ${qty} units. Previous batches are safely preserved in history.`,
+        confirmButtonColor: '#f97316'
+      })
+
+      setShowBatchModal(false)
+      fetchInventory()
+    } catch (err) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Batch Creation Failed',
+        text: err.message || 'Could not save inventory batch. Please try again.'
+      })
+    } finally {
+      setSubmittingBatch(false)
+    }
+  }
+
+  // Handle Open History Modal (Batches + Movement Logs)
   const handleOpenHistory = async (item) => {
     setHistoryItem(item)
     setShowHistory(true)
+    setHistoryTab('batches')
     setLoadingHistory(true)
     try {
-      const logs = await getStockAdjustments(item.product_id || item.id)
-      setHistoryLogs(logs || [])
+      const prodId = item.product_id || item.id
+      const [batchesRes, logsRes] = await Promise.allSettled([
+        getProductBatches(prodId),
+        getStockAdjustments(prodId)
+      ])
+
+      if (batchesRes.status === 'fulfilled' && batchesRes.value) {
+        setProductBatchesData(batchesRes.value)
+      } else {
+        setProductBatchesData(null)
+      }
+
+      if (logsRes.status === 'fulfilled' && logsRes.value) {
+        setHistoryLogs(Array.isArray(logsRes.value) ? logsRes.value : logsRes.value?.data || [])
+      } else {
+        setHistoryLogs([])
+      }
     } catch (err) {
       console.warn('Failed to load history:', err)
+      setProductBatchesData(null)
       setHistoryLogs([])
     } finally {
       setLoadingHistory(false)
@@ -259,29 +393,40 @@ export default function InventoryManagement() {
           <p className="eyebrow" style={{ color: '#f97316', fontWeight: '700', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.05em' }}>
             Warehouse &amp; Stock Levels
           </p>
-          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
             Inventory Management
           </h1>
-          <p style={{ color: '#64748b', fontSize: '13.5px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
             Track real-time stock levels, active/inactive catalog items, and view full change logs.
           </p>
         </div>
-        <button
-          className="btn btn-secondary"
-          onClick={fetchInventory}
-          style={{ padding: '9px 16px', fontSize: '13px' }}
-        >
-          <RefreshCw size={15} /> Refresh Stock
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={fetchInventory}
+            style={{ padding: '9px 16px', fontSize: '13px' }}
+          >
+            <RefreshCw size={15} /> Refresh Stock
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => handleOpenNewBatch(null)}
+            style={{ padding: '9px 16px', fontSize: '13px' }}
+          >
+            <Plus size={15} /> Receive New Batch
+          </button>
+        </div>
       </div>
 
       {/* Stock Status Metrics Grid */}
       <div className="metrics-grid" style={{ marginBottom: '20px' }}>
         <div className="metric-card">
-          <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
             Total Catalog Items
           </span>
-          <div style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', margin: '4px 0' }}>
+          <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', margin: '4px 0' }}>
             {totalItemsCount}
           </div>
           <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>
@@ -289,60 +434,60 @@ export default function InventoryManagement() {
           </span>
         </div>
 
-        <div className="metric-card" style={{ borderLeft: '4px solid #ff9800' }}>
-          <span style={{ fontSize: '12px', fontWeight: '700', color: '#b45309', textTransform: 'uppercase' }}>
+        <div className="metric-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase' }}>
             Low Stock Alerts ⚠️
           </span>
-          <div style={{ fontSize: '26px', fontWeight: '800', color: '#d97706', margin: '4px 0' }}>
+          <div style={{ fontSize: '26px', fontWeight: '800', color: '#f59e0b', margin: '4px 0' }}>
             {lowStockCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             Below Reorder Level
           </span>
         </div>
 
         <div className="metric-card" style={{ borderLeft: '4px solid #ef4444' }}>
-          <span style={{ fontSize: '12px', fontWeight: '700', color: '#b91c1c', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: '#ef4444', textTransform: 'uppercase' }}>
             Out of Stock 🚨
           </span>
-          <div style={{ fontSize: '26px', fontWeight: '800', color: '#dc2626', margin: '4px 0' }}>
+          <div style={{ fontSize: '26px', fontWeight: '800', color: '#ef4444', margin: '4px 0' }}>
             {outOfStockCount}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             Zero Available Stock
           </span>
         </div>
 
         <div className="metric-card">
-          <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
             Total Inventory Value
           </span>
-          <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: '4px 0' }}>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)', margin: '4px 0' }}>
             ₱{totalValuation.toLocaleString('en-PH', { maximumFractionDigits: 0 })}
           </div>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             Across all warehouses
           </span>
         </div>
       </div>
 
       {/* Search & Multi-Filter Control Bar */}
-      <div className="management-controls" style={{ background: '#ffffff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+      <div className="management-controls">
         {/* Dynamic Search Box */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 2, minWidth: '240px' }}>
-          <Search size={18} color="#94a3b8" />
+          <Search size={18} color="var(--text-muted)" />
           <input
             type="text"
             placeholder="Search inventory by product name, category, or supplier..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
-            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px' }}
+            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px', background: 'transparent', color: 'var(--text-primary)' }}
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
             >
               <X size={16} />
             </button>
@@ -394,10 +539,10 @@ export default function InventoryManagement() {
           Loading synchronized inventory records...
         </div>
       ) : filteredInventory.length === 0 ? (
-        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <Package size={36} color="#cbd5e1" style={{ margin: '0 auto 10px' }} />
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>No products found</h3>
-          <p style={{ fontSize: '13px', color: '#64748b' }}>
+        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+          <Package size={36} color="var(--text-muted)" style={{ margin: '0 auto 10px' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>No products found</h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             No inventory items matched your search query "{search}". Try resetting filters.
           </p>
           <button
@@ -413,12 +558,13 @@ export default function InventoryManagement() {
           <table className="management-table">
             <thead>
               <tr>
-                <th style={{ width: '26%' }}>Product Name</th>
-                <th style={{ width: '15%' }}>Category</th>
-                <th style={{ width: '13%' }}>Current Stock</th>
-                <th style={{ width: '12%' }}>Reorder Level</th>
-                <th style={{ width: '12%' }}>Stock Status</th>
-                <th style={{ width: '10%' }}>Status</th>
+                <th style={{ width: '22%' }}>Product &amp; Batches</th>
+                <th style={{ width: '12%' }}>Category</th>
+                <th style={{ width: '11%' }}>Cost Price</th>
+                <th style={{ width: '13%' }}>Selling Price</th>
+                <th style={{ width: '12%' }}>Stock Quantity</th>
+                <th style={{ width: '10%' }}>Stock Status</th>
+                <th style={{ width: '8%' }}>Status</th>
                 <th style={{ width: '12%', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
@@ -428,25 +574,68 @@ export default function InventoryManagement() {
                 return (
                   <tr key={item.id || item.product_id}>
                     <td>
-                      <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>{item.product_name}</strong>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>{item.product_name}</strong>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
                         Supplier / Brand: {item.supplier}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenHistory(item)}
+                        style={{
+                          background: 'rgba(249, 115, 22, 0.12)',
+                          border: '1px solid rgba(249, 115, 22, 0.28)',
+                          borderRadius: '4px',
+                          padding: '1px 6px',
+                          fontSize: '11px',
+                          color: '#f97316',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          marginTop: '3px'
+                        }}
+                        title="Click to view batch breakdown and history"
+                      >
+                        <Package size={11} /> {item.batches_count || 1} {item.batches_count === 1 ? 'Batch' : 'Batches'}
+                      </button>
                     </td>
                     <td>
-                      <span style={{ fontSize: '12.5px', color: '#475569' }}>{item.category}</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{item.category}</span>
+                    </td>
+                    <td>
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>
+                        ₱{item.cost_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </strong>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block' }}>Cost / {getUnitBadgeText(item.unit, false)}</span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                        <strong style={{ color: '#ea580c', fontSize: '13.5px' }}>
+                          ₱{item.selling_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          fontSize: '10.5px',
+                          fontWeight: '700',
+                          background: item.margin_percent >= 20 ? '#ecfdf5' : '#fef3c7',
+                          color: item.margin_percent >= 20 ? '#16a34a' : '#b45309'
+                        }}>
+                          {item.margin_percent}% margin
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block' }}>per {getUnitBadgeText(item.unit, false)}</span>
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <strong style={{ fontSize: '15px', color: item.stock_status === 'out_of_stock' ? '#ef4444' : '#0f172a' }}>
-                          {item.quantity}
+                        <strong style={{ fontSize: '14.5px', color: item.stock_status === 'out_of_stock' ? '#ef4444' : 'var(--text-primary)' }}>
+                          {formatQuantityWithUnit(item.quantity, item.unit)}
                         </strong>
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>{item.unit}</span>
                       </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>
-                        {item.low_stock_threshold} {item.unit}
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>
+                        Min: {formatQuantityWithUnit(item.low_stock_threshold, item.unit)}
                       </span>
                     </td>
                     <td>
@@ -488,12 +677,6 @@ export default function InventoryManagement() {
                           transition: 'all 0.15s ease',
                           outline: 'none'
                         }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'scale(1.04)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
                       >
                         {isActive ? (
                           <>
@@ -509,40 +692,52 @@ export default function InventoryManagement() {
                       </button>
                     </td>
 
-                    {/* Actions: Adjust Stock + Blended History Button */}
+                    {/* Actions: Restock Batch + Blended History Button + Adjust */}
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', justifyContent: 'flex-end' }}>
+                        {/* Receive Batch Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNewBatch(item)}
+                          title={`Receive new inventory batch for ${item.product_name}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '5px 9px',
+                            fontSize: '11.5px',
+                            fontWeight: '700',
+                            color: '#f97316',
+                            background: 'rgba(249, 115, 22, 0.12)',
+                            border: '1px solid rgba(249, 115, 22, 0.3)',
+                            borderRadius: '7px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Plus size={12} />
+                          <span>Restock</span>
+                        </button>
+
                         {/* Blended History Button */}
                         <button
                           type="button"
                           onClick={() => handleOpenHistory(item)}
-                          title={`View stock movement history for ${item.product_name}`}
+                          title={`View batches and stock movement history for ${item.product_name}`}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
-                            padding: '6px 11px',
-                            fontSize: '12px',
+                            gap: '4px',
+                            padding: '5px 9px',
+                            fontSize: '11.5px',
                             fontWeight: '600',
-                            color: '#64748b',
-                            background: 'transparent',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#f1f5f9'
-                            e.currentTarget.style.color = '#0f172a'
-                            e.currentTarget.style.borderColor = '#cbd5e1'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent'
-                            e.currentTarget.style.color = '#64748b'
-                            e.currentTarget.style.borderColor = '#e2e8f0'
+                            color: 'var(--text-primary)',
+                            background: 'var(--bg-hover)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '7px',
+                            cursor: 'pointer'
                           }}
                         >
-                          <History size={13} />
+                          <History size={12} />
                           <span>History</span>
                         </button>
 
@@ -551,10 +746,10 @@ export default function InventoryManagement() {
                           type="button"
                           className="btn btn-sm btn-secondary"
                           onClick={() => handleOpenAdjustment(item)}
-                          style={{ padding: '6px 12px', fontSize: '12px' }}
-                          title="Adjust Stock Quantity"
+                          style={{ padding: '5px 8px', fontSize: '11.5px' }}
+                          title="Adjust Stock Quantity manually"
                         >
-                          Adjust Stock
+                          Adjust
                         </button>
                       </div>
                     </td>
@@ -572,29 +767,29 @@ export default function InventoryManagement() {
       {showAdjustment && selectedItem && (
         <div className="modal-overlay" onClick={() => setShowAdjustment(false)}>
           <div className="modal-content" style={{ maxWidth: '440px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                 Adjust Stock Quantity
               </h2>
               <button
                 type="button"
                 onClick={() => setShowAdjustment(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSaveAdjustment} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
+              <div style={{ background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
                   {selectedItem.category}
                 </span>
-                <h4 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+                <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
                   {selectedItem.product_name}
                 </h4>
                 <div style={{ fontSize: '13px', color: '#ea580c', fontWeight: '700', marginTop: '4px' }}>
-                  Current Stock: {selectedItem.quantity} {selectedItem.unit}
+                  Current Stock: {formatQuantityWithUnit(selectedItem.quantity, selectedItem.unit)}
                 </div>
               </div>
 
@@ -623,16 +818,28 @@ export default function InventoryManagement() {
 
               {/* Quantity */}
               <div className="form-group">
-                <label className="form-label">Adjustment Quantity ({selectedItem.unit})</label>
+                <label className="form-label">
+                  {getQuantityInputLabel(selectedItem.unit, adjustmentData.type === 'add' ? 'Quantity to Add' : 'Quantity to Deduct')}
+                </label>
                 <input
                   type="number"
                   min="1"
                   className="form-input"
-                  placeholder="50"
+                  placeholder={getQuantityPlaceholder(selectedItem.unit, 20)}
                   value={adjustmentData.quantity}
                   onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
                   required
                 />
+                {adjustmentData.quantity && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', background: 'var(--bg-hover)', padding: '6px 10px', borderRadius: '6px' }}>
+                    Resulting Stock: <strong style={{ color: 'var(--text-primary)' }}>{formatQuantityWithUnit(
+                      adjustmentData.type === 'add'
+                        ? Number(selectedItem.quantity) + Number(adjustmentData.quantity)
+                        : Math.max(0, Number(selectedItem.quantity) - Number(adjustmentData.quantity)),
+                      selectedItem.unit
+                    )}</strong>
+                  </div>
+                )}
               </div>
 
               {/* Reason */}
@@ -688,123 +895,516 @@ export default function InventoryManagement() {
       )}
 
       {/* =========================================================================
-          MODAL: STOCK MOVEMENT / CHANGE HISTORY LOGS
+          MODAL: RECEIVE NEW INVENTORY BATCH
           ========================================================================= */}
-      {showHistory && historyItem && (
-        <div className="modal-overlay" onClick={() => setShowHistory(false)}>
+      {showBatchModal && (
+        <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
           <div
             className="modal-content"
-            style={{ maxWidth: '720px', width: '100%', borderRadius: '16px', padding: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            style={{ maxWidth: '540px', width: '100%', borderRadius: '16px', padding: '24px' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <History size={20} color="#ea580c" />
-                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                    Stock Movement History
-                  </h2>
-                </div>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                  <strong>{historyItem.product_name}</strong> · Current Stock: <strong style={{ color: '#ea580c' }}>{historyItem.quantity} {historyItem.unit}</strong>
-                </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={20} color="#f97316" />
+                <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                  Receive New Stock Batch
+                </h2>
               </div>
               <button
                 type="button"
-                onClick={() => setShowHistory(false)}
-                style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', display: 'grid', placeItems: 'center', color: '#64748b', cursor: 'pointer' }}
+                onClick={() => setShowBatchModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Content / Table */}
+            {(() => {
+              const activeBatchProduct = batchProduct || inventory.find(i => String(i.product_id || i.id) === String(batchFormData.product_id))
+
+              return (
+                <form onSubmit={handleSaveNewBatch} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Product Selector / Display */}
+                  <div className="form-group">
+                    <label className="form-label">Target Product <span style={{ color: '#ef4444' }}>*</span></label>
+                    {batchProduct ? (
+                      <div style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                        <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{batchProduct.product_name}</strong>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          <span>Category: {batchProduct.category}</span>
+                          <span>Current Stock: <strong style={{ color: '#f97316' }}>{formatQuantityWithUnit(batchProduct.quantity, batchProduct.unit)}</strong></span>
+                        </div>
+                      </div>
+                    ) : (
+                      <select
+                        className="form-input"
+                        value={batchFormData.product_id}
+                        onChange={(e) => {
+                          const selected = inventory.find(i => String(i.product_id || i.id) === String(e.target.value))
+                          setBatchFormData({
+                            ...batchFormData,
+                            product_id: e.target.value,
+                            cost_price: selected?.cost_price || '',
+                            selling_price: selected?.selling_price || ''
+                          })
+                        }}
+                        required
+                      >
+                        <option value="">-- Select Product to Restock --</option>
+                        {inventory.map(item => (
+                          <option key={item.id || item.product_id} value={item.product_id || item.id}>
+                            {item.product_name} ({formatQuantityWithUnit(item.quantity, item.unit)} in stock)
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Assigned Unit Banner */}
+                  {activeBatchProduct && (
+                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.28)', borderRadius: '8px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                      <span style={{ color: '#10b981' }}>
+                        Tracking Unit: <strong style={{ color: 'var(--text-primary)' }}>{activeBatchProduct.unit || 'Piece'}</strong>
+                      </span>
+                      <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.16)', color: '#10b981', fontWeight: '800', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                        {getUnitBadgeText(activeBatchProduct.unit, true).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Quantity & Supplier */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{getQuantityInputLabel(activeBatchProduct?.unit, 'Quantity to Receive')} <span style={{ color: '#ef4444' }}>*</span></span>
+                        <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700' }}>
+                          in {getUnitBadgeText(activeBatchProduct?.unit, true)}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="form-input"
+                        placeholder={getQuantityPlaceholder(activeBatchProduct?.unit, 100)}
+                        value={batchFormData.quantity}
+                        onChange={(e) => setBatchFormData({ ...batchFormData, quantity: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Supplier <span style={{ color: '#ef4444' }}>*</span></label>
+                      <select
+                        className="form-input"
+                        value={batchFormData.supplier_id}
+                        onChange={(e) => setBatchFormData({ ...batchFormData, supplier_id: e.target.value })}
+                        required
+                      >
+                        <option value="">-- Select Supplier --</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Pricing (Cost Price & Selling Price) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        Cost Price (₱ / {getUnitBadgeText(activeBatchProduct?.unit, false)}) <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-input"
+                        placeholder="0.00"
+                        value={batchFormData.cost_price}
+                        onChange={(e) => setBatchFormData({ ...batchFormData, cost_price: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                        <span>Selling Price (₱ / {getUnitBadgeText(activeBatchProduct?.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
+                        {Number(batchFormData.selling_price) > 0 && Number(batchFormData.cost_price) > 0 && (
+                          <span style={{ color: '#10b981', fontWeight: '700' }}>
+                            {Math.round(((Number(batchFormData.selling_price) - Number(batchFormData.cost_price)) / Number(batchFormData.selling_price)) * 100)}% Margin
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-input"
+                        placeholder="0.00"
+                        value={batchFormData.selling_price}
+                        onChange={(e) => setBatchFormData({ ...batchFormData, selling_price: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+              {/* Dates */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label">Date Received <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={batchFormData.received_date}
+                    onChange={(e) => setBatchFormData({ ...batchFormData, received_date: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Expiration Date (Optional)</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={batchFormData.expiration_date}
+                    onChange={(e) => setBatchFormData({ ...batchFormData, expiration_date: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="form-group">
+                <label className="form-label">Batch Notes / PO Reference</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g., PO #2026-0819 Delivery"
+                  value={batchFormData.notes}
+                  onChange={(e) => setBatchFormData({ ...batchFormData, notes: e.target.value })}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={() => setShowBatchModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 2 }}
+                  disabled={submittingBatch}
+                >
+                  {submittingBatch ? 'Saving Batch...' : 'Create Batch & Restock'}
+                </button>
+              </div>
+            </form>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: PRODUCT INVENTORY & BATCH HISTORY (DUAL TAB)
+          ========================================================================= */}
+      {showHistory && historyItem && (
+        <div className="modal-overlay" onClick={() => setShowHistory(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '860px', width: '100%', borderRadius: '16px', padding: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <History size={20} color="#ea580c" />
+                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                    Product Inventory History
+                  </h2>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  <strong>{historyItem.product_name}</strong> · Total In-Stock: <strong style={{ color: '#ea580c' }}>{historyItem.quantity} {historyItem.unit}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                style={{ background: 'var(--bg-hover)', border: 'none', borderRadius: '8px', width: '32px', height: '32px', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Tab Switcher */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setHistoryTab('batches')}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: historyTab === 'batches' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
+                  color: historyTab === 'batches' ? '#ea580c' : 'var(--text-muted)'
+                }}
+              >
+                <Package size={15} />
+                <span>Inventory Batches ({productBatchesData?.batches?.length ?? historyItem.batches_count ?? 0})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryTab('movements')}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: historyTab === 'movements' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
+                  color: historyTab === 'movements' ? '#ea580c' : 'var(--text-muted)'
+                }}
+              >
+                <Clock size={15} />
+                <span>Stock Movement Logs ({historyLogs.length})</span>
+              </button>
+            </div>
+
+            {/* Content Body */}
             <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
               {loadingHistory ? (
-                <div style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
-                  Loading stock change history...
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  Loading product history records...
                 </div>
-              ) : historyLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                  <Clock size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                  <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>No movement logs yet</h4>
-                  <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b' }}>
-                    Stock adjustments, restock shipments, or POS sales will appear in this history log automatically.
-                  </p>
+              ) : historyTab === 'batches' ? (
+                <div>
+                  {/* Summary Metric Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Total Batches Logged</span>
+                      <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                        {productBatchesData?.summary?.total_batches || productBatchesData?.batches?.length || 1}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.12)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '700', textTransform: 'uppercase' }}>Active In-Stock Batches</span>
+                      <div style={{ fontSize: '20px', fontWeight: '800', color: '#10b981' }}>
+                        {productBatchesData?.summary?.active_batches_count ?? productBatchesData?.batches?.filter(b => b.status === 'active' && b.quantity > 0).length ?? 1}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(249, 115, 22, 0.12)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
+                      <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700', textTransform: 'uppercase' }}>Previous / Depleted Batches</span>
+                      <div style={{ fontSize: '20px', fontWeight: '800', color: '#f97316' }}>
+                        {productBatchesData?.summary?.previous_batches_count ?? productBatchesData?.batches?.filter(b => b.status !== 'active' || b.quantity <= 0).length ?? 0}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Batch Records Table */}
+                  {!productBatchesData || !productBatchesData.batches || productBatchesData.batches.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '30px 20px', background: 'var(--bg-hover)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
+                      <Package size={28} color="var(--text-muted)" style={{ margin: '0 auto 8px' }} />
+                      <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>No batches found</h4>
+                      <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        Use the "Restock" button to receive incoming stock batches for this product.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Current &amp; Historical Batches
+                        </span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                          Older records &amp; prices are permanently preserved
+                        </span>
+                      </div>
+                      <table className="management-table" style={{ fontSize: '12px' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: '18%' }}>Batch #</th>
+                            <th style={{ width: '22%' }}>Supplier &amp; Notes</th>
+                            <th style={{ width: '12%' }}>Cost Price</th>
+                            <th style={{ width: '13%' }}>Selling Price</th>
+                            <th style={{ width: '13%' }}>Stock (Remain / Init)</th>
+                            <th style={{ width: '12%' }}>Received</th>
+                            <th style={{ width: '10%', textAlign: 'center' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productBatchesData.batches.map(batch => {
+                            const isDepleted = Number(batch.quantity || 0) <= 0 || batch.status === 'depleted'
+                            const isExpired = batch.status === 'expired'
+                            const cost = Number(batch.cost_price || 0)
+                            const selling = Number(batch.selling_price || 0)
+                            const margin = selling > 0 ? Math.round(((selling - cost) / selling) * 100) : 0
+
+                            return (
+                              <tr key={batch.id} style={{ opacity: isDepleted ? 0.75 : 1 }}>
+                                <td>
+                                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{batch.batch_number}</strong>
+                                  {batch.expiration_date ? (
+                                    <span style={{ fontSize: '10.5px', color: '#ef4444', fontWeight: '600' }}>
+                                      Exp: {batch.expiration_date}
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>No Expiration</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>
+                                    {batch.supplier_name || batch.supplier?.name || '—'}
+                                  </strong>
+                                  {batch.notes && (
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{batch.notes}</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <span style={{ fontWeight: '700', color: 'var(--text-secondary)' }}>
+                                    ₱{cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong style={{ color: '#f97316' }}>
+                                    ₱{selling.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  </strong>
+                                  <span style={{ display: 'block', fontSize: '10px', color: '#10b981', fontWeight: '700' }}>
+                                    {margin}% margin
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong style={{ color: isDepleted ? 'var(--text-muted)' : 'var(--text-primary)', fontSize: '13px' }}>
+                                    {formatQuantityWithUnit(batch.quantity, historyItem.unit)}
+                                  </strong>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '11px', display: 'block' }}>
+                                    Initial: {formatQuantityWithUnit(batch.initial_quantity, historyItem.unit)}
+                                  </span>
+                                </td>
+                                <td style={{ color: 'var(--text-secondary)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
+                                  {batch.received_date || '—'}
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  {isExpired ? (
+                                    <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '10px' }}>EXPIRED</span>
+                                  ) : isDepleted ? (
+                                    <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', fontSize: '10px' }}>DEPLETED</span>
+                                  ) : (
+                                    <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '10px' }}>ACTIVE</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <table className="management-table" style={{ fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '22%' }}>Date &amp; Time</th>
-                      <th style={{ width: '18%' }}>Change</th>
-                      <th style={{ width: '22%' }}>Before ➔ After</th>
-                      <th style={{ width: '24%' }}>Reason / Action</th>
-                      <th style={{ width: '14%' }}>User</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyLogs.map((log, idx) => {
-                      const qtyChanged = Number(log.quantity_changed ?? 0)
-                      const isPositive = qtyChanged > 0
-                      const isZero = qtyChanged === 0
-                      const dateStr = log.created_at
-                        ? new Date(log.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                        : 'Recent'
-
-                      return (
-                        <tr key={log.id || idx}>
-                          <td style={{ color: '#64748b', whiteSpace: 'nowrap' }}>
-                            {dateStr}
-                          </td>
-                          <td>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontWeight: '700',
-                              fontSize: '12px',
-                              background: isZero ? '#f1f5f9' : isPositive ? '#ecfdf5' : '#fef2f2',
-                              color: isZero ? '#64748b' : isPositive ? '#16a34a' : '#dc2626',
-                              border: isZero ? '1px solid #e2e8f0' : isPositive ? '1px solid #bbf7d0' : '1px solid #fecaca'
-                            }}>
-                              {isPositive ? `+${qtyChanged}` : qtyChanged} {historyItem.unit}
-                            </span>
-                          </td>
-                          <td>
-                            <span style={{ color: '#475569', fontWeight: '600' }}>
-                              {log.quantity_before ?? '—'} ➔ {log.quantity_after ?? '—'} {historyItem.unit}
-                            </span>
-                          </td>
-                          <td>
-                            <strong style={{ color: '#0f172a', display: 'block', fontSize: '12.5px' }}>
-                              {log.reason || log.adjustment_type || 'Stock Change'}
-                            </strong>
-                            {log.notes && (
-                              <span style={{ fontSize: '11px', color: '#64748b' }}>{log.notes}</span>
-                            )}
-                          </td>
-                          <td style={{ color: '#64748b' }}>
-                            {log.user?.name || 'Staff / Admin'}
-                          </td>
+                /* Tab 2: Stock Movement Logs */
+                <div>
+                  {historyLogs.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-hover)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
+                      <Clock size={32} color="var(--text-muted)" style={{ margin: '0 auto 8px' }} />
+                      <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>No movement logs yet</h4>
+                      <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        Stock adjustments, restock shipments, or POS sales will appear in this history log automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className="management-table" style={{ fontSize: '12.5px' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '22%' }}>Date &amp; Time</th>
+                          <th style={{ width: '22%' }}>Change</th>
+                          <th style={{ width: '26%' }}>Before ➔ After</th>
+                          <th style={{ width: '20%' }}>Reason / Action</th>
+                          <th style={{ width: '10%' }}>User</th>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {historyLogs.map((log, idx) => {
+                          const qtyChanged = Number(log.quantity_changed ?? 0)
+                          const isPositive = qtyChanged > 0
+                          const isZero = qtyChanged === 0
+                          const dateStr = log.created_at
+                            ? new Date(log.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                            : 'Recent'
+
+                          return (
+                            <tr key={log.id || idx}>
+                              <td style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</td>
+                              <td>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  fontWeight: '700',
+                                  fontSize: '12px',
+                                  background: isZero ? '#f1f5f9' : isPositive ? '#ecfdf5' : '#fef2f2',
+                                  color: isZero ? '#64748b' : isPositive ? '#16a34a' : '#dc2626',
+                                  border: isZero ? '1px solid #e2e8f0' : isPositive ? '1px solid #bbf7d0' : '1px solid #fecaca'
+                                }}>
+                                  {isPositive ? `+${formatQuantityWithUnit(qtyChanged, historyItem.unit)}` : formatQuantityWithUnit(qtyChanged, historyItem.unit)}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ color: '#475569', fontWeight: '600' }}>
+                                  {log.quantity_before != null ? formatQuantityWithUnit(log.quantity_before, historyItem.unit) : '—'} ➔ {log.quantity_after != null ? formatQuantityWithUnit(log.quantity_after, historyItem.unit) : '—'}
+                                </span>
+                              </td>
+                              <td>
+                                <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '12.5px' }}>
+                                  {log.reason || log.adjustment_type || 'Stock Change'}
+                                </strong>
+                                {log.notes && <span style={{ fontSize: '11px', color: '#64748b' }}>{log.notes}</span>}
+                              </td>
+                              <td style={{ color: '#64748b' }}>{log.user?.name || 'Staff / Admin'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               )}
             </div>
 
             {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '14px', borderTop: '1px solid #e2e8f0', marginTop: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderTop: '1px solid #e2e8f0', marginTop: '14px' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setShowHistory(false)
+                  handleOpenNewBatch(historyItem)
+                }}
+                style={{ padding: '7px 16px', fontSize: '13px' }}
+              >
+                <Plus size={14} /> Receive New Batch For This Product
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setShowHistory(false)}
                 style={{ padding: '7px 18px', fontSize: '13px' }}
               >
-                Close Log
+                Close History
               </button>
             </div>
           </div>

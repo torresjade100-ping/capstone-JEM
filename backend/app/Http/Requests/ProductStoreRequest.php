@@ -16,14 +16,27 @@ class ProductStoreRequest extends FormRequest
         return [
             'category_id' => ['required','exists:categories,id'],
             'brand_id' => ['required','exists:brands,id'],
-            'name' => ['required','string','max:255'],
+            'name' => ['required','string','max:255','unique:products,name'],
             'description' => ['nullable','string'],
-            'base_price' => ['required','numeric','min:0'],
+            'base_price' => ['nullable','numeric','min:0'],
+            'cost_price' => ['nullable','numeric','min:0'],
+            'selling_price' => ['nullable','numeric','min:0'],
             'unit' => ['nullable','string','max:50'],
             'stock_quantity' => ['required','integer','min:0'],
             'low_stock_threshold' => ['required','integer','min:0'],
             'status' => ['required','in:active,inactive'],
             'image' => ['nullable','image','max:10240'],
+            'supplier_id' => ['nullable','exists:suppliers,id'],
+            'supplier_name' => ['nullable','string','max:255'],
+            'received_date' => ['nullable','date'],
+            'expiration_date' => ['nullable','date'],
+        ];
+    }
+
+    public function messages()
+    {
+        return [
+            'name.unique' => "A product named ':input' already exists in your catalog. Please select the existing product to add new stock batches instead of creating a duplicate.",
         ];
     }
 }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StatusBar, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { styles } from '../styles/appStyles';
 
 export default function SplashScreen() {

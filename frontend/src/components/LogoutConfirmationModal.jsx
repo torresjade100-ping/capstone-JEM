@@ -168,6 +168,39 @@ export default function LogoutConfirmationModal({
           background: #f1f5f9;
         }
 
+        [data-theme="dark"] .jem-logout-modal-card {
+          background: #0F172A;
+          border: 1px solid #1E293B;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+        [data-theme="dark"] .jem-logout-modal-icon-wrap {
+          background: rgba(239, 68, 68, 0.15);
+          border: 1.5px solid rgba(239, 68, 68, 0.35);
+          color: #EF4444;
+        }
+        [data-theme="dark"] .jem-logout-modal-title {
+          color: #F8FAFC;
+        }
+        [data-theme="dark"] .jem-logout-modal-message {
+          color: #94A3B8;
+        }
+        [data-theme="dark"] .jem-logout-btn-cancel {
+          background: #1E293B;
+          color: #94A3B8;
+          border: 1px solid #334155;
+        }
+        [data-theme="dark"] .jem-logout-btn-cancel:hover:not(:disabled) {
+          background: #334155;
+          color: #F8FAFC;
+        }
+        [data-theme="dark"] .jem-logout-close-icon {
+          color: #64748B;
+        }
+        [data-theme="dark"] .jem-logout-close-icon:hover {
+          color: #F8FAFC;
+          background: #1E293B;
+        }
+
         @keyframes jemFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }

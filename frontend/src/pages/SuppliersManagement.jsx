@@ -264,10 +264,10 @@ export default function SuppliersManagement() {
           <p className="eyebrow" style={{ color: '#f97316', fontWeight: '700', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.05em' }}>
             Supply Chain &amp; Procurement
           </p>
-          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
             Suppliers Management
           </h1>
-          <p style={{ color: '#64748b', fontSize: '13.5px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
             Manage construction material vendors, distributor contracts, and direct contact details.
           </p>
         </div>
@@ -286,21 +286,21 @@ export default function SuppliersManagement() {
       </div>
 
       {/* Search & Control Bar */}
-      <div className="management-controls" style={{ background: '#ffffff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+      <div className="management-controls" style={{ background: 'var(--bg-surface)', padding: '14px 18px', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px' }}>
-          <Search size={18} color="#94a3b8" />
+          <Search size={18} color="var(--text-muted)" />
           <input
             type="text"
             placeholder="Search suppliers by name, contact person, email, or location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
-            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px' }}
+            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px', background: 'transparent', color: 'var(--text-primary)' }}
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
             >
               <X size={16} />
             </button>
@@ -310,14 +310,14 @@ export default function SuppliersManagement() {
 
       {/* Suppliers Table */}
       {loading ? (
-        <div className="loading" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+        <div className="loading" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
           Loading supplier partners...
         </div>
       ) : filteredSuppliers.length === 0 ? (
-        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <Building size={36} color="#cbd5e1" style={{ margin: '0 auto 10px' }} />
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>No suppliers found</h3>
-          <p style={{ fontSize: '13px', color: '#64748b' }}>Try adjusting your search keyword or register a new supplier.</p>
+        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+          <Building size={36} color="var(--text-muted)" style={{ margin: '0 auto 10px' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>No suppliers found</h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Try adjusting your search keyword or register a new supplier.</p>
         </div>
       ) : (
         <div className="table-responsive">
@@ -340,8 +340,8 @@ export default function SuppliersManagement() {
                         width: '34px',
                         height: '34px',
                         borderRadius: '8px',
-                        background: '#eff6ff',
-                        color: '#2563eb',
+                        background: 'rgba(249, 115, 22, 0.15)',
+                        color: '#f97316',
                         display: 'grid',
                         placeItems: 'center',
                         fontWeight: '800'
@@ -349,23 +349,23 @@ export default function SuppliersManagement() {
                         <Building size={16} />
                       </div>
                       <div>
-                        <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>{sup.name}</strong>
+                        <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>{sup.name}</strong>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '600' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>
                       {sup.contact_person || sup.contact || 'Account Rep'}
                     </span>
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
-                      <span style={{ color: '#475569' }}>📞 {sup.phone || '—'}</span>
-                      <span style={{ color: '#64748b' }}>✉️ {sup.email || '—'}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>📞 {sup.phone || '—'}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>✉️ {sup.email || '—'}</span>
                     </div>
                   </td>
                   <td>
-                    <span style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4', display: 'block' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4', display: 'block' }}>
                       {sup.address || '—'}
                     </span>
                   </td>
@@ -373,28 +373,25 @@ export default function SuppliersManagement() {
                     <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'flex-end' }}>
                       <button
                         type="button"
-                        className="icon-button"
+                        className="action-btn action-btn-view"
                         onClick={() => handleView(sup)}
                         title="View Supplier Profile"
-                        style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
                       >
                         <Eye size={15} />
                       </button>
                       <button
                         type="button"
-                        className="icon-button"
+                        className="action-btn action-btn-edit"
                         onClick={() => handleEdit(sup)}
                         title="Edit Supplier Information"
-                        style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #fed7aa', background: '#fff7ed', color: '#ea580c', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         type="button"
-                        className="icon-button"
+                        className="action-btn action-btn-delete"
                         onClick={() => handleDelete(sup)}
                         title="Archive Supplier"
-                        style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -413,14 +410,14 @@ export default function SuppliersManagement() {
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-content" style={{ maxWidth: '520px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                 {editingSupplier ? 'Edit Supplier Information' : 'Register New Supplier Partner'}
               </h2>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
@@ -566,26 +563,26 @@ export default function SuppliersManagement() {
       {showViewModal && viewingSupplier && (
         <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
           <div className="modal-content" style={{ maxWidth: '440px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                 Supplier Profile
               </h2>
               <button
                 type="button"
                 onClick={() => setShowViewModal(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: 'var(--bg-hover)', border: '1px solid var(--border-color)', padding: '14px', borderRadius: '12px' }}>
                 <div style={{
                   width: '44px',
                   height: '44px',
                   borderRadius: '10px',
-                  background: '#2563eb',
+                  background: '#f97316',
                   color: '#fff',
                   display: 'grid',
                   placeItems: 'center'
@@ -593,27 +590,27 @@ export default function SuppliersManagement() {
                   <Building size={22} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>{viewingSupplier.name}</h3>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Verified Construction Vendor</span>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>{viewingSupplier.name}</h3>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Verified Construction Vendor</span>
                 </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Contact Person:</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a' }}>{viewingSupplier.contact_person || viewingSupplier.contact}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Contact Person:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{viewingSupplier.contact_person || viewingSupplier.contact}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Direct Phone:</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a' }}>{viewingSupplier.phone}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Direct Phone:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{viewingSupplier.phone}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Email:</span>
-                  <span style={{ fontWeight: '700', color: '#2563eb' }}>{viewingSupplier.email}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Email:</span>
+                  <span style={{ fontWeight: '700', color: '#f97316' }}>{viewingSupplier.email}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 0' }}>
-                  <span style={{ color: '#64748b' }}>Warehouse / Office Address:</span>
-                  <span style={{ fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{viewingSupplier.address}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Warehouse / Office Address:</span>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)', lineHeight: '1.4' }}>{viewingSupplier.address}</span>
                 </div>
               </div>
             </div>

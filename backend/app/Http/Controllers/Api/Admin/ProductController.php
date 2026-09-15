@@ -15,10 +15,27 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Product::with(['category:id,name', 'brand:id,name', 'variants:id,product_id,sku,price,stock_quantity']);
+        $query = Product::with(['category:id,name', 'brand:id,name', 'variants:id,product_id,sku,price,stock_quantity'])
+            ->withCount('batches');
 
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $cat = $request->category_id;
+            if (is_numeric($cat)) {
+                $query->where('category_id', (int) $cat);
+            } else {
+                $query->whereHas('category', function ($q) use ($cat) {
+                    $q->where('name', $cat);
+                });
+            }
+        } elseif ($request->filled('category')) {
+            $cat = $request->category;
+            if (is_numeric($cat)) {
+                $query->where('category_id', (int) $cat);
+            } else {
+                $query->whereHas('category', function ($q) use ($cat) {
+                    $q->where('name', $cat);
+                });
+            }
         }
 
         if ($request->filled('brand_id')) {
@@ -54,12 +71,18 @@ class ProductController extends Controller
             'brand_id' => ['required', 'exists:brands,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'base_price' => ['required', 'numeric', 'min:0'],
+            'base_price' => ['nullable', 'numeric', 'min:0'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
             'unit' => ['nullable', 'string', 'max:50'],
             'stock_quantity' => ['required', 'integer', 'min:0'],
             'low_stock_threshold' => ['required', 'integer', 'min:0'],
             'status' => ['required', 'in:active,inactive'],
             'image' => ['nullable', 'image', 'max:10240'],
+            'supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'supplier_name' => ['nullable', 'string', 'max:255'],
+            'received_date' => ['nullable', 'date'],
+            'expiration_date' => ['nullable', 'date'],
         ]);
 
         if ($validator->fails()) {
@@ -70,13 +93,61 @@ class ProductController extends Controller
             ], 422);
         }
 
-        $data = $request->except('image');
+        // Prevent duplicate products with the same name
+        $trimmedName = trim((string) $request->input('name'));
+        $existingProduct = Product::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmedName)])->first();
+        if ($existingProduct) {
+            return response()->json([
+                'success' => false,
+                'message' => "A product named '{$existingProduct->name}' already exists in your inventory catalog (ID #{$existingProduct->id}). Please select this existing product to add new stock batches instead of creating a duplicate.",
+                'errors' => [
+                    'name' => ["A product named '{$existingProduct->name}' already exists in the catalog."],
+                ],
+                'existing_product' => $existingProduct->load(['category', 'brand']),
+            ], 422);
+        }
+
+        $data = $request->except(['image', 'supplier_id', 'supplier_name', 'received_date', 'expiration_date']);
+
+        // Align base_price and selling_price
+        $sellingPrice = (float) ($request->input('selling_price') ?? $request->input('base_price') ?? 0);
+        $costPrice = (float) ($request->input('cost_price') ?? round($sellingPrice * 0.70, 2));
+
+        $data['selling_price'] = $sellingPrice;
+        $data['base_price'] = $sellingPrice;
+        $data['cost_price'] = $costPrice;
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('product_images', 'public');
         }
 
         $product = Product::create($data);
+
+        // Auto-create initial inventory batch if stock > 0
+        $stockQty = (int) $product->stock_quantity;
+        if ($stockQty > 0) {
+            $supplierName = $request->input('supplier_name');
+            if ($request->filled('supplier_id') && ! $supplierName) {
+                $sup = \App\Models\Supplier::find($request->input('supplier_id'));
+                $supplierName = $sup?->name;
+            }
+
+            \App\Models\InventoryBatch::create([
+                'product_id' => $product->id,
+                'batch_number' => sprintf('BAT-%s-%04d', date('Ymd'), $product->id),
+                'supplier_id' => $request->input('supplier_id'),
+                'supplier_name' => $supplierName ?: 'Initial Supplier',
+                'cost_price' => $costPrice,
+                'selling_price' => $sellingPrice,
+                'initial_quantity' => $stockQty,
+                'quantity' => $stockQty,
+                'received_date' => $request->input('received_date', date('Y-m-d')),
+                'expiration_date' => $request->input('expiration_date'),
+                'status' => 'active',
+                'notes' => 'Initial stock batch on product creation',
+                'created_by' => $request->user()->id ?? null,
+            ]);
+        }
 
         // Audit
         try {
@@ -94,6 +165,8 @@ class ProductController extends Controller
             // swallow audit errors
         }
 
+        $product->load(['category', 'brand', 'batches']);
+
         return response()->json([
             'success' => true,
             'message' => 'Product created successfully.',
@@ -103,7 +176,7 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
-        $product->load(['category', 'brand', 'variants']);
+        $product->load(['category', 'brand', 'variants', 'batches.supplier']);
 
         return response()->json([
             'success' => true,
@@ -119,6 +192,8 @@ class ProductController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'base_price' => ['sometimes', 'numeric', 'min:0'],
+            'cost_price' => ['sometimes', 'numeric', 'min:0'],
+            'selling_price' => ['sometimes', 'numeric', 'min:0'],
             'unit' => ['nullable', 'string', 'max:50'],
             'stock_quantity' => ['sometimes', 'integer', 'min:0'],
             'low_stock_threshold' => ['sometimes', 'integer', 'min:0'],
@@ -134,7 +209,31 @@ class ProductController extends Controller
             ], 422);
         }
 
+        if ($request->filled('name')) {
+            $trimmedName = trim((string) $request->input('name'));
+            $duplicate = Product::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmedName)])
+                ->where('id', '!=', $product->id)
+                ->first();
+            if ($duplicate) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Another product named '{$duplicate->name}' already exists in your inventory catalog.",
+                    'errors' => [
+                        'name' => ["Another product with this name already exists."],
+                    ],
+                ], 422);
+            }
+        }
+
         $data = $request->except('image');
+
+        if ($request->filled('selling_price')) {
+            $data['selling_price'] = (float) $request->selling_price;
+            $data['base_price'] = (float) $request->selling_price;
+        } elseif ($request->filled('base_price')) {
+            $data['selling_price'] = (float) $request->base_price;
+            $data['base_price'] = (float) $request->base_price;
+        }
 
         if ($request->hasFile('image')) {
             Storage::disk('public')->delete($product->image);
@@ -158,6 +257,8 @@ class ProductController extends Controller
         } catch (\Throwable $e) {
             // swallow
         }
+
+        $product->load(['category', 'brand', 'batches']);
 
         return response()->json([
             'success' => true,

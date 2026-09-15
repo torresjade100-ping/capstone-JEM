@@ -40,4 +40,9 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function backorders(): HasMany
+    {
+        return $this->hasMany(Backorder::class);
+    }
 }

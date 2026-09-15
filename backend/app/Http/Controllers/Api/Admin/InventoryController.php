@@ -12,7 +12,8 @@ class InventoryController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Product::with(['category', 'brand', 'variants'])
+        $query = Product::with(['category', 'brand', 'variants', 'batches.supplier'])
+            ->withCount('batches')
             ->orderBy('name');
 
         if ($request->filled('search')) {
@@ -25,7 +26,23 @@ class InventoryController extends Controller
         }
 
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $cat = $request->category_id;
+            if (is_numeric($cat)) {
+                $query->where('category_id', (int) $cat);
+            } else {
+                $query->whereHas('category', function ($q) use ($cat) {
+                    $q->where('name', $cat);
+                });
+            }
+        } elseif ($request->filled('category')) {
+            $cat = $request->category;
+            if (is_numeric($cat)) {
+                $query->where('category_id', (int) $cat);
+            } else {
+                $query->whereHas('category', function ($q) use ($cat) {
+                    $q->where('name', $cat);
+                });
+            }
         }
 
         if ($request->filled('status')) {
@@ -39,6 +56,10 @@ class InventoryController extends Controller
             $threshold = (int) ($p->low_stock_threshold ?? 10);
             $stockStatus = $qty <= 0 ? 'out_of_stock' : ($qty <= $threshold ? 'low_stock' : 'in_stock');
             $prodStatus = $p->status ?? 'active';
+            $costPrice = (float) ($p->cost_price ?? 0);
+            $sellingPrice = (float) ($p->selling_price ?? $p->base_price ?? 0);
+            $margin = $sellingPrice > 0 ? round((($sellingPrice - $costPrice) / $sellingPrice) * 100, 1) : 0;
+            $latestBatch = $p->batches->first();
 
             return [
                 'id' => $p->id,
@@ -49,10 +70,13 @@ class InventoryController extends Controller
                 'category_id' => $p->category_id,
                 'brand' => $p->brand?->name ?? '—',
                 'brand_id' => $p->brand_id,
-                'supplier' => $p->brand?->name ?? '—',
+                'supplier' => $latestBatch?->supplier_name ?? $latestBatch?->supplier?->name ?? $p->brand?->name ?? '—',
                 'unit' => $p->unit ?? 'piece',
-                'unit_price' => (float) $p->base_price,
-                'price' => (float) $p->base_price,
+                'cost_price' => $costPrice,
+                'selling_price' => $sellingPrice,
+                'unit_price' => $sellingPrice,
+                'price' => $sellingPrice,
+                'margin_percent' => $margin,
                 'quantity' => $qty,
                 'current_quantity' => $qty,
                 'stock_quantity' => $qty,
@@ -61,13 +85,17 @@ class InventoryController extends Controller
                 'stock_status' => $stockStatus,
                 'status' => $prodStatus,
                 'is_active' => $prodStatus === 'active',
+                'batches_count' => (int) ($p->batches_count ?? $p->batches->count()),
+                'latest_batch' => $latestBatch,
                 'created_at' => $p->created_at,
                 'updated_at' => $p->updated_at,
                 'product' => [
                     'id' => $p->id,
                     'name' => $p->name,
                     'unit' => $p->unit ?? 'piece',
-                    'base_price' => (float) $p->base_price,
+                    'cost_price' => $costPrice,
+                    'selling_price' => $sellingPrice,
+                    'base_price' => $sellingPrice,
                     'stock_quantity' => $qty,
                     'low_stock_threshold' => $threshold,
                     'status' => $prodStatus,

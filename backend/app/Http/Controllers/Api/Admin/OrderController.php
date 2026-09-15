@@ -13,22 +13,32 @@ class OrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['items.product', 'payments', 'customer.user'])->latest();
+        $query = Order::with(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user'])->latest();
         if ($request->filled('status')) $query->where('status', $request->status);
         if ($request->filled('search')) $query->where('order_number', 'like', '%'.$request->search.'%');
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
         return response()->json(['success' => true, 'data' => $query->paginate($perPage)]);
     }
 
-
-    public function show(Order $order): JsonResponse { return response()->json(['success' => true, 'data' => $order->load(['items.product', 'payments', 'customer.user'])]); }
+    public function show(Order $order): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $order->load(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user'])
+        ]);
+    }
 
     public function updateStatus(Request $request, Order $order): JsonResponse
     {
-        $data = $request->validate(['status' => ['required', Rule::in(['pending', 'confirmed', 'received', 'processing', 'ready', 'out_for_delivery', 'shipped', 'delivered', 'completed', 'cancelled', 'returned'])]]);
+        $data = $request->validate([
+            'status' => [
+                'required',
+                Rule::in(['pending', 'confirmed', 'backordered', 'received', 'processing', 'ready', 'out_for_delivery', 'shipped', 'delivered', 'completed', 'cancelled', 'returned'])
+            ]
+        ]);
         $before = $order->status;
         $order->update($data);
-        return response()->json(['success' => true, 'message' => "Order status changed from {$before} to {$order->status}.", 'data' => $order->fresh()]);
+        return response()->json(['success' => true, 'message' => "Order status changed from {$before} to {$order->status}.", 'data' => $order->fresh(['items.product', 'backorders.product'])]);
     }
 
     public function transition(Request $request, Order $order, string $target): JsonResponse

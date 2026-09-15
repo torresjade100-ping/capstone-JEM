@@ -15,6 +15,11 @@ class OrderItem extends Model
         'product_id',
         'product_variant_id',
         'quantity',
+        'ordered_quantity',
+        'fulfilled_quantity',
+        'backordered_quantity',
+        'available_quantity_at_order',
+        'fulfillment_status',
         'unit_price',
         'total_price',
     ];
@@ -32,5 +37,10 @@ class OrderItem extends Model
     public function productVariant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class);
+    }
+
+    public function backorder(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Backorder::class);
     }
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { styles } from '../styles/appStyles';
+import { styles, COLORS, DARK_COLORS } from '../styles/appStyles';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '🏠' },
@@ -10,9 +10,11 @@ const NAV_ITEMS = [
   { id: 'profile', label: 'Profile', icon: '👤' },
 ];
 
-export default function BottomNavBar({ activeTab, onTabSelect, cartCount = 0 }) {
+export default function BottomNavBar({ activeTab, onTabSelect, cartCount = 0, isDarkMode = false }) {
+  const themeColors = isDarkMode ? DARK_COLORS : COLORS;
+
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, isDarkMode && { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
       {NAV_ITEMS.map((tab) => {
         const badge = tab.id === 'cart' ? cartCount : 0;
         const isActive = activeTab === tab.id;

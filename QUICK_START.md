@@ -3,7 +3,7 @@
 ## 🎯 Current System Status: 80-85% Complete
 
 ### Admin Portal (`/admin`)
-**Default Login**: admin@jemlumber.com / Password123!
+**Default Login**: admin / admin123
 
 | Page | Features | Status |
 |------|----------|--------|
@@ -17,7 +17,7 @@
 | Reports | Daily/monthly/yearly with CSV export | ✅ Ready |
 
 ### Staff Portal (`/staff`)
-**Default Login**: staff@jemlumber.com / Password123!
+**Default Login**: staff / staff123
 
 | Page | Features | Status |
 |------|----------|--------|
@@ -97,12 +97,12 @@ npm run dev
 ### Test Accounts
 ```
 Admin:
-  Email: admin@jemlumber.com
-  Password: Password123!
+  Email: admin
+  Password: admin123
   
 Staff:
-  Email: staff@jemlumber.com
-  Password: Password123!
+  Email: staff
+  Password: staff123
   
 Customer:
   Email: customer@jemlumber.com

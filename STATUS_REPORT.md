@@ -268,13 +268,13 @@ npm run dev
 ### Test with Initial Accounts
 ```
 Admin Account:
-  Email: admin@jemlumber.com
-  Password: Password123!
+  Email: admin
+  Password: admin123
   Access: AdminDashboard
 
 Staff Account:
-  Email: staff@jemlumber.com
-  Password: Password123!
+  Email: staff
+  Password: staff123
   Access: StaffDashboard
 
 Customer Account:

@@ -1,22 +1,27 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { styles, COLORS } from '../styles/appStyles';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { styles, COLORS, DARK_COLORS } from '../styles/appStyles';
 
 export default function ProfileTab({
   userName = '',
   userEmail = '',
+  userPhone = '',
   ordersCount = 0,
   completedOrdersCount = 0,
   wishlistCount = 0,
+  isDarkMode = false,
+  onToggleDarkMode,
   onNavigateToOrders,
   onOpenWishlist,
   onOpenAddress,
   onOpenNotifications,
   onOpenSupport,
+  onOpenEditProfile,
   onSignOut,
   onShowToast,
 }) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const themeColors = isDarkMode ? DARK_COLORS : COLORS;
 
   const displayName = userName || 'Valued Customer';
   const displayEmail = userEmail || 'Customer Account';
@@ -51,10 +56,10 @@ export default function ProfileTab({
 
           <TouchableOpacity
             style={styles.profileGearBtn}
-            onPress={() => onShowToast('Settings Configured')}
+            onPress={onOpenEditProfile}
             activeOpacity={0.7}
           >
-            <Text style={{ fontSize: 18 }}>⚙️</Text>
+            <Text style={{ fontSize: 18 }}>✏️</Text>
           </TouchableOpacity>
         </View>
 
@@ -89,10 +94,27 @@ export default function ProfileTab({
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
+      {/* 2. Scrollable Profile Body Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+      >
         {/* 2. MY ACCOUNT Section */}
         <Text style={styles.profileSectionEyebrow}>MY ACCOUNT</Text>
         <View style={styles.profileGroupCard}>
+          <TouchableOpacity
+            style={styles.profileRowItem}
+            onPress={onOpenEditProfile}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 18, marginRight: 12 }}>👤</Text>
+            <Text style={styles.profileRowLabel}>Edit Profile &amp; Contact Number</Text>
+            <Text style={styles.profileRowChevron}>›</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.profileRowItem}
             onPress={onNavigateToOrders}
@@ -130,11 +152,11 @@ export default function ProfileTab({
 
           <TouchableOpacity
             style={styles.profileRowItem}
-            onPress={() => onShowToast('GCash / Maya / COD Enabled')}
+            onPress={() => onShowToast('GCash / Maya / Bank / COD Enabled')}
             activeOpacity={0.7}
           >
             <Text style={{ fontSize: 18, marginRight: 12 }}>💳</Text>
-            <Text style={styles.profileRowLabel}>Payment Methods (GCash, Maya, COD)</Text>
+            <Text style={styles.profileRowLabel}>Payment Methods (GCash, Maya, Bank, COD)</Text>
             <Text style={styles.profileRowChevron}>›</Text>
           </TouchableOpacity>
 
@@ -147,6 +169,25 @@ export default function ProfileTab({
             <Text style={styles.profileRowLabel}>Notifications &amp; Promos</Text>
             <Text style={styles.profileRowChevron}>›</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* PREFERENCES & THEME Section */}
+        <Text style={[styles.profileSectionEyebrow, { marginTop: 22 }]}>
+          PREFERENCES &amp; DISPLAY
+        </Text>
+        <View style={styles.profileGroupCard}>
+          <View style={[styles.profileRowItem, { borderBottomWidth: 0, justifyContent: 'space-between' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, marginRight: 12 }}>{isDarkMode ? '🌙' : '☀️'}</Text>
+              <Text style={styles.profileRowLabel}>Dark Mode Theme</Text>
+            </View>
+            <Switch
+              value={isDarkMode}
+              onValueChange={onToggleDarkMode}
+              trackColor={{ false: '#cbd5e1', true: '#f97316' }}
+              thumbColor="#ffffff"
+            />
+          </View>
         </View>
 
         {/* 3. SUPPORT & ABOUT Section */}
@@ -195,7 +236,7 @@ export default function ProfileTab({
         >
           <Text style={styles.profileSignOutText}>🚪 Sign Out of Account</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* 5. Professional Logout Confirmation Modal */}
       <Modal

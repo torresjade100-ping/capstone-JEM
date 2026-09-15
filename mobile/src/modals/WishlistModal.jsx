@@ -32,7 +32,7 @@ export default function WishlistModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} bounces={false} overScrollMode="never">
             {wishlistedProducts.length === 0 ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text style={{ fontSize: 44, marginBottom: 8 }}>🤍</Text>

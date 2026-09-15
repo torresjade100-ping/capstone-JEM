@@ -9,10 +9,15 @@ export default function ProductDetailsModal({
   onBuyNow,
 }) {
   const [quantity, setQuantity] = useState(1);
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
 
   if (!product) return null;
 
-  const maxStock = Number(product.stock_quantity ?? 100);
+  const variants = product.variants || [];
+  const selectedVariant = variants.find((v) => v.id === selectedVariantId) || (variants.length > 0 ? variants[0] : null);
+
+  const currentPrice = selectedVariant ? Number(selectedVariant.price || product.base_price || 0) : Number(product.base_price || 0);
+  const maxStock = selectedVariant ? Number(selectedVariant.stock_quantity ?? product.stock_quantity ?? 100) : Number(product.stock_quantity ?? 100);
   const isOutOfStock = maxStock === 0;
 
   const handleIncrement = () => {
@@ -27,7 +32,19 @@ export default function ProductDetailsModal({
     }
   };
 
-  const itemTotal = Number(product.base_price || 0) * quantity;
+  const itemTotal = currentPrice * quantity;
+
+  const buildCartPayload = () => ({
+    ...product,
+    id: product.id,
+    product_id: product.id,
+    product_variant_id: selectedVariant?.id || null,
+    base_price: currentPrice,
+    price: currentPrice,
+    stock_quantity: maxStock,
+    variant_label: selectedVariant ? (selectedVariant.label || selectedVariant.size || selectedVariant.thickness) : null,
+    name: selectedVariant ? `${product.name} (${selectedVariant.label || selectedVariant.size || selectedVariant.thickness})` : product.name,
+  });
 
   return (
     <Modal visible={true} animationType="slide" transparent onRequestClose={onClose}>
@@ -49,7 +66,7 @@ export default function ProductDetailsModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never">
             {/* Hero Image Container */}
             <View style={styles.detailThumb}>
               <Text style={{ fontSize: 76 }}>{product.emoji || '🧱'}</Text>
@@ -115,7 +132,7 @@ export default function ProductDetailsModal({
                   Unit Contractor Price
                 </Text>
                 <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.primaryDark, marginTop: 2 }}>
-                  ₱{Number(product.base_price || 0).toLocaleString()}{' '}
+                  ₱{Number(currentPrice || 0).toLocaleString()}{' '}
                   <Text style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: '500' }}>
                     / {product.unit || 'piece'}
                   </Text>
@@ -144,6 +161,46 @@ export default function ProductDetailsModal({
                 </Text>
               </View>
             </View>
+
+            {/* Product Variants Selector (Size / Grade / Thickness / Unit) */}
+            {variants.length > 0 && (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 13.5, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 }}>
+                  Available Specifications / Dimensions:
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {variants.map((v) => {
+                    const isSelected = selectedVariant?.id === v.id;
+                    const vLabel = v.label || [v.size, v.thickness, v.grade].filter(Boolean).join(' - ') || `Option #${v.id}`;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 7,
+                          borderRadius: 10,
+                          backgroundColor: isSelected ? COLORS.primaryLight : COLORS.surface,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? COLORS.primary : COLORS.border,
+                        }}
+                        onPress={() => setSelectedVariantId(v.id)}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: isSelected ? '800' : '600',
+                            color: isSelected ? COLORS.primaryDark : COLORS.textMain,
+                          }}
+                        >
+                          {vLabel} • ₱{Number(v.price).toLocaleString()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* Description */}
             <View style={{ marginBottom: 14 }}>
@@ -211,7 +268,7 @@ export default function ProductDetailsModal({
                   isOutOfStock && { opacity: 0.5 },
                 ]}
                 onPress={() => {
-                  onAddToCart(product, quantity);
+                  onAddToCart(buildCartPayload(), quantity);
                   onClose();
                 }}
                 disabled={isOutOfStock}
@@ -228,9 +285,9 @@ export default function ProductDetailsModal({
                 ]}
                 onPress={() => {
                   if (onBuyNow) {
-                    onBuyNow(product, quantity);
+                    onBuyNow(buildCartPayload(), quantity);
                   } else {
-                    onAddToCart(product, quantity);
+                    onAddToCart(buildCartPayload(), quantity);
                   }
                   onClose();
                 }}

@@ -1,9 +1,28 @@
-export const API_BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? `http://${window.location.hostname}:8000/api`
-    : 'http://127.0.0.1:8000/api')
-).replace(/\/$/, '')
+const getCandidateUrls = () => {
+  const list = []
+  if (import.meta.env.VITE_API_URL) {
+    list.push(import.meta.env.VITE_API_URL.replace(/\/$/, ''))
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    const host = window.location.hostname
+    list.push(`http://${host}:8000/api`)
+    list.push(`http://${host}:8001/api`)
+  }
+  list.push('http://127.0.0.1:8000/api')
+  list.push('http://127.0.0.1:8001/api')
+  list.push('http://localhost:8000/api')
+  list.push('http://localhost:8001/api')
+  list.push('/api')
+  return Array.from(new Set(list.filter(Boolean)))
+}
+
+let activeApiBaseUrl = getCandidateUrls()[0]
+export const API_BASE_URL = activeApiBaseUrl
+
+export function getApiBaseUrl() {
+  return activeApiBaseUrl
+}
+
 
 export function getStoredToken() {
   return localStorage.getItem('jem_api_token')
@@ -160,7 +179,30 @@ async function request(path, options = {}, cacheTtlMs = 0) {
     const headers = { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers }
     if (token) headers.Authorization = `Bearer ${token}`
 
-    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers })
+    const candidateList = [activeApiBaseUrl, ...getCandidateUrls().filter(u => u !== activeApiBaseUrl)]
+    let response = null
+    let lastNetworkError = null
+
+    for (const baseUrl of candidateList) {
+      try {
+        const res = await fetch(`${baseUrl}${path}`, { ...options, headers })
+        response = res
+        activeApiBaseUrl = baseUrl
+        break
+      } catch (err) {
+        lastNetworkError = err
+      }
+    }
+
+    if (!response) {
+      const isConnectionIssue = lastNetworkError?.message?.includes('Failed to fetch') || lastNetworkError?.message?.includes('NetworkError')
+      throw new Error(
+        isConnectionIssue
+          ? 'Unable to connect to backend server. Please ensure the backend is running on port 8000.'
+          : (lastNetworkError?.message || 'Network request failed')
+      )
+    }
+
     const payload = await response.json().catch(() => ({}))
     if (response.status === 401) {
       localStorage.removeItem('jem_api_token')
@@ -400,8 +442,15 @@ export async function getAdminOrders(params = {}) {
           product_id: i.product_id,
           name: i.product?.name || i.name || 'Hardware Material',
           quantity: i.quantity,
+          ordered_quantity: i.ordered_quantity || i.quantity,
+          fulfilled_quantity: i.fulfilled_quantity !== undefined ? i.fulfilled_quantity : i.quantity,
+          backordered_quantity: i.backordered_quantity || 0,
+          available_quantity_at_order: i.available_quantity_at_order || 0,
+          fulfillment_status: i.fulfillment_status || 'fulfilled',
           unit_price: i.unit_price || i.product?.base_price || 0,
+          backorder: i.backorder || null,
         })),
+        backorders: item.backorders || [],
         status: item.status || 'pending',
         payment_method: item.payment_method || 'cod',
         subtotal: item.subtotal || 0,
@@ -781,8 +830,19 @@ export function getPurchaseOrders() { return request('/admin/purchase-orders').t
 export function createPurchaseOrder(order) { return request('/admin/purchase-orders', { method: 'POST', body: JSON.stringify(order) }).then((payload) => payload.data) }
 export function approvePurchaseOrder(id) { return request(`/admin/purchase-orders/${id}/approve`, { method: 'POST' }).then((payload) => payload.data) }
 export function receivePurchaseOrder(id, receipt) { return request(`/admin/purchase-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(receipt) }).then((payload) => payload.data) }
-export function getBackorders() { return request('/admin/backorders').then((payload) => payload.data) }
-export function fulfillBackorder(id, details) { return request(`/admin/backorders/${id}/fulfill`, { method: 'POST', body: JSON.stringify(details) }).then((payload) => payload.data) }
+export function getBackorders(params = {}) {
+  const query = new URLSearchParams(params).toString()
+  return request(`/admin/backorders${query ? `?${query}` : ''}`).then((payload) => payload)
+}
+export function getBackordersDemand() {
+  return request('/admin/backorders-demand').then((payload) => payload.data)
+}
+export function fulfillBackorder(id, details) {
+  return request(`/admin/backorders/${id}/fulfill`, { method: 'POST', body: JSON.stringify(details) }).then((payload) => payload)
+}
+export function cancelBackorder(id, reason = '') {
+  return request(`/admin/backorders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }).then((payload) => payload)
+}
 export function createAdminPosCheckout(transaction) { return request('/pos/checkout', { method: 'POST', body: JSON.stringify(transaction) }).then((payload) => payload.data) }
 export function createQuickSale(transaction) { return request('/express/quick-sale', { method: 'POST', body: JSON.stringify(transaction) }).then((payload) => payload.data) }
 
@@ -873,6 +933,21 @@ export function checkout(order) {
 }
 export function getOrders() { return request('/orders').then((payload) => payload.data).catch(() => getSharedOrders()) }
 export function getOrder(id) { return request(`/orders/${id}`).then((payload) => payload.data) }
-export function initiatePayment(payment) { return request('/payments/initiate', { method: 'POST', body: JSON.stringify(payment) }).then((payload) => payload.data) }
+export function getProductBatches(productId) {
+  return request(`/admin/products/${productId}/batches`).then((payload) => payload.data)
+}
+
+export function createProductBatch(productId, batchData) {
+  return request(`/admin/products/${productId}/batches`, {
+    method: 'POST',
+    body: JSON.stringify(batchData)
+  }).then((payload) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+    }
+    return payload.data
+  })
+}
 
 export function apiUrl() { return API_BASE_URL }
+

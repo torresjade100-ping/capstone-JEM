@@ -87,6 +87,18 @@ class PurchaseOrderController extends Controller
 
                 // Update inventory
                 $inventoryService->adjustStock($request->user(), $item->product_id, $item->product_variant_id, $qty, 'purchase_receive', 'restock');
+
+                // Auto-allocate received stock to waiting backorders in FIFO order
+                try {
+                    app(\App\Services\BackorderService::class)->allocateStock(
+                        $item->product_id,
+                        $item->product_variant_id,
+                        $qty,
+                        $request->user()
+                    );
+                } catch (\Throwable $boErr) {
+                    // Non-blocking for PO receipt
+                }
             }
             $before = $po->toArray();
             $po->status = 'received';

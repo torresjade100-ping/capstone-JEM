@@ -8,7 +8,7 @@ use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
-use App\Services\InventoryService;
+use App\Services\BackorderService;
 use App\Http\Requests\CheckoutRequest as CheckoutRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -20,17 +20,22 @@ use Illuminate\Support\Facades\Request as RequestFacade;
 class OrderController extends Controller
 {
     protected InventoryService $inventoryService;
+    protected BackorderService $backorderService;
 
-    public function __construct(InventoryService $inventoryService)
+    public function __construct(InventoryService $inventoryService, BackorderService $backorderService)
     {
         $this->inventoryService = $inventoryService;
+        $this->backorderService = $backorderService;
     }
 
     public function index(): JsonResponse
     {
         $user = Auth::user();
         $customer = $user->customer;
-        $orders = Order::where('customer_id', $customer->id)->orderBy('created_at', 'desc')->paginate(20);
+        $orders = Order::with(['items.product', 'backorders.product', 'payments'])
+            ->where('customer_id', $customer->id)
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
 
         return response()->json(['success' => true, 'data' => $orders]);
     }
@@ -39,7 +44,9 @@ class OrderController extends Controller
     {
         $user = Auth::user();
         $customer = $user->customer;
-        $order = Order::with('items')->where('customer_id', $customer->id)->findOrFail($id);
+        $order = Order::with(['items.product', 'backorders.product', 'payments'])
+            ->where('customer_id', $customer->id)
+            ->findOrFail($id);
 
         return response()->json(['success' => true, 'data' => $order]);
     }
@@ -77,25 +84,23 @@ class OrderController extends Controller
         }
 
         return DB::transaction(function () use ($request, $customer, $cart, $user) {
-            // Validate stock and calculate totals server-side
             $subtotal = 0;
+            $itemsData = [];
             foreach ($cart->items as $item) {
-                $available = $this->inventoryService->getAvailableQuantity($item->product_id, $item->product_variant_id);
-                if ($available < $item->quantity) {
-                    throw new \Exception('Insufficient stock for product ID '.$item->product_id);
-                }
-
-                $price = $item->price; // price stored in cart; recalc from product to prevent manipulation
                 $product = $item->product;
-                if ($item->product_variant_id) {
-                    $variant = $item->variant;
-                    $price = $variant->price;
-                } else {
-                    $price = $product->base_price;
-                }
+                $price = $item->product_variant_id ? $item->variant?->price : $product?->base_price;
+                if (!$price) $price = $item->price;
 
                 $lineTotal = $price * $item->quantity;
                 $subtotal += $lineTotal;
+
+                $itemsData[] = [
+                    'product_id' => $item->product_id,
+                    'product_variant_id' => $item->product_variant_id,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $price,
+                    'name' => $product?->name ?? 'Hardware Product',
+                ];
             }
 
             $shipping = (float) config('app.default_delivery_fee', 50.00);
@@ -106,7 +111,7 @@ class OrderController extends Controller
             $order = Order::create([
                 'customer_id' => $customer->id,
                 'order_number' => 'JEM'.time().Str::random(4),
-                'status' => 'confirmed',
+                'status' => 'pending',
                 'payment_method' => $request->payment_method,
                 'subtotal' => $subtotal,
                 'shipping_fee' => $shipping,
@@ -132,24 +137,8 @@ class OrderController extends Controller
             } catch (\Throwable $e) {
             }
 
-            // Create order items and deduct stock
-            foreach ($cart->items as $item) {
-                $product = $item->product;
-                $price = $item->product_variant_id ? $item->variant->price : $product->base_price;
-                $lineTotal = $price * $item->quantity;
-
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item->product_id,
-                    'product_variant_id' => $item->product_variant_id,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $price,
-                    'total_price' => $lineTotal,
-                ]);
-
-                // Deduct stock
-                $this->inventoryService->adjustStock($user, $item->product_id, $item->product_variant_id, -1 * $item->quantity, 'order_checkout', 'restock');
-            }
+            // Create order items & detect backorders automatically
+            $this->backorderService->processOrderItems($order, $itemsData, $user);
 
             // Create payment record
             $paymentStatus = $request->payment_method === 'cod' ? 'Awaiting COD Collection' : 'Unpaid';
@@ -164,7 +153,11 @@ class OrderController extends Controller
             // Clear cart
             $cart->items()->delete();
 
-            return response()->json(['success' => true, 'message' => 'Order created', 'data' => $order]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Order created',
+                'data' => $order->fresh(['items.product', 'backorders.product', 'payments'])
+            ]);
         });
     }
 
@@ -225,6 +218,7 @@ class OrderController extends Controller
                 }
 
                 $items = $request->input('items', []);
+
                 $subtotal = 0;
                 foreach ($items as $it) {
                     $qty = (int) ($it['quantity'] ?? $it['qty'] ?? 1);
@@ -232,11 +226,12 @@ class OrderController extends Controller
                     $subtotal += ($qty * $price);
                 }
 
-                $shipping = (float) ($request->shipping_fee ?? 200.00);
+                $deliveryType = strtolower($request->delivery_type ?? 'delivery');
+                $shipping = $deliveryType === 'pickup' ? 0.00 : (float) ($request->shipping_fee ?? 200.00);
                 $total = (float) ($request->total ?? ($subtotal + $shipping));
                 $orderNumber = $request->order_number ?: ('JEM-'.date('Ymd').'-'.rand(1000, 9999));
 
-                $validPaymentMethod = in_array(strtolower($request->payment_method), ['gcash', 'maya', 'cod'], true)
+                $validPaymentMethod = in_array(strtolower($request->payment_method), ['gcash', 'maya', 'bank_transfer', 'cod'], true)
                     ? strtolower($request->payment_method)
                     : 'cod';
 
@@ -260,61 +255,32 @@ class OrderController extends Controller
                     'tax' => 0.00,
                     'total' => $total,
                     'amount_paid' => $validPaymentMethod === 'cod' ? 0.00 : $total,
-                    'delivery_address' => $request->delivery_address ?: 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
+                    'delivery_address' => $deliveryType === 'pickup' ? 'Store Pickup: JEM Main Yard, National Highway, Santa Rosa' : ($request->delivery_address ?: 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna'),
                     'delivery_date' => $deliveryDate,
                 ]);
 
+                // 3. Process items and auto-detect backorders
+                $systemUser = Auth::user() ?? \App\Models\User::where('role', 'admin')->first() ?? $customer->user;
+                $processResult = $this->backorderService->processOrderItems($order, $items, $systemUser);
 
-                // 3. Create Order Items (ensuring Product existence)
-                $firstCat = \App\Models\Category::first();
-                $firstBrand = \App\Models\Brand::first();
-
-                foreach ($items as $it) {
-                    $pid = (int) ($it['product_id'] ?? $it['id'] ?? 1);
-                    $product = \App\Models\Product::find($pid);
-
-                    if (! $product) {
-                        $product = \App\Models\Product::firstOrCreate(
-                            ['name' => $it['name'] ?: 'Hardware Material Item'],
-                            [
-                                'category_id' => $firstCat?->id ?: 1,
-                                'brand_id' => $firstBrand?->id ?: 1,
-                                'base_price' => (float) ($it['unit_price'] ?? $it['price'] ?? 100),
-                                'unit' => 'piece',
-                                'status' => 'active',
-                            ]
-                        );
-                        $pid = $product->id;
-                    }
-
-                    $qty = max((int) ($it['quantity'] ?? $it['qty'] ?? 1), 1);
-                    $price = (float) ($it['unit_price'] ?? $it['price'] ?? $product->base_price);
-
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'product_id' => $pid,
-                        'quantity' => $qty,
-                        'unit_price' => $price,
-                        'total_price' => $qty * $price,
-                    ]);
-                }
-
-                // 4. Create Payment record with valid enum status
+                // 4. Create Payment record
                 Payment::create([
                     'order_id' => $order->id,
                     'method' => $validPaymentMethod,
                     'status' => $validPaymentMethod === 'cod' ? 'pending' : 'completed',
                     'amount' => $total,
+                    'reference_number' => $request->reference_number ?: ('REF-' . strtoupper(Str::random(8))),
                 ]);
 
-                // 5. Notify Admin and Staff in database
-                $notifTitle = 'New Customer Mobile Order 🛒';
-                $notifMsg = "Order #{$order->order_number} (₱".number_format($total, 2).') placed by '.($request->customer_name ?: 'Customer').' via '.strtoupper($validPaymentMethod);
+                // 5. Notify Admin & Staff of incoming order
+                $notifTitle = $processResult['is_backordered'] ? 'Order with Backorder ⏳' : 'New Customer Mobile Order 🛒';
+                $notifMsg = "Order #{$order->order_number} (₱".number_format($total, 2).') placed by '.($request->customer_name ?: 'Customer').' via '.strtoupper($validPaymentMethod) . ($processResult['is_backordered'] ? ' (Contains Backorders)' : '');
                 $notifArray = [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'total' => $total,
                     'customer_name' => $request->customer_name ?: 'Customer',
+                    'is_backordered' => $processResult['is_backordered'],
                 ];
 
                 $adminUsers = \App\Models\User::whereIn('role', ['admin', 'staff'])->get();
@@ -332,18 +298,104 @@ class OrderController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Mobile order placed and synced with backend warehouse.',
-                    'data' => $order->load(['items.product', 'payments', 'customer.user']),
+                    'message' => $processResult['is_backordered'] 
+                        ? 'Order placed! Some items are on backorder and will be fulfilled once restocked.' 
+                        : 'Mobile order placed and synced with backend warehouse.',
+                    'data' => $order->load(['items.product', 'payments', 'customer.user', 'backorders.product']),
+                    'is_backordered' => $processResult['is_backordered'],
                 ], 201);
             });
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to process order: '.$e->getMessage(),
-            ], 500);
+            ], 422);
         }
     }
 
+    public function cancelMobileOrder($id, ?\Illuminate\Http\Request $request = null): JsonResponse
+    {
+        $order = Order::with('items.product')->where('id', $id)->orWhere('order_number', $id)->first();
 
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Order not found.'], 404);
+        }
+
+        $cancellableStatuses = ['pending', 'unpaid', 'to pay', 'to_pay', 'to process', 'to_process', 'confirmed', 'backordered'];
+        $currentStatus = strtolower($order->status);
+
+        if (! in_array($currentStatus, $cancellableStatuses, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Order cannot be cancelled because it is already '{$order->status}'.",
+            ], 400);
+        }
+
+        try {
+            DB::transaction(function () use ($order) {
+                $order->status = 'cancelled';
+                $order->save();
+
+                // Restore stock for physically fulfilled items only (backorders were not subtracted from physical stock)
+                $systemUser = Auth::user() ?? \App\Models\User::where('role', 'admin')->first();
+                foreach ($order->items as $item) {
+                    $qty = (int) ($item->fulfilled_quantity ?? $item->quantity);
+                    if ($qty <= 0) continue;
+
+                    try {
+                        $this->inventoryService->adjustStock(
+                            $systemUser,
+                            $item->product_id,
+                            $item->product_variant_id,
+                            $qty,
+                            "Cancelled Order #{$order->order_number} Stock Restored",
+                            'cancellation'
+                        );
+                    } catch (\Throwable $stockErr) {
+                        \App\Models\Product::where('id', $item->product_id)->increment('stock_quantity', $qty);
+                        if ($item->product_variant_id) {
+                            \App\Models\ProductVariant::where('id', $item->product_variant_id)->increment('stock_quantity', $qty);
+                        }
+                    }
+                }
+
+                // Cancel open backorders for this order
+                \App\Models\Backorder::where('order_id', $order->id)
+                    ->whereIn('status', ['pending', 'partially_fulfilled', 'partial'])
+                    ->update([
+                        'status' => 'cancelled',
+                        'notes' => DB::raw("CONCAT(COALESCE(notes, ''), ' | Order cancelled by customer')")
+                    ]);
+
+                // Update payment status
+                Payment::where('order_id', $order->id)->update(['status' => 'refunded']);
+
+                // Create cancellation notification
+                if ($order->customer && $order->customer->user_id) {
+                    \App\Models\Notification::create([
+                        'user_id' => $order->customer->user_id,
+                        'title' => "Order #{$order->order_number} Cancelled",
+                        'message' => "Your order #{$order->order_number} has been cancelled.",
+                        'type' => 'order',
+                        'data' => ['order_id' => $order->id, 'order_number' => $order->order_number],
+                        'channel' => 'database',
+                        'read' => false,
+                    ]);
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => "Order #{$order->order_number} has been cancelled.",
+                'data' => $order->fresh(['items.product', 'payments', 'backorders.product']),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel order: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
+
 

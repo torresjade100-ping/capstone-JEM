@@ -120,14 +120,14 @@ export default function FeedbackManagement() {
       )}
 
       {loading && feedback.length === 0 ? (
-        <div className="loading" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+        <div className="loading" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
           Loading customer feedback...
         </div>
       ) : feedback.length === 0 ? (
-        <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-          <MessageSquare size={36} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
-          <p style={{ fontWeight: 600, color: '#334155', margin: 0 }}>No customer feedback yet</p>
-          <span style={{ fontSize: '12px', color: '#64748b' }}>Reviews and ratings from the mobile app will automatically appear here in real time.</span>
+        <div className="empty-state" style={{ padding: '60px 20px', textAlign: 'center', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
+          <MessageSquare size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+          <p style={{ fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>No customer feedback yet</p>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Reviews and ratings from the mobile app will automatically appear here in real time.</span>
         </div>
       ) : (
         <div className="table-responsive">
@@ -151,7 +151,7 @@ export default function FeedbackManagement() {
                 return (
                   <tr key={item.id}>
                     <td>
-                      <strong>{customerName}</strong>
+                      <strong style={{ color: 'var(--text-primary)' }}>{customerName}</strong>
                       {item.order_number && (
                         <div style={{ fontSize: '11.5px', color: '#ea580c', fontWeight: '700' }}>
                           #{item.order_number}
@@ -159,7 +159,7 @@ export default function FeedbackManagement() {
                       )}
                     </td>
                     <td>
-                      <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a' }}>
+                      <strong style={{ display: 'block', fontSize: '13px', color: 'var(--text-primary)' }}>
                         {item.subject || 'Delivery Review'}
                       </strong>
                       {isReview && (
@@ -168,8 +168,8 @@ export default function FeedbackManagement() {
                             <Star
                               key={i}
                               size={12}
-                              fill={i < rating ? '#f59e0b' : '#e2e8f0'}
-                              color={i < rating ? '#f59e0b' : '#cbd5e1'}
+                              fill={i < rating ? '#f59e0b' : 'var(--border-color)'}
+                              color={i < rating ? '#f59e0b' : 'var(--text-muted)'}
                             />
                           ))}
                           <span style={{ fontSize: '11px', fontWeight: '700', color: '#d97706', marginLeft: '4px' }}>
@@ -178,10 +178,10 @@ export default function FeedbackManagement() {
                         </div>
                       )}
                     </td>
-                    <td style={{ maxWidth: '320px', whiteSpace: 'normal', fontSize: '13px', color: '#334155' }}>
+                    <td style={{ maxWidth: '320px', whiteSpace: 'normal', fontSize: '13px', color: 'var(--text-secondary)' }}>
                       {item.message}
                       {item.admin_response && (
-                        <div style={{ marginTop: '6px', padding: '6px 10px', background: '#f0fdf4', borderRadius: '6px', borderLeft: '3px solid #16a34a', fontSize: '12px', color: '#166534' }}>
+                        <div style={{ marginTop: '6px', padding: '6px 10px', background: 'rgba(22, 163, 74, 0.1)', borderRadius: '6px', borderLeft: '3px solid #16a34a', fontSize: '12px', color: '#16a34a' }}>
                           <strong>Store Response:</strong> {item.admin_response}
                         </div>
                       )}
@@ -191,7 +191,7 @@ export default function FeedbackManagement() {
                         {isReview ? '⭐ Review' : (item.type || 'General')}
                       </span>
                     </td>
-                    <td>{item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Just now'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Just now'}</td>
                     <td style={{ textAlign: 'right' }}>
                       <button
                         className="btn btn-sm btn-primary"
@@ -214,12 +214,12 @@ export default function FeedbackManagement() {
       {selected && (
         <div className="modal-overlay" onClick={() => setSelected(null)}>
           <div className="modal-content" onClick={(event) => event.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <h2>Respond to Customer Feedback</h2>
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', margin: '12px 0 16px', border: '1px solid #e2e8f0' }}>
-              <strong style={{ fontSize: '13px', display: 'block', marginBottom: '4px', color: '#0f172a' }}>
+            <h2 style={{ color: 'var(--text-primary)' }}>Respond to Customer Feedback</h2>
+            <div style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '8px', margin: '12px 0 16px', border: '1px solid var(--border-color)' }}>
+              <strong style={{ fontSize: '13px', display: 'block', marginBottom: '4px', color: 'var(--text-primary)' }}>
                 {selected.subject || 'Feedback Message'}
               </strong>
-              <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>{selected.message}</p>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>{selected.message}</p>
             </div>
             <form onSubmit={respond}>
               <textarea

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { getAdminOrders, getInventory, getProducts, getRestockRequests, getStoredUser, getUsers, logout, getSharedOrders } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
+import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -320,6 +321,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="header-actions">
+            <ThemeToggle />
             <NotificationDropdown role="admin" iconSize={19} />
             <div className="user-menu">
               <span className="avatar">{user?.name ? user.name.charAt(0).toUpperCase() : 'A'}</span>
@@ -517,7 +519,8 @@ export default function AdminDashboard() {
 
             <Suspense fallback={<PageSkeletonLoader rows={6} />}>
               {activePage === 'products' && <ProductManagement />}
-              {activePage === 'orders' && <OrdersManagement />}
+              {activePage === 'orders' && <OrdersManagement role="admin" defaultTab="orders" />}
+              {activePage === 'backorders' && <OrdersManagement role="admin" defaultTab="backorders" />}
               {activePage === 'users' && <UserManagement />}
               {activePage === 'inventory' && <InventoryManagement />}
               {activePage === 'suppliers' && <SuppliersManagement />}

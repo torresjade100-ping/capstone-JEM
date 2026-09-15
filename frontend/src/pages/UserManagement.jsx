@@ -428,10 +428,10 @@ export default function UserManagement() {
           <p className="eyebrow" style={{ color: '#f97316', fontWeight: '700', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.05em' }}>
             System Administration
           </p>
-          <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
             User Management
           </h1>
-          <p style={{ color: '#64748b', fontSize: '13.5px', marginTop: '4px' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
             Manage registered accounts, contractors, and contact information.
           </p>
         </div>
@@ -451,21 +451,21 @@ export default function UserManagement() {
       </div>
 
       {/* Search & Control Bar */}
-      <div className="management-controls" style={{ background: '#ffffff', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+      <div className="management-controls">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px' }}>
-          <Search size={18} color="#94a3b8" />
+          <Search size={18} color="var(--text-muted)" />
           <input
             type="text"
             placeholder="Search by name, email, or phone number..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="search-input"
-            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px' }}
+            style={{ border: 'none', padding: '6px 0', outline: 'none', width: '100%', fontSize: '13.5px', background: 'transparent', color: 'var(--text-primary)' }}
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
             >
               <X size={16} />
             </button>
@@ -479,10 +479,10 @@ export default function UserManagement() {
           Loading user records...
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <User size={36} color="#cbd5e1" style={{ margin: '0 auto 10px' }} />
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a' }}>No Users Found</h3>
-          <p style={{ fontSize: '13px', color: '#64748b' }}>Try adjusting your search keyword or add a new user.</p>
+        <div className="empty-state" style={{ textAlign: 'center', padding: '40px', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+          <User size={36} color="var(--text-muted)" style={{ margin: '0 auto 10px' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>No Users Found</h3>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Try adjusting your search keyword or add a new user.</p>
         </div>
       ) : (
         <div className="table-responsive">
@@ -524,8 +524,8 @@ export default function UserManagement() {
                             width: '32px',
                             height: '32px',
                             borderRadius: '50%',
-                            background: user.role === 'admin' ? '#fee2e2' : '#f1f5f9',
-                            color: user.role === 'admin' ? '#b91c1c' : '#0f172a',
+                            background: user.role === 'admin' ? 'rgba(239, 68, 68, 0.16)' : 'var(--bg-hover)',
+                            color: user.role === 'admin' ? '#ef4444' : 'var(--text-primary)',
                             display: 'grid',
                             placeItems: 'center',
                             fontWeight: '800',
@@ -534,9 +534,9 @@ export default function UserManagement() {
                             {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                           </div>
                           <div>
-                            <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>{user.name}</strong>
+                            <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>{user.name}</strong>
                             {user.role === 'admin' && (
-                              <span style={{ marginLeft: '6px', fontSize: '10px', background: '#fee2e2', color: '#b91c1c', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                              <span style={{ marginLeft: '6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.16)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
                                 ADMIN
                               </span>
                             )}
@@ -564,7 +564,7 @@ export default function UserManagement() {
                           )}
                         </div>
                       ) : (
-                        <span style={{ color: '#475569', fontSize: '13px' }}>{user.email}</span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{user.email}</span>
                       )}
                     </td>
 
@@ -580,7 +580,7 @@ export default function UserManagement() {
                           placeholder="Phone Number"
                         />
                       ) : (
-                        <span style={{ color: '#64748b', fontSize: '13px' }}>{user.phone || '—'}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{user.phone || '—'}</span>
                       )}
                     </td>
 
@@ -613,21 +613,9 @@ export default function UserManagement() {
                             {/* View Icon */}
                             <button
                               type="button"
-                              className="icon-button"
+                              className="action-btn action-btn-view"
                               onClick={() => handleViewUser(user)}
                               title="View User Details"
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
-                                background: '#f8fafc',
-                                color: '#0f172a',
-                                display: 'grid',
-                                placeItems: 'center',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
                             >
                               <Eye size={15} />
                             </button>
@@ -635,21 +623,9 @@ export default function UserManagement() {
                             {/* Edit Icon (Modal or Inline) */}
                             <button
                               type="button"
-                              className="icon-button"
+                              className="action-btn action-btn-edit"
                               onClick={() => handleEditModal(user)}
                               title="Edit User Information"
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '8px',
-                                border: '1px solid #fed7aa',
-                                background: '#fff7ed',
-                                color: '#ea580c',
-                                display: 'grid',
-                                placeItems: 'center',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
                             >
                               <Edit2 size={15} />
                             </button>
@@ -658,19 +634,12 @@ export default function UserManagement() {
                             {user.role === 'admin' ? (
                               <button
                                 type="button"
-                                className="icon-button"
+                                className="action-btn"
                                 onClick={() => handleDeleteUser(user)}
                                 title="Admin accounts cannot be deleted"
                                 style={{
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #e2e8f0',
-                                  background: '#f1f5f9',
-                                  color: '#94a3b8',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  cursor: 'not-allowed'
+                                  cursor: 'not-allowed',
+                                  opacity: 0.4
                                 }}
                               >
                                 <Trash2 size={15} />
@@ -678,21 +647,9 @@ export default function UserManagement() {
                             ) : (
                               <button
                                 type="button"
-                                className="icon-button"
+                                className="action-btn action-btn-delete"
                                 onClick={() => handleDeleteUser(user)}
                                 title="Delete User Record"
-                                style={{
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #fecaca',
-                                  background: '#fef2f2',
-                                  color: '#dc2626',
-                                  display: 'grid',
-                                  placeItems: 'center',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease'
-                                }}
                               >
                                 <Trash2 size={15} />
                               </button>
@@ -716,14 +673,14 @@ export default function UserManagement() {
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-content" style={{ maxWidth: '480px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                 {editingUser ? 'Edit Staff Account' : 'Add New Staff Account'}
               </h2>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
@@ -866,21 +823,21 @@ export default function UserManagement() {
       {showViewModal && viewingUser && (
         <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
           <div className="modal-content" style={{ maxWidth: '440px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                 User Profile Details
               </h2>
               <button
                 type="button"
                 onClick={() => setShowViewModal(false)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: '#f8fafc', padding: '14px', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: 'var(--bg-hover)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                 <div style={{
                   width: '48px',
                   height: '48px',
@@ -895,29 +852,29 @@ export default function UserManagement() {
                   {viewingUser.name ? viewingUser.name.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>{viewingUser.name}</h3>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Account ID: #{viewingUser.id}</span>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>{viewingUser.name}</h3>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Account ID: #{viewingUser.id}</span>
                 </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Email:</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a' }}>{viewingUser.email}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Email:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{viewingUser.email}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Mobile Number:</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a' }}>{viewingUser.phone || 'Not provided'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Mobile Number:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{viewingUser.phone || 'Not provided'}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Role Access:</span>
-                  <span style={{ fontWeight: '800', textTransform: 'uppercase', color: viewingUser.role === 'admin' ? '#dc2626' : '#2563eb' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Role Access:</span>
+                  <span style={{ fontWeight: '800', textTransform: 'uppercase', color: viewingUser.role === 'admin' ? '#ef4444' : '#f97316' }}>
                     {viewingUser.role || 'Customer'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                  <span style={{ color: '#64748b' }}>Member Since:</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a' }}>{viewingUser.created_at ? new Date(viewingUser.created_at).toLocaleDateString() : 'Active Member'}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Member Since:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{viewingUser.created_at ? new Date(viewingUser.created_at).toLocaleDateString() : 'Active Member'}</span>
                 </div>
               </div>
             </div>

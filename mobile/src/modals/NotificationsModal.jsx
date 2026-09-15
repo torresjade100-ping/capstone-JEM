@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Modal, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Modal, View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { styles, COLORS } from '../styles/appStyles';
+import { getMobileNotifications, markMobileNotificationsRead, markMobileNotificationRead } from '../api/mobileApi';
 
 const INITIAL_NOTIFICATIONS = [
   {
@@ -37,14 +38,69 @@ const INITIAL_NOTIFICATIONS = [
   },
 ];
 
-export default function NotificationsModal({ visible, onClose }) {
+export default function NotificationsModal({ visible, onClose, customerEmail, onNavigateTab }) {
   const [filter, setFilter] = useState('all');
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      loadNotifications();
+    }
+  }, [visible, customerEmail]);
+
+  const loadNotifications = async () => {
+    setLoading(true);
+    try {
+      const data = await getMobileNotifications(customerEmail);
+      if (Array.isArray(data) && data.length > 0) {
+        setNotifications(
+          data.map((n) => ({
+            id: n.id,
+            title: n.title || 'Notification',
+            desc: n.message || n.desc || '',
+            time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+            type: n.type || 'general',
+            isUnread: !n.is_read && !n.read,
+          }))
+        );
+      }
+    } catch (e) {
+      // fallback to initial
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!visible) return null;
 
-  const markAllAsRead = () => {
+  const markAllAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isUnread: false })));
+    await markMobileNotificationsRead(customerEmail);
+  };
+
+  const handleNotificationPress = async (n) => {
+    // 1. Mark as read
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === n.id ? { ...item, isUnread: false } : item))
+    );
+    try {
+      await markMobileNotificationRead(n.id);
+    } catch (e) {}
+
+    // 2. Close modal
+    onClose?.();
+
+    // 3. Navigate to relevant tab
+    if (onNavigateTab) {
+      if (n.type === 'order') {
+        onNavigateTab('orders');
+      } else if (n.type === 'promo' || n.type === 'restock') {
+        onNavigateTab('categories');
+      } else {
+        onNavigateTab('home');
+      }
+    }
   };
 
   const filteredList = notifications.filter((n) => {
@@ -118,8 +174,12 @@ export default function NotificationsModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-            {filteredList.length === 0 ? (
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} bounces={false} overScrollMode="never">
+            {loading ? (
+              <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : filteredList.length === 0 ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text style={{ fontSize: 40, marginBottom: 8 }}>📭</Text>
                 <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.textMain }}>
@@ -128,8 +188,10 @@ export default function NotificationsModal({ visible, onClose }) {
               </View>
             ) : (
               filteredList.map((n) => (
-                <View
+                <TouchableOpacity
                   key={n.id}
+                  onPress={() => handleNotificationPress(n)}
+                  activeOpacity={0.75}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'flex-start',
@@ -155,8 +217,14 @@ export default function NotificationsModal({ visible, onClose }) {
                     <Text style={{ fontSize: 12.5, color: COLORS.textBody, marginTop: 4, lineHeight: 18 }}>
                       {n.desc}
                     </Text>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.primaryDark }}>
+                        {n.type === 'order' ? 'View Order ›' : 'Browse Products ›'}
+                      </Text>
+                    </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </ScrollView>
@@ -165,3 +233,4 @@ export default function NotificationsModal({ visible, onClose }) {
     </Modal>
   );
 }
+
