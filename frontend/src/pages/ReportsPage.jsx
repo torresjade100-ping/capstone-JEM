@@ -6,7 +6,31 @@ import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
 import '../styles/management.css'
 
 export default function ReportsPage() {
-  const [reportType, setReportType] = useState('daily')
+  const getInitialReportType = () => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const rt = params.get('reportType') || params.get('type')
+      if (rt && ['daily', 'monthly', 'yearly', 'inventory', 'profit-loss'].includes(rt)) {
+        return rt
+      }
+    } catch (e) {}
+    return 'daily'
+  }
+  const [reportType, setReportType] = useState(getInitialReportType)
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const rt = params.get('reportType') || params.get('type')
+        if (rt && ['daily', 'monthly', 'yearly', 'inventory', 'profit-loss'].includes(rt)) {
+          setReportType(rt)
+        }
+      } catch (e) {}
+    }
+    window.addEventListener('popstate', handleUrlChange)
+    return () => window.removeEventListener('popstate', handleUrlChange)
+  }, [])
   const [reportData, setReportData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
@@ -161,6 +185,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (reportType === 'daily') {
+
       fetchReport('daily', { date: selectedDate })
     } else if (reportType === 'monthly') {
       fetchReport('monthly', { year: selectedYear, month: selectedMonth })

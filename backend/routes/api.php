@@ -1,19 +1,107 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\Admin\ProductController;
+use App\Http\Controllers\Api\GoogleAuthController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\BrandController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('auth')->group(function () {
+// Handler for standalone / custom OTP generation
+$sendOtpHandler = function (\Illuminate\Http\Request $request) {
+    $userEmail = trim($request->input('user_email') ?: $request->input('email') ?: '');
+    if (empty($userEmail)) {
+        return response()->json(['success' => false, 'message' => 'Email is required'], 422);
+    }
+
+    $otpCode = sprintf('%06d', mt_rand(1, 999999));
+    $expiryTime = now()->addMinutes(15);
+
+    \Illuminate\Support\Facades\DB::table('password_reset_otp')->where('email', $userEmail)->delete();
+    \Illuminate\Support\Facades\DB::table('password_reset_otp')->insert([
+        'email' => $userEmail,
+        'otp_code' => $otpCode,
+        'expiry_time' => $expiryTime,
+        'used' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $userName = 'Valued Customer';
+    $user = \App\Models\User::where('email', $userEmail)->first();
+    if ($user && !empty($user->name)) {
+        $userName = explode(' ', trim($user->name))[0] ?: 'User';
+    }
+
+    try {
+        \Illuminate\Support\Facades\Mail::to($userEmail)->send(new \App\Mail\OtpMail($otpCode, $userName));
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP sent successfully to your email',
+            'email' => $userEmail,
+            'debug_otp' => $otpCode,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP generated (email failed: ' . $e->getMessage() . ')',
+            'email' => $userEmail,
+            'debug_otp' => $otpCode,
+        ]);
+    }
+};
+
+// Handler for standalone / custom OTP verification
+$verifyOtpHandler = function (\Illuminate\Http\Request $request) {
+    $userEmail = trim($request->input('user_email') ?: $request->input('email') ?: '');
+    $otpCode = trim($request->input('otp_code') ?: $request->input('code') ?: $request->input('otp') ?: '');
+
+    if (empty($userEmail) || empty($otpCode)) {
+        return response()->json(['success' => false, 'message' => 'Email and OTP code are required'], 422);
+    }
+
+    $record = \Illuminate\Support\Facades\DB::table('password_reset_otp')
+        ->where('email', $userEmail)
+        ->where('otp_code', $otpCode)
+        ->where('used', 0)
+        ->first();
+
+    if (! $record) {
+        return response()->json(['success' => false, 'message' => 'Invalid OTP code or already used'], 422);
+    }
+
+    \Illuminate\Support\Facades\DB::table('password_reset_otp')
+        ->where('id', $record->id)
+        ->update(['used' => 1, 'updated_at' => now()]);
+
+    return response()->json(['success' => true, 'message' => 'OTP verified successfully']);
+};
+
+Route::prefix('auth')->group(function () use ($sendOtpHandler, $verifyOtpHandler) {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('google', [GoogleAuthController::class, 'googleAuth'])->middleware('throttle:15,1');
+    Route::post('verify-otp', [GoogleAuthController::class, 'verifyOtp'])->middleware('throttle:15,1');
+    Route::post('resend-otp', [GoogleAuthController::class, 'resendOtp'])->middleware('throttle:5,1');
+
+    // Email-verified Sign Up Flow
+    Route::post('signup/request-code', [AuthController::class, 'requestSignupCode'])->middleware('throttle:10,1');
+    Route::post('signup/verify-code', [AuthController::class, 'verifySignupCode'])->middleware('throttle:15,1');
+    Route::post('signup/resend-code', [AuthController::class, 'resendSignupCode'])->middleware('throttle:5,1');
+    Route::post('signup/complete', [AuthController::class, 'completeSignup'])->middleware('throttle:10,1');
+
+    // Standalone / Custom OTP endpoints
+    Route::post('send-otp', $sendOtpHandler);
+    Route::post('verify-otp-standalone', $verifyOtpHandler);
 });
+
+// Root-level aliases for direct standalone OTP calls
+Route::post('send-otp', $sendOtpHandler);
+Route::post('verify-otp', $verifyOtpHandler);
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::apiResource('users', App\Http\Controllers\Api\Admin\UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
-    Route::delete('users/{user}', [App\Http\Controllers\Api\Admin\UserController::class, 'destroy']);
     Route::patch('users/{user}/archive', [App\Http\Controllers\Api\Admin\UserController::class, 'archive']);
 
     Route::patch('users/{user}/activate', [App\Http\Controllers\Api\Admin\UserController::class, 'activate']);
@@ -24,6 +112,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('products/{product}/deactivate', [App\Http\Controllers\Api\Admin\ProductController::class, 'deactivate']);
 
     Route::apiResource('categories', App\Http\Controllers\Api\Admin\CategoryController::class);
+    Route::get('categories/{category}/products', [App\Http\Controllers\Api\Admin\CategoryController::class, 'products']);
     Route::post('categories/{category}/activate', [App\Http\Controllers\Api\Admin\CategoryController::class, 'activate']);
     Route::post('categories/{category}/deactivate', [App\Http\Controllers\Api\Admin\CategoryController::class, 'deactivate']);
 
@@ -31,6 +120,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('brands/{brand}/activate', [App\Http\Controllers\Api\Admin\BrandController::class, 'activate']);
     Route::post('brands/{brand}/deactivate', [App\Http\Controllers\Api\Admin\BrandController::class, 'deactivate']);
 
+    Route::get('global-search', [App\Http\Controllers\Api\Admin\GlobalSearchController::class, 'search']);
 });
 
 Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(function () {
@@ -128,7 +218,7 @@ Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('admin
 });
 
 
-Route::middleware(['auth:sanctum', 'active', 'role:staff'])->prefix('staff')->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('staff')->group(function () {
     Route::get('orders', [App\Http\Controllers\Api\Admin\OrderController::class, 'index']);
     Route::get('orders/{order}', [App\Http\Controllers\Api\Admin\OrderController::class, 'show']);
     Route::put('orders/{order}/receive', fn (Illuminate\Http\Request $request, App\Models\Order $order) => app(App\Http\Controllers\Api\Admin\OrderController::class)->transition($request, $order, 'receive'));
@@ -157,6 +247,24 @@ Route::middleware(['auth:sanctum','active'])->group(function () {
 Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->group(function () {
     Route::get('payments', [App\Http\Controllers\Api\PaymentController::class, 'index']);
     Route::get('payments/{id}', [App\Http\Controllers\Api\PaymentController::class, 'show']);
+
+    // Transactions & Audit Ledger
+    Route::get('transactions', [App\Http\Controllers\Api\TransactionController::class, 'index']);
+    Route::get('transactions/{id}', [App\Http\Controllers\Api\TransactionController::class, 'show']);
+    Route::get('transactions/{id}/receipt', [App\Http\Controllers\Api\TransactionController::class, 'receipt']);
+    Route::post('transactions/{id}/refund', [App\Http\Controllers\Api\TransactionController::class, 'refund']);
+    Route::post('transactions/{id}/void', [App\Http\Controllers\Api\TransactionController::class, 'void']);
+
+    // Admin & Staff aliases
+    Route::get('admin/transactions', [App\Http\Controllers\Api\TransactionController::class, 'index']);
+    Route::get('staff/transactions', [App\Http\Controllers\Api\TransactionController::class, 'index']);
+});
+
+// Admin-only Void Security PIN Management
+Route::middleware(['auth:sanctum', 'active', 'role:admin'])->prefix('admin')->group(function () {
+    Route::get('void-security/status', [App\Http\Controllers\Api\VoidSecurityController::class, 'status']);
+    Route::post('void-security/setup', [App\Http\Controllers\Api\VoidSecurityController::class, 'setup']);
+    Route::post('void-security/change', [App\Http\Controllers\Api\VoidSecurityController::class, 'change']);
 });
 
 // Webhooks (public)
@@ -196,10 +304,4 @@ Route::middleware(['auth:sanctum','active'])->group(function () {
 
     Route::post('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'store']);
     Route::get('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'index']);
-});
-
-// Admin feedback management
-Route::middleware(['auth:sanctum','active','role:admin|staff'])->prefix('admin')->group(function () {
-    Route::get('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'adminIndex']);
-    Route::post('feedback/{id}/respond', [App\Http\Controllers\Api\FeedbackController::class, 'respond']);
 });

@@ -63,7 +63,7 @@ return new class extends Migration
 
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('order_id')->constrained('orders')->cascadeOnDelete();
+            $table->foreignId('order_id')->nullable()->constrained('orders')->nullOnDelete();
             $table->enum('method', ['gcash', 'maya', 'cod'])->default('cod');
             $table->enum('status', ['pending', 'completed', 'failed', 'refunded'])->default('pending');
             $table->decimal('amount', 14, 2)->default(0.00);

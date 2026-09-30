@@ -54,6 +54,24 @@ export default function SuppliersManagement() {
     }
   }
 
+  // Handle Deep Linking from Global Search
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const targetSupId = urlParams.get('supplierId')
+      const targetSearch = urlParams.get('search')
+      if (targetSearch && !search) {
+        setSearch(targetSearch)
+      }
+      if (targetSupId && suppliers.length > 0) {
+        const matched = suppliers.find(s => String(s.id) === String(targetSupId))
+        if (matched) {
+          handleView(matched)
+        }
+      }
+    } catch (e) {}
+  }, [suppliers])
+
   // Filter suppliers by name, contact, email, or address
 
   const filteredSuppliers = useMemo(() => {

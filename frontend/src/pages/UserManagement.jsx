@@ -73,6 +73,25 @@ export default function UserManagement() {
     }
   }
 
+  // Handle Deep Linking from Global Search
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const targetUserId = urlParams.get('userId')
+      const targetSearch = urlParams.get('search')
+      if (targetSearch && !search) {
+        setSearch(targetSearch)
+      }
+      if (targetUserId && users.length > 0) {
+        const matched = users.find(u => String(u.id) === String(targetUserId))
+        if (matched) {
+          setViewingUser(matched)
+          setShowViewModal(true)
+        }
+      }
+    } catch (e) {}
+  }, [users])
+
 
   // Filter users by search (Name, Email, Phone)
   const filteredUsers = (Array.isArray(users) ? users : []).filter(user => {

@@ -16,33 +16,35 @@
 
 .login-bg-blur {
   position: absolute;
-  inset: -40px;
+  inset: -10px;
   background-image: url('/login-bg.png');
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(14px) brightness(0.62) saturate(1.15);
-  transform: scale(1.08);
+  filter: blur(1.5px) brightness(0.72) contrast(1.05);
+  transform: scale(1.02);
   z-index: 1;
+  transition: filter 0.3s ease, opacity 0.3s ease;
 }
 
 .login-bg-overlay {
   position: absolute;
   inset: 0;
   background: 
-    radial-gradient(circle at center, rgba(11, 19, 32, 0.45) 0%, rgba(11, 19, 32, 0.85) 100%),
-    linear-gradient(180deg, rgba(15, 23, 42, 0.35) 0%, rgba(15, 23, 42, 0.65) 100%);
+    radial-gradient(circle at center, rgba(11, 19, 32, 0.45) 0%, rgba(11, 19, 32, 0.72) 100%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.25) 0%, rgba(15, 23, 42, 0.55) 100%);
   z-index: 2;
+  transition: background 0.3s ease;
 }
 
 [data-theme="light"] .login-bg-blur {
-  filter: blur(14px) brightness(0.85) saturate(1.1);
+  filter: blur(1.5px) brightness(0.78) contrast(1.02);
 }
 
 [data-theme="light"] .login-bg-overlay {
   background: 
-    radial-gradient(circle at center, rgba(241, 245, 249, 0.45) 0%, rgba(241, 245, 249, 0.82) 100%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.4) 0%, rgba(226, 232, 240, 0.7) 100%);
+    radial-gradient(circle at center, rgba(15, 23, 42, 0.42) 0%, rgba(15, 23, 42, 0.68) 100%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.2) 0%, rgba(15, 23, 42, 0.48) 100%);
 }
 
 
@@ -266,6 +268,55 @@
 
 .form-input::placeholder {
   color: var(--text-muted);
+}
+
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrap .form-input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+  line-height: 1;
+}
+
+.password-toggle-btn:hover {
+  color: var(--primary, #f97316);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.password-toggle-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid var(--primary, #f97316);
+  outline-offset: 1px;
+}
+
+.password-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* Form Options */

@@ -73,14 +73,15 @@ class InventoryBatchController extends Controller
 
         $validator = Validator::make(array_merge($request->all(), ['product_id' => $targetProductId]), [
             'product_id' => ['required', 'integer', 'exists:products,id'],
-            'cost_price' => ['required', 'numeric', 'min:0'],
-            'selling_price' => ['required', 'numeric', 'min:0'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['required', 'integer', 'min:1'],
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'supplier_name' => ['nullable', 'string', 'max:255'],
-            'received_date' => ['required', 'date'],
+            'received_date' => ['nullable', 'date'],
             'expiration_date' => ['nullable', 'date', 'after_or_equal:received_date'],
             'batch_number' => ['nullable', 'string', 'max:100'],
+            'reference_number' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -103,18 +104,19 @@ class InventoryBatchController extends Controller
                 $supplierName = $sup?->name;
             }
 
-            // Generate unique batch number if blank
+            // Reference number and batch number resolution
+            $refNumber = trim((string) ($request->input('reference_number') ?? $request->input('purchase_order') ?? ''));
             $batchNumber = trim((string) $request->input('batch_number'));
             if (! $batchNumber) {
-                $batchNumber = sprintf('BAT-%s-%04d-%03d', date('Ymd'), $product->id, rand(100, 999));
+                $batchNumber = $refNumber ?: sprintf('BAT-%s-%04d-%03d', date('Ymd'), $product->id, rand(100, 999));
             }
 
             $qtyReceived = (int) $request->input('quantity');
-            $costPrice = (float) $request->input('cost_price');
-            $sellingPrice = (float) $request->input('selling_price');
+            $costPrice = $request->filled('cost_price') ? (float) $request->input('cost_price') : (float) ($product->cost_price ?? 0);
+            $sellingPrice = $request->filled('selling_price') ? (float) $request->input('selling_price') : (float) ($product->selling_price ?? $product->base_price ?? 0);
             $receivedDate = $request->input('received_date', date('Y-m-d'));
             $expirationDate = $request->input('expiration_date');
-            $userId = Auth::id();
+            $userId = Auth::id() ?? 1;
 
             // 1. Create the new batch record (never overwriting old ones)
             $batch = InventoryBatch::create([
@@ -126,7 +128,7 @@ class InventoryBatchController extends Controller
                 'selling_price' => $sellingPrice,
                 'initial_quantity' => $qtyReceived,
                 'quantity' => $qtyReceived,
-                'received_date' => $receivedDate,
+                'received_date' => $receivedDate ?: date('Y-m-d'),
                 'expiration_date' => $expirationDate ?: null,
                 'status' => 'active',
                 'notes' => $request->input('notes'),
@@ -138,9 +140,13 @@ class InventoryBatchController extends Controller
             $qtyAfter = $qtyBefore + $qtyReceived;
 
             $product->stock_quantity = $qtyAfter;
-            $product->cost_price = $costPrice;
-            $product->selling_price = $sellingPrice;
-            $product->base_price = $sellingPrice; // Maintain sync with existing base_price
+            if ($request->filled('cost_price')) {
+                $product->cost_price = $costPrice;
+            }
+            if ($request->filled('selling_price')) {
+                $product->selling_price = $sellingPrice;
+                $product->base_price = $sellingPrice;
+            }
             $product->save();
 
             // 3. Log stock adjustment audit trail
@@ -148,12 +154,15 @@ class InventoryBatchController extends Controller
                 StockAdjustment::create([
                     'product_id' => $product->id,
                     'product_variant_id' => null,
-                    'user_id' => $userId ?? 1,
+                    'user_id' => $userId,
+                    'supplier_id' => $supplierId ?: null,
                     'adjustment_type' => 'restock',
                     'quantity_before' => $qtyBefore,
                     'quantity_changed' => $qtyReceived,
                     'quantity_after' => $qtyAfter,
-                    'reason' => "New batch received: {$batchNumber} ({$qtyReceived} {$product->unit} @ ₱{$costPrice} cost) from " . ($supplierName ?: 'Supplier'),
+                    'reference_number' => $refNumber ?: $batchNumber,
+                    'reason' => "Restock delivery from " . ($supplierName ?: 'Supplier') . ($refNumber ? " (Ref/PO: {$refNumber})" : ""),
+                    'notes' => $request->input('notes'),
                 ]);
             } catch (\Throwable $e) {
                 // non-blocking

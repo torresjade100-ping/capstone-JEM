@@ -276,6 +276,51 @@ export function getProducts(params = {}) {
 
 export function getProduct(id) { return request(`/products/${id}`, {}, 15000).then((payload) => payload.data) }
 export function getCategories() { return request('/categories', {}, 30000).then((payload) => payload.data) }
+export function getAdminCategories(params = {}) {
+  const query = new URLSearchParams(params).toString()
+  clearApiCache('/admin/categories')
+  return request(`/admin/categories${query ? `?${query}` : ''}`, {}, 15000).then((payload) => payload.data)
+}
+export function getCategoryProducts(categoryId) {
+  return request(`/admin/categories/${categoryId}/products`, {}, 15000)
+}
+export function createCategory(data) {
+  clearApiCache('/categories')
+  clearApiCache('/admin/categories')
+  return request('/admin/categories', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+export function updateCategory(id, data) {
+  clearApiCache('/categories')
+  clearApiCache('/admin/categories')
+  return request(`/admin/categories/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+export function deleteCategory(id) {
+  clearApiCache('/categories')
+  clearApiCache('/admin/categories')
+  return request(`/admin/categories/${id}`, {
+    method: 'DELETE',
+  })
+}
+export function activateCategory(id) {
+  clearApiCache('/categories')
+  clearApiCache('/admin/categories')
+  return request(`/admin/categories/${id}/activate`, {
+    method: 'POST',
+  })
+}
+export function deactivateCategory(id) {
+  clearApiCache('/categories')
+  clearApiCache('/admin/categories')
+  return request(`/admin/categories/${id}/deactivate`, {
+    method: 'POST',
+  })
+}
 export function getBrands() { return request('/brands', {}, 30000).then((payload) => payload.data) }
 export function getInventory() { clearApiCache('/admin/inventory'); return request('/admin/inventory', {}, 5000).then((payload) => payload.data) }
 export function getLowStock() { return request('/admin/inventory/low-stock', {}, 5000).then((payload) => payload.data) }
@@ -314,8 +359,10 @@ export async function adjustStock(payload) {
     quantity_before: payload.quantity_before ?? 0,
     quantity_changed: payload.quantity_change,
     quantity_after: payload.quantity_after ?? (Math.max(0, Number(payload.quantity_before || 0) + Number(payload.quantity_change))),
-    adjustment_type: payload.adjustment_type || (payload.quantity_change > 0 ? 'add' : 'deduct'),
-    reason: payload.reason || 'Manual Adjustment',
+    adjustment_type: payload.adjustment_type || (payload.quantity_change > 0 ? 'adjustment' : 'deduct'),
+    supplier_id: payload.supplier_id || null,
+    reference_number: payload.reference_number || '',
+    reason: payload.reason || 'Inventory Count Correction',
     notes: payload.notes || '',
     user: { name: 'Admin / Inventory Manager' },
     created_at: new Date().toISOString()
@@ -340,7 +387,16 @@ export async function adjustStock(payload) {
   try {
     await request('/admin/stock-adjustments', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        product_id: payload.product_id,
+        product_variant_id: payload.product_variant_id || null,
+        quantity_change: payload.quantity_change,
+        reason: payload.reason,
+        adjustment_type: payload.adjustment_type || 'adjustment',
+        supplier_id: payload.supplier_id || null,
+        reference_number: payload.reference_number || '',
+        notes: payload.notes || '',
+      }),
     })
   } catch (err) {
     console.warn('Backend stock adjustment failed, saved locally:', err)
@@ -747,9 +803,10 @@ export function createStaffRestockRequest(requestData, user) { return createRest
 export function getOrderAdjustments() { return request('/staff/order-adjustments').then((payload) => payload.data) }
 export function createOrderAdjustment(requestData) { return request('/staff/order-adjustments', { method: 'POST', body: JSON.stringify(requestData) }).then((payload) => payload.data) }
 export async function createPosCheckout(transaction) {
-
+  clearApiCache('/products')
+  clearApiCache('/admin/inventory')
   clearApiCache()
-  
+
   const backendItems = (transaction.items || []).map(item => ({
     product_id: item.product_id || item.id,
     product_variant_id: item.product_variant_id || null,
@@ -760,14 +817,27 @@ export async function createPosCheckout(transaction) {
   const payload = {
     items: backendItems,
     payment_method: transaction.payment_method === 'cash' ? 'cod' : (transaction.payment_method || 'cod'),
-    discount: Number(transaction.discount || 0)
+    discount: Number(transaction.discount || 0),
+    transaction_number: transaction.transaction_number || null,
   }
 
-  // Also log into shared orders as a Walk-in POS completed sale
+  // Execute atomic checkout on backend (validates stock, deducts inventory, creates records)
+  const res = await request('/staff/walk-in-orders', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }).then((p) => p.data)
+
+  // Clear in-memory API cache immediately
+  clearApiCache('/products')
+  clearApiCache('/admin/inventory')
+  clearApiCache()
+
+  // Also log into shared orders for UI order stream and local display
   try {
+    const finalTxNumber = res?.data?.transaction?.transaction_number || transaction.transaction_number || `POS-${Date.now()}`
     addSharedMobileOrder({
       id: Date.now(),
-      order_number: `POS-${Math.floor(100000 + Math.random() * 900000)}`,
+      order_number: finalTxNumber,
       customer_name: 'Walk-in Customer',
       customer_phone: 'N/A',
       customer_email: 'walkin@store.local',
@@ -792,24 +862,10 @@ export async function createPosCheckout(transaction) {
   } catch (e) {}
 
   try {
-    const res = await request('/staff/walk-in-orders', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    }).then((p) => p.data)
+    window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+  } catch (e) {}
 
-    clearApiCache()
-    try {
-      window.dispatchEvent(new CustomEvent('jem_inventory_update'))
-    } catch (e) {}
-
-    return res
-  } catch (err) {
-    clearApiCache()
-    try {
-      window.dispatchEvent(new CustomEvent('jem_inventory_update'))
-    } catch (e) {}
-    return { transaction: { transaction_number: `POS-${Date.now()}` } }
-  }
+  return res
 }
 
 export function createProduct(product) { return request('/admin/products', { method: 'POST', body: JSON.stringify(product) }).then((payload) => payload.data) }
@@ -938,6 +994,27 @@ export function getProductBatches(productId) {
 }
 
 export function createProductBatch(productId, batchData) {
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+
+  // Save in local shared adjustments for instant responsiveness
+  addSharedStockAdjustment({
+    id: Date.now(),
+    product_id: Number(productId),
+    product_name: batchData.product_name || 'Product',
+    quantity_before: batchData.quantity_before,
+    quantity_changed: Number(batchData.quantity),
+    quantity_after: batchData.quantity_after ?? (Number(batchData.quantity_before || 0) + Number(batchData.quantity)),
+    adjustment_type: 'restock',
+    supplier_id: batchData.supplier_id || null,
+    supplier: batchData.supplier_name ? { id: batchData.supplier_id, name: batchData.supplier_name } : null,
+    reference_number: batchData.reference_number || batchData.purchase_order || '',
+    reason: `Restock delivery from ${batchData.supplier_name || 'Supplier'}`,
+    notes: batchData.notes || '',
+    user: { name: 'Admin / Inventory Manager' },
+    created_at: new Date().toISOString()
+  })
+
   return request(`/admin/products/${productId}/batches`, {
     method: 'POST',
     body: JSON.stringify(batchData)
@@ -949,5 +1026,83 @@ export function createProductBatch(productId, batchData) {
   })
 }
 
+// ==========================================
+// Transactions & Audit Ledger API
+// ==========================================
+
+export async function getTransactions(params = {}) {
+  const query = new URLSearchParams()
+  if (params.tab) query.set('tab', params.tab)
+  if (params.search) query.set('search', params.search)
+  if (params.date) query.set('date', params.date)
+  if (params.order_source && params.order_source !== 'all') query.set('order_source', params.order_source)
+  if (params.payment_method && params.payment_method !== 'all') query.set('payment_method', params.payment_method)
+  if (params.status && params.status !== 'all') query.set('status', params.status)
+  if (params.page) query.set('page', params.page)
+  if (params.per_page) query.set('per_page', params.per_page)
+
+  const queryString = query.toString() ? `?${query.toString()}` : ''
+  return request(`/transactions${queryString}`)
+}
+
+export async function getTransaction(id) {
+  return request(`/transactions/${id}`)
+}
+
+export async function getTransactionReceipt(id) {
+  return request(`/transactions/${id}/receipt`)
+}
+
+export async function refundTransaction(id, reason) {
+  clearApiCache('/transactions')
+  return request(`/transactions/${id}/refund`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export async function voidTransaction(id, reason, void_pin) {
+  clearApiCache('/transactions')
+  return request(`/transactions/${id}/void`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, void_pin }),
+  })
+}
+
+// Void PIN Admin Security
+export async function getVoidSecurityStatus() {
+  return request('/admin/void-security/status')
+}
+
+export async function setupVoidPin(pin, pin_confirmation) {
+  return request('/admin/void-security/setup', {
+    method: 'POST',
+    body: JSON.stringify({ pin, pin_confirmation }),
+  })
+}
+
+export async function changeVoidPin(current_pin, pin, pin_confirmation) {
+  return request('/admin/void-security/change', {
+    method: 'POST',
+    body: JSON.stringify({ current_pin, pin, pin_confirmation }),
+  })
+}
+
+export async function adminGlobalSearch(query) {
+  const cleanQ = (query || '').trim()
+  if (!cleanQ) {
+    return { success: true, query: '', total_results: 0, results: {} }
+  }
+
+  try {
+    const res = await request(`/admin/global-search?q=${encodeURIComponent(cleanQ)}`)
+    return res || { success: true, query: cleanQ, total_results: 0, results: {} }
+  } catch (err) {
+    console.warn('Global search backend error:', err)
+    return { success: false, error: err.message, query: cleanQ, total_results: 0, results: {} }
+  }
+}
+
 export function apiUrl() { return API_BASE_URL }
+
 

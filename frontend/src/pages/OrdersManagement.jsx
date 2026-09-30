@@ -90,6 +90,29 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     }
   }
 
+  // Handle Deep Linking from Global Search
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const targetOrderId = urlParams.get('orderId')
+      const targetSearch = urlParams.get('search')
+      if (targetSearch && !search) {
+        setSearch(targetSearch)
+      }
+      if (targetOrderId && orders.length > 0) {
+        const cleanTarget = targetOrderId.replace(/^#/, '').toLowerCase().trim()
+        const matched = orders.find(o => 
+          String(o.id) === cleanTarget || 
+          String(o.order_number || '').toLowerCase().replace(/^#/, '').trim() === cleanTarget
+        )
+        if (matched) {
+          setSelectedOrder(matched)
+          setShowDetails(true)
+        }
+      }
+    } catch (e) {}
+  }, [orders])
+
   const syncOrdersSilently = async () => {
     try {
       const data = await getAdminOrders()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Search,
   Plus,
@@ -18,8 +18,58 @@ import {
   RotateCcw,
   Check,
 } from 'lucide-react'
-import { getProducts, createPosCheckout } from '../api'
+import { getProducts, createPosCheckout, getStoredUser } from '../api'
 import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
+
+function JemReceiptEmblem({ size = 68 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      style={{ display: 'block', margin: '0 auto' }}
+      aria-label="JEM Hardware and Construction Supply Official Stamp"
+    >
+      <circle cx="50" cy="50" r="47" fill="none" stroke="#111827" strokeWidth="1.8" strokeDasharray="3 2" />
+      <circle cx="50" cy="50" r="43.5" fill="none" stroke="#111827" strokeWidth="1.2" />
+      <circle cx="50" cy="50" r="31.5" fill="none" stroke="#111827" strokeWidth="0.9" strokeDasharray="2 1.5" />
+
+      <path id="jemSealTop" d="M 19 50 A 31 31 0 0 1 81 50" fill="none" />
+      <text fill="#111827" fontSize="7.6" fontWeight="900" letterSpacing="1.1">
+        <textPath href="#jemSealTop" startOffset="50%" textAnchor="middle">
+          JEM HARDWARE
+        </textPath>
+      </text>
+
+      <g transform="translate(36, 36) scale(0.28)">
+        <polygon
+          points="50,5 90,28 90,75 50,97 10,75 10,28"
+          fill="#111827"
+          stroke="#111827"
+          strokeWidth="2"
+        />
+        <text
+          x="50"
+          y="70"
+          fill="#ffffff"
+          fontSize="52"
+          fontWeight="900"
+          textAnchor="middle"
+          fontFamily="system-ui, -apple-system, sans-serif"
+        >
+          J
+        </text>
+      </g>
+
+      <path id="jemSealBottom" d="M 20 50 A 30 30 0 0 0 80 50" fill="none" />
+      <text fill="#374151" fontSize="6.4" fontWeight="800" letterSpacing="0.9">
+        <textPath href="#jemSealBottom" startOffset="50%" textAnchor="middle">
+          CALAMBA • EST. 2020
+        </textPath>
+      </text>
+    </svg>
+  )
+}
 
 const fallbackCatalog = [
   { id: 1, name: 'Marine Plywood 3/4"', category: 'Lumber', price: 1080, unit: 'sheet', stock: 50, emoji: '🪵' },
@@ -73,6 +123,149 @@ function cleanCategory(catName, prodName = '') {
   return catName.trim()
 }
 
+function PosQuantityInput({ item, maxStock, onUpdateQuantity, showNotification }) {
+  const [localVal, setLocalVal] = useState(String(item.quantity))
+  const [isFocused, setIsFocused] = useState(false)
+  const inputRef = useRef(null)
+
+  // Keep local input in sync if quantity is modified outside (e.g. + / - buttons or item re-added)
+  useEffect(() => {
+    setLocalVal(String(item.quantity))
+  }, [item.quantity])
+
+  const handleChange = (e) => {
+    const rawVal = e.target.value
+
+    // Allow empty string temporarily so the user can backspace and type a new number
+    if (rawVal === '') {
+      setLocalVal('')
+      return
+    }
+
+    // Check for negative signs, decimal points, or exponents
+    if (/[.\-,+eE]/.test(rawVal)) {
+      if (typeof showNotification === 'function') {
+        showNotification('Whole numbers only. Decimals and negatives are not accepted.')
+      }
+      return
+    }
+
+    const digitsOnly = rawVal.replace(/\D/g, '')
+    if (!digitsOnly) return
+
+    const parsed = parseInt(digitsOnly, 10)
+
+    // Prevent values below 1
+    if (parsed < 1) {
+      if (typeof showNotification === 'function') {
+        showNotification('Quantity must be at least 1.')
+      }
+      return
+    }
+
+    // Check maximum stock
+    if (parsed > maxStock) {
+      if (typeof showNotification === 'function') {
+        showNotification(`Maximum available stock (${maxStock}) reached for this product.`)
+      }
+      setLocalVal(String(maxStock))
+      onUpdateQuantity(item.id, maxStock)
+      return
+    }
+
+    setLocalVal(String(parsed))
+    onUpdateQuantity(item.id, parsed)
+  }
+
+  const handleKeyDown = (e) => {
+    // Disallow non-integer keys
+    if (['.', ',', '-', '+', 'e', 'E'].includes(e.key)) {
+      e.preventDefault()
+      if (typeof showNotification === 'function') {
+        showNotification('Whole numbers only. Decimals and negatives are not accepted.')
+      }
+      return
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.currentTarget.blur()
+      return
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (item.quantity < maxStock) {
+        const next = item.quantity + 1
+        setLocalVal(String(next))
+        onUpdateQuantity(item.id, next)
+      } else if (typeof showNotification === 'function') {
+        showNotification(`Maximum available stock (${maxStock}) reached for this product.`)
+      }
+      return
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (item.quantity > 1) {
+        const next = item.quantity - 1
+        setLocalVal(String(next))
+        onUpdateQuantity(item.id, next)
+      }
+      return
+    }
+  }
+
+  const handleBlur = () => {
+    setIsFocused(false)
+    if (!localVal || parseInt(localVal, 10) < 1) {
+      const fallback = Math.max(1, Number(item.quantity) || 1)
+      setLocalVal(String(fallback))
+      onUpdateQuantity(item.id, fallback)
+    }
+  }
+
+  const handleFocus = (e) => {
+    setIsFocused(true)
+    e.target.select()
+  }
+
+  const handleContainerClick = () => {
+    if (inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }
+
+  const unitBadge = getUnitBadgeText(item.unit, false)
+
+  return (
+    <div
+      className={`pos-qty-input-wrap ${isFocused ? 'focused' : ''}`}
+      onClick={handleContainerClick}
+      title="Click to edit quantity directly"
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        className="pos-qty-input"
+        value={localVal}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        aria-label={`Quantity for ${item.name}`}
+        style={{
+          width: `${Math.max(14, (localVal || '1').length * 8.5 + 4)}px`,
+        }}
+      />
+      <span className="pos-qty-unit">{unitBadge}</span>
+    </div>
+  )
+}
+
 export default function POSPage({ onTransactionComplete }) {
   const [products, setProducts] = useState([])
   const [activeCategory, setActiveCategory] = useState('All')
@@ -86,6 +279,40 @@ export default function POSPage({ onTransactionComplete }) {
   // Transaction Confirmation & Receipt Modals
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [completedTransaction, setCompletedTransaction] = useState(null)
+  const [showCartReceiptPreview, setShowCartReceiptPreview] = useState(false)
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser())
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser())
+  }, [])
+
+  const defaultStoreSettings = {
+    name: 'JEM HARDWARE AND CONSTRUCTIONS SUPPLY',
+    branch: 'BALULANG',
+    address: 'Carinugan, Balulang CDOC',
+    tel: '(049) 545-2981 / +63 917 825 4362',
+    tin: '',
+    website: 'www.jemhardware.ph',
+  }
+
+  const storeSettings = useMemo(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('jem_store_settings') || '{}')
+      return {
+        name: saved.name || defaultStoreSettings.name,
+        branch: currentUser?.branch || saved.branch || defaultStoreSettings.branch,
+        address: saved.address || defaultStoreSettings.address,
+        tel: saved.tel || defaultStoreSettings.tel,
+        tin: saved.tin || '',
+        website: saved.website || defaultStoreSettings.website,
+      }
+    } catch {
+      return {
+        ...defaultStoreSettings,
+        branch: currentUser?.branch || defaultStoreSettings.branch,
+      }
+    }
+  }, [currentUser])
 
   const defaultCategories = ['All', 'Lumber', 'Cement', 'Roofing', 'Pipes', 'Plumbing', 'Nails', 'Paint', 'Electrical', 'Tools']
 
@@ -101,9 +328,16 @@ export default function POSPage({ onTransactionComplete }) {
   }
 
   const fetchLiveProducts = () => {
-    getProducts({ per_page: 100 })
+    getProducts({ per_page: 150 })
       .then((payload) => {
-        const rawList = Array.isArray(payload) ? payload : payload?.data || []
+        const rawList = Array.isArray(payload)
+          ? payload
+          : (Array.isArray(payload?.data)
+              ? payload.data
+              : (Array.isArray(payload?.data?.data)
+                  ? payload.data.data
+                  : []))
+
         if (rawList.length > 0) {
           const mapped = rawList.map((p) => {
             const cleanedCat = cleanCategory(p.category?.name || 'General', p.name)
@@ -165,6 +399,60 @@ export default function POSPage({ onTransactionComplete }) {
   const cashIsSufficient = paymentMethod !== 'cash' || amountReceivedNum >= total
   const isSubmitDisabled = cart.length === 0 || isProcessing || (paymentMethod === 'cash' && !cashIsSufficient)
 
+  const currentCartReceiptData = useMemo(() => {
+    if (cart.length === 0) return null
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const amountPaidDisplay = paymentMethod === 'cash' ? (amountReceivedNum || total) : total
+    const changeDisplay = paymentMethod === 'cash' ? Math.max(0, (amountReceivedNum || total) - total) : 0
+    return {
+      id: Date.now(),
+      number: `ORD-${todayStr}-PREV`,
+      date: new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }),
+      cashier: currentUser?.name
+        ? `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : 'Staff'})`
+        : 'Isaac Daumar (Staff)',
+      paymentMethod: paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'gcash' ? 'GCash' : 'Maya',
+      subtotal,
+      discount: 0,
+      total,
+      amountPaid: amountPaidDisplay,
+      change: changeDisplay,
+      items: cart.map((item) => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.price * item.quantity,
+      })),
+      isDraftPreview: true,
+    }
+  }, [cart, paymentMethod, amountReceivedNum, total, subtotal, currentUser])
+
+  const activeReceiptData = completedTransaction || (showCartReceiptPreview ? currentCartReceiptData : null)
+
+  const handleCloseReceiptModal = () => {
+    if (completedTransaction) {
+      setCompletedTransaction(null)
+    }
+    if (showCartReceiptPreview) {
+      setShowCartReceiptPreview(false)
+    }
+  }
+
+  const receiptSubtotal = Number(activeReceiptData?.subtotal || activeReceiptData?.total || 0)
+  const receiptDiscount = Number(activeReceiptData?.discount || 0)
+  const receiptTotal = Math.max(0, receiptSubtotal - receiptDiscount)
+  const vatableSales = receiptTotal / 1.12
+  const vatAmount = receiptTotal - vatableSales
+
   const showNotification = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 3000)
@@ -220,6 +508,16 @@ export default function POSPage({ onTransactionComplete }) {
       return
     }
 
+    // Validate available stock for all items before opening confirmation
+    for (const item of cart) {
+      const currentProd = products.find((p) => p.id === item.id)
+      const currentStock = currentProd ? Number(currentProd.stock ?? 0) : 0
+      if (currentStock < item.quantity) {
+        showNotification(`Insufficient stock. Only ${currentStock} pcs of ${item.name} are available.`)
+        return
+      }
+    }
+
     if (paymentMethod === 'cash') {
       if (!amountReceived || amountReceivedNum < total) {
         showNotification(`Insufficient payment. Please enter at least ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}.`)
@@ -233,10 +531,26 @@ export default function POSPage({ onTransactionComplete }) {
 
   // Step 2: Staff confirms transaction inside the modal -> Execute API & deduct inventory
   const handleConfirmCheckout = async () => {
+    if (isProcessing) return
     setIsProcessing(true)
+
+    // Re-verify stock before dispatching transaction
+    for (const item of cart) {
+      const currentProd = products.find((p) => p.id === item.id)
+      const currentStock = currentProd ? Number(currentProd.stock ?? 0) : 0
+      if (currentStock < item.quantity) {
+        showNotification(`Insufficient stock. Only ${currentStock} pcs of ${item.name} are available.`)
+        setShowConfirmModal(false)
+        setIsProcessing(false)
+        return
+      }
+    }
 
     try {
       const backendPaymentMethod = paymentMethod === 'cash' ? 'cod' : paymentMethod
+      const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const proposedTxNumber = `ORD-${todayStr}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`
+
       const payload = {
         items: cart.map((item) => ({
           product_id: item.id,
@@ -245,17 +559,12 @@ export default function POSPage({ onTransactionComplete }) {
         })),
         payment_method: backendPaymentMethod,
         discount: 0,
+        transaction_number: proposedTxNumber,
       }
 
-      let txNumber = `POS-${Math.floor(100000 + Math.random() * 900000)}`
-      try {
-        const result = await createPosCheckout(payload)
-        if (result?.transaction?.transaction_number) {
-          txNumber = result.transaction.transaction_number
-        }
-      } catch (err) {
-        console.warn('POS API recorded locally:', err.message)
-      }
+      // Execute backend transaction (atomic, verifies stock & deducts inventory)
+      const result = await createPosCheckout(payload)
+      const txNumber = result?.data?.transaction?.transaction_number || result?.transaction?.transaction_number || proposedTxNumber
 
       const amountPaidDisplay = paymentMethod === 'cash' ? amountReceivedNum : total
       const changeDisplay = paymentMethod === 'cash' ? changeDue : 0
@@ -263,8 +572,20 @@ export default function POSPage({ onTransactionComplete }) {
       const completedData = {
         id: Date.now(),
         number: txNumber,
-        date: new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }),
+        date: new Date().toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }),
+        cashier: currentUser?.name
+          ? `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : 'Staff'})`
+          : 'Isaac Daumar (Staff)',
         paymentMethod: paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'gcash' ? 'GCash' : 'Maya',
+        subtotal,
+        discount: 0,
         total,
         amountPaid: amountPaidDisplay,
         change: changeDisplay,
@@ -276,9 +597,10 @@ export default function POSPage({ onTransactionComplete }) {
           price: item.price,
           total: item.price * item.quantity,
         })),
+        isDraftPreview: false,
       }
 
-      // Automatically deduct purchased quantities from live POS catalog state
+      // 1. Immediately deduct purchased quantities from live POS catalog state
       setProducts((prev) => {
         const updated = prev.map((p) => {
           const itemInCart = cart.find((c) => c.id === p.id)
@@ -297,12 +619,10 @@ export default function POSPage({ onTransactionComplete }) {
         return updated
       })
 
-      // Dispatch events to notify other modules (Inventory, Stock Requests, Product Management)
-      try {
-        window.dispatchEvent(new CustomEvent('jem_inventory_update'))
-      } catch (e) {}
+      // 2. Fetch fresh catalog from backend to synchronize state
+      fetchLiveProducts()
 
-      // Reset cart and form
+      // 3. Reset cart and form
       setCart([])
       setAmountReceived('')
       setShowConfirmModal(false)
@@ -761,6 +1081,65 @@ export default function POSPage({ onTransactionComplete }) {
           font-size: 0.8rem;
         }
 
+        .pos-qty-input-wrap {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: text;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 4px;
+          padding: 1px 4px;
+          min-width: 36px;
+          height: 22px;
+          box-sizing: border-box;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+        }
+
+        .pos-qty-input-wrap:hover {
+          background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+          border-color: var(--border-color, rgba(255, 255, 255, 0.18));
+        }
+
+        .pos-qty-input-wrap.focused {
+          background: var(--bg-surface, rgba(0, 0, 0, 0.4));
+          border-color: var(--primary, #f97316);
+          box-shadow: 0 0 0 1px var(--primary, #f97316);
+        }
+
+        .pos-qty-input {
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          font-family: inherit;
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-align: right;
+          outline: none;
+          padding: 0;
+          margin: 0;
+          min-width: 12px;
+          line-height: 1;
+          -moz-appearance: textfield;
+        }
+
+        .pos-qty-input::-webkit-outer-spin-button,
+        .pos-qty-input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        .pos-qty-unit {
+          font-size: 0.78rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          padding-left: 2px;
+          user-select: none;
+          cursor: text;
+          white-space: nowrap;
+          line-height: 1;
+        }
+
         .pos-item-total {
           font-weight: 800;
           color: var(--text-primary);
@@ -1095,46 +1474,570 @@ export default function POSPage({ onTransactionComplete }) {
           cursor: not-allowed;
         }
 
-        /* Receipt Card in Success View */
-        .pos-receipt-paper {
-          background: var(--bg-hover);
-          border: 2px dashed var(--border-color);
-          border-radius: 12px;
-          padding: 20px;
-          font-family: monospace;
-          color: var(--text-primary);
-        }
-
-        .pos-receipt-header {
-          text-align: center;
-          border-bottom: 1px dashed var(--border-color);
-          padding-bottom: 12px;
-          margin-bottom: 12px;
-        }
-
-        .pos-receipt-header h4 {
-          margin: 0 0 4px;
-          font-size: 1.1rem;
-          font-weight: 800;
-          color: var(--text-primary);
-        }
-
-        .pos-receipt-header p {
-          margin: 0;
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-        }
-
-        .pos-receipt-line {
+        /* OFFICIAL RECEIPT PREVIEW MODAL STYLES */
+        .pos-receipt-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(10, 16, 28, 0.82);
+          backdrop-filter: blur(5px);
           display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+          padding: 16px;
+          animation: posFadeIn 0.2s ease-out;
+        }
+
+        .pos-receipt-modal-container {
+          background: #0d1726;
+          border-radius: 12px;
+          width: 100%;
+          max-width: 440px;
+          max-height: 94vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+          animation: posScaleUp 0.22s ease-out;
+        }
+
+        .pos-receipt-modal-header {
+          background: #0d1726;
+          padding: 14px 18px;
+          display: flex;
+          align-items: center;
           justify-content: space-between;
-          font-size: 0.84rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          flex-shrink: 0;
+        }
+
+        .pos-receipt-modal-title {
+          color: #ffffff;
+          font-size: 0.92rem;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .pos-receipt-modal-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .pos-receipt-print-btn {
+          background: #059669;
+          color: #ffffff;
+          border: none;
+          border-radius: 6px;
+          padding: 7px 14px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.15s;
+          box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35);
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .pos-receipt-print-btn:hover {
+          background: #047857;
+          transform: translateY(-1px);
+        }
+
+        .pos-receipt-close-btn {
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          border-radius: 6px;
+          padding: 6px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+        }
+
+        .pos-receipt-close-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+
+        .pos-receipt-modal-body {
+          background: #090f1d;
+          padding: 22px 16px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 14px;
+          min-height: 0;
+        }
+
+        .pos-receipt-draft-notice {
+          background: rgba(245, 158, 11, 0.15);
+          color: #fbbf24;
+          border: 1px solid rgba(245, 158, 11, 0.3);
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          padding: 6px 12px;
+          text-align: center;
+          width: 100%;
+          max-width: 360px;
+        }
+
+        .pos-thermal-paper {
+          background: #ffffff;
+          color: #111827;
+          width: 100%;
+          max-width: 360px;
+          padding: 24px 18px;
+          border-radius: 3px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+          font-family: Consolas, 'Courier New', Courier, Monaco, monospace;
+          font-size: 11px;
+          line-height: 1.35;
+          user-select: text;
+          box-sizing: border-box;
+        }
+
+        .pos-receipt-emblem-wrap {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 10px;
+        }
+
+        .pos-receipt-store-block {
+          text-align: center;
           margin-bottom: 6px;
         }
 
-        .pos-receipt-divider {
-          border-top: 1px dashed var(--border-color);
-          margin: 10px 0;
+        .pos-receipt-store-name {
+          font-size: 12.5px;
+          font-weight: 900;
+          color: #000000;
+          letter-spacing: 0.02em;
+          margin: 0 0 5px;
+          line-height: 1.25;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .pos-receipt-store-meta {
+          font-size: 10.5px;
+          color: #334155;
+          margin: 0 0 2px;
+          line-height: 1.3;
+        }
+
+        .pos-receipt-store-meta.bold {
+          font-weight: 700;
+          color: #000000;
+        }
+
+        .pos-receipt-dash {
+          border-top: 1px dashed #64748b;
+          margin: 9px 0;
+        }
+
+        .pos-receipt-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          font-size: 11px;
+          margin-bottom: 3px;
+          color: #1e293b;
+        }
+
+        .pos-receipt-row.bold {
+          font-weight: 700;
+          color: #000000;
+        }
+
+        .pos-receipt-row .label {
+          color: #475569;
+        }
+
+        .pos-receipt-row .val {
+          color: #0f172a;
+          text-align: right;
+        }
+
+        .pos-receipt-row .val.order-no {
+          font-weight: 800;
+          color: #000000;
+          letter-spacing: 0.02em;
+        }
+
+        .pos-receipt-table-header {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 36px 64px 68px;
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #475569;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+        }
+
+        .pos-receipt-table-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 36px 64px 68px;
+          font-size: 11px;
+          margin-bottom: 4px;
+          align-items: start;
+          color: #0f172a;
+        }
+
+        .pos-receipt-table-header .col-item,
+        .pos-receipt-table-row .col-item {
+          text-align: left;
+        }
+
+        .pos-receipt-table-header .col-qty,
+        .pos-receipt-table-row .col-qty {
+          text-align: right;
+        }
+
+        .pos-receipt-table-header .col-price,
+        .pos-receipt-table-row .col-price {
+          text-align: right;
+        }
+
+        .pos-receipt-table-header .col-total,
+        .pos-receipt-table-row .col-total {
+          text-align: right;
+          font-weight: 600;
+        }
+
+        .pos-receipt-table-row .item-name {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          padding-right: 4px;
+          font-weight: 600;
+          color: #000000;
+        }
+
+        .pos-receipt-grand-total {
+          margin-top: 5px;
+          padding-top: 2px;
+        }
+
+        .pos-receipt-grand-total .total-label {
+          font-size: 13.5px !important;
+          font-weight: 900 !important;
+          color: #000000 !important;
+          letter-spacing: 0.03em;
+        }
+
+        .pos-receipt-grand-total .total-val {
+          font-size: 14.5px !important;
+          font-weight: 900 !important;
+          color: #000000 !important;
+        }
+
+        .pos-receipt-section-title {
+          font-size: 10.5px;
+          font-weight: 800;
+          color: #475569;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+
+        .pos-receipt-footer {
+          text-align: center;
+          padding-top: 2px;
+        }
+
+        .pos-receipt-footer-line {
+          margin: 0 0 2px;
+          font-size: 10px;
+          line-height: 1.4;
+          color: #475569;
+        }
+
+        .pos-receipt-end-tag {
+          font-size: 9.5px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          margin-top: 5px;
+          color: #64748b;
+        }
+
+        .pos-receipt-secondary-actions {
+          display: flex;
+          justify-content: center;
+          width: 100%;
+          max-width: 360px;
+        }
+
+        .pos-receipt-btn-new-sale {
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #ffffff;
+          padding: 8px 18px;
+          border-radius: 8px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.15s;
+        }
+
+        .pos-receipt-btn-new-sale:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .pos-receipt-preview-btn {
+          width: 100%;
+          padding: 10px 14px;
+          border-radius: 10px;
+          border: 1px dashed var(--border-color);
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .pos-receipt-preview-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--primary);
+          color: var(--primary);
+        }
+
+        /* PRINT STYLES FOR 80MM THERMAL RECEIPT */
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+
+        @media print {
+          html,
+          body {
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            overflow: visible !important;
+            display: block !important;
+            position: static !important;
+          }
+
+          /* Reset all ancestor wrappers so they collapse to natural receipt height */
+          #root,
+          .jem-staff-shell,
+          .jem-main,
+          .jem-content,
+          .pos-receipt-modal-backdrop,
+          .pos-receipt-modal-container,
+          .pos-receipt-modal-body {
+            display: block !important;
+            position: static !important;
+            width: 80mm !important;
+            max-width: 80mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            inset: auto !important;
+            transform: none !important;
+            flex: none !important;
+          }
+
+          /* Hide all UI elements that should not appear on print */
+          .jem-staff-sidebar,
+          .jem-header,
+          .jem-staff-topbar,
+          .pos-shell,
+          .pos-main-area,
+          .pos-header-block,
+          .pos-toolbar,
+          .pos-grid,
+          .pos-cart-panel,
+          .pos-toast,
+          .pos-receipt-modal-header,
+          .pos-receipt-modal-actions,
+          .pos-receipt-draft-notice,
+          .pos-receipt-secondary-actions,
+          .pos-modal-backdrop {
+            display: none !important;
+          }
+
+          /* Receipt paper container - fits 80mm roll, height is purely content-driven */
+          #jem-official-receipt-print-area {
+            display: block !important;
+            position: static !important;
+            width: 74mm !important;
+            max-width: 74mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 auto !important;
+            padding: 3mm 4mm 2mm !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            font-size: 10px !important;
+            line-height: 1.25 !important;
+            overflow: visible !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .pos-receipt-emblem-wrap {
+            margin-bottom: 4px !important;
+          }
+
+          .pos-receipt-emblem-wrap svg {
+            width: 48px !important;
+            height: 48px !important;
+          }
+
+          .pos-receipt-store-block {
+            margin-bottom: 3px !important;
+          }
+
+          .pos-receipt-store-name {
+            font-size: 11.5px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+            margin: 0 0 2px !important;
+            line-height: 1.2 !important;
+          }
+
+          .pos-receipt-store-meta {
+            font-size: 9.5px !important;
+            color: #1e293b !important;
+            margin: 0 0 1px !important;
+            line-height: 1.25 !important;
+          }
+
+          .pos-receipt-dash {
+            border-top: 1px dashed #000000 !important;
+            margin: 4px 0 !important;
+            width: 100% !important;
+          }
+
+          .pos-receipt-tx-info {
+            margin: 0 !important;
+          }
+
+          .pos-receipt-row {
+            font-size: 10px !important;
+            margin-bottom: 2px !important;
+            line-height: 1.25 !important;
+            color: #000000 !important;
+          }
+
+          .pos-receipt-row .label {
+            color: #1e293b !important;
+          }
+
+          .pos-receipt-row .val {
+            color: #000000 !important;
+          }
+
+          .pos-receipt-items-table {
+            margin: 0 !important;
+          }
+
+          .pos-receipt-table-header {
+            font-size: 9.5px !important;
+            font-weight: 700 !important;
+            color: #1e293b !important;
+            margin-bottom: 3px !important;
+            grid-template-columns: minmax(0, 1fr) 26px 50px 54px !important;
+          }
+
+          .pos-receipt-table-row {
+            font-size: 10px !important;
+            margin-bottom: 2px !important;
+            line-height: 1.25 !important;
+            grid-template-columns: minmax(0, 1fr) 26px 50px 54px !important;
+            color: #000000 !important;
+          }
+
+          .pos-receipt-table-row .item-name {
+            font-size: 10px !important;
+            color: #000000 !important;
+          }
+
+          .pos-receipt-grand-total {
+            margin-top: 3px !important;
+          }
+
+          .pos-receipt-grand-total .total-label {
+            font-size: 12px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+          }
+
+          .pos-receipt-grand-total .total-val {
+            font-size: 13px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+          }
+
+          .pos-receipt-section-title {
+            font-size: 9.5px !important;
+            font-weight: 800 !important;
+            color: #1e293b !important;
+            margin-bottom: 2px !important;
+          }
+
+          .pos-receipt-footer {
+            margin-top: 4px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+
+          .pos-receipt-footer-line {
+            font-size: 9px !important;
+            line-height: 1.3 !important;
+            color: #1e293b !important;
+            margin: 0 0 1px !important;
+          }
+
+          .pos-receipt-end-tag {
+            font-size: 8.5px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.08em !important;
+            margin-top: 3px !important;
+            margin-bottom: 0 !important;
+            color: #000000 !important;
+          }
         }
 
         /* Toast */
@@ -1323,9 +2226,12 @@ export default function POSPage({ onTransactionComplete }) {
                         <button type="button" onClick={() => updateCartQuantity(item.id, item.quantity - 1)}>
                           <Minus size={12} />
                         </button>
-                        <span className="pos-qty-val" style={{ minWidth: '42px', fontSize: '0.78rem' }}>
-                          {formatQuantityWithUnit(item.quantity, item.unit)}
-                        </span>
+                        <PosQuantityInput
+                          item={item}
+                          maxStock={currentStock}
+                          onUpdateQuantity={updateCartQuantity}
+                          showNotification={showNotification}
+                        />
                         <button
                           type="button"
                           disabled={isMaxReached}
@@ -1382,15 +2288,27 @@ export default function POSPage({ onTransactionComplete }) {
             </div>
 
             {cart.length > 0 && (
-              <button
-                type="button"
-                className="pos-submit-btn"
-                disabled={isSubmitDisabled}
-                onClick={handleInitiateCheckout}
-              >
-                <Receipt size={17} />
-                <span>Complete Transaction</span>
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
+                <button
+                  type="button"
+                  className="pos-submit-btn"
+                  disabled={isSubmitDisabled}
+                  onClick={handleInitiateCheckout}
+                >
+                  <Receipt size={17} />
+                  <span>Complete Transaction</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="pos-receipt-preview-btn"
+                  onClick={() => setShowCartReceiptPreview(true)}
+                  title="Preview Official Receipt before completing transaction"
+                >
+                  <Printer size={16} />
+                  <span>Official Receipt Preview</span>
+                </button>
+              </div>
             )}
           </div>
         </aside>
@@ -1511,91 +2429,230 @@ export default function POSPage({ onTransactionComplete }) {
         </div>
       )}
 
-      {/* 2. TRANSACTION COMPLETED RECEIPT MODAL */}
-      {completedTransaction && (
-        <div className="pos-modal-backdrop" onClick={() => setCompletedTransaction(null)}>
-          <div className="pos-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="pos-modal-header" style={{ background: 'var(--success-bg, rgba(16, 185, 129, 0.16))' }}>
-              <h3 style={{ color: 'var(--success-text, #34d399)' }}>
-                <CheckCircle2 size={22} color="var(--success-text, #34d399)" />
-                Transaction Completed!
-              </h3>
-              <button
-                type="button"
-                className="pos-modal-close-btn"
-                onClick={() => setCompletedTransaction(null)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="pos-modal-body">
-              <div className="pos-receipt-paper">
-                <div className="pos-receipt-header">
-                  <h4>JEM HARDWARE SUPPLIES</h4>
-                  <p>Walk-In POS Sales Receipt</p>
-                  <p style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Tx #{completedTransaction.number}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{completedTransaction.date}</p>
-                </div>
-
-                <div style={{ marginBottom: 8 }}>
-                  {completedTransaction.items.map((it, idx) => (
-                    <div className="pos-receipt-line" key={idx}>
-                      <span>{formatQuantityWithUnit(it.quantity, it.unit)} × {it.name}</span>
-                      <span>₱{it.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pos-receipt-divider"></div>
-
-                <div className="pos-receipt-line" style={{ fontWeight: 800 }}>
-                  <span>TOTAL AMOUNT:</span>
-                  <span>₱{completedTransaction.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                </div>
-
-                <div className="pos-receipt-line">
-                  <span>PAYMENT METHOD:</span>
-                  <span>{completedTransaction.paymentMethod}</span>
-                </div>
-
-                <div className="pos-receipt-line">
-                  <span>AMOUNT PAID:</span>
-                  <span>₱{completedTransaction.amountPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                </div>
-
-                <div className="pos-receipt-line" style={{ fontWeight: 800, color: completedTransaction.change > 0 ? 'var(--success-text, #34d399)' : 'var(--text-secondary)' }}>
-                  <span>CHANGE:</span>
-                  <span>{completedTransaction.change > 0 ? `₱${completedTransaction.change.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '₱0.00 (No Change)'}</span>
-                </div>
-
-                <div className="pos-receipt-divider"></div>
-                <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                  Thank you for shopping at JEM Hardware!
-                  <br />
-                  Items deducted from inventory.
-                </div>
+      {/* 2. OFFICIAL RECEIPT PREVIEW MODAL */}
+      {activeReceiptData && (
+        <div className="pos-receipt-modal-backdrop" onClick={handleCloseReceiptModal}>
+          <div className="pos-receipt-modal-container" onClick={(e) => e.stopPropagation()}>
+            {/* Dark Navy Header */}
+            <div className="pos-receipt-modal-header">
+              <div className="pos-receipt-modal-title">
+                OFFICIAL RECEIPT PREVIEW
+              </div>
+              <div className="pos-receipt-modal-actions">
+                <button
+                  type="button"
+                  className="pos-receipt-print-btn"
+                  onClick={() => window.print()}
+                  title="Print Official Receipt"
+                >
+                  <Printer size={15} />
+                  <span>Print Receipt</span>
+                </button>
+                <button
+                  type="button"
+                  className="pos-receipt-close-btn"
+                  onClick={handleCloseReceiptModal}
+                  title="Close Receipt Preview"
+                >
+                  <X size={18} />
+                </button>
               </div>
             </div>
 
-            <div className="pos-modal-footer">
-              <button
-                type="button"
-                className="pos-btn-secondary"
-                onClick={() => window.print()}
-              >
-                <Printer size={16} style={{ display: 'inline', marginRight: 6 }} />
-                Print Receipt
-              </button>
+            {/* Modal Body with dark backdrop and thermal paper */}
+            <div className="pos-receipt-modal-body">
+              {activeReceiptData.isDraftPreview && (
+                <div className="pos-receipt-draft-notice">
+                  Draft Receipt Preview · Cart not yet confirmed
+                </div>
+              )}
 
-              <button
-                type="button"
-                className="pos-btn-primary"
-                onClick={() => setCompletedTransaction(null)}
-              >
-                <Plus size={16} />
-                New Transaction
-              </button>
+              {/* Thermal Receipt Paper Card (Printed Area) */}
+              <div id="jem-official-receipt-print-area" className="pos-thermal-paper">
+                {/* Store Emblem Logo */}
+                <div className="pos-receipt-emblem-wrap">
+                  <JemReceiptEmblem size={66} />
+                </div>
+
+                {/* Store Name & Store Info */}
+                <div className="pos-receipt-store-block">
+                  <h2 className="pos-receipt-store-name">
+                    {storeSettings.name}
+                  </h2>
+                  <p className="pos-receipt-store-meta">
+                    Branch: {storeSettings.branch}
+                  </p>
+                  <p className="pos-receipt-store-meta">
+                    {storeSettings.address}
+                  </p>
+                  <p className="pos-receipt-store-meta">
+                    Tel: {storeSettings.tel}
+                  </p>
+                  {storeSettings.tin && (
+                    <p className="pos-receipt-store-meta bold">
+                      VAT-REG TIN: {storeSettings.tin}
+                    </p>
+                  )}
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Transaction Information */}
+                <div className="pos-receipt-tx-info">
+                  <div className="pos-receipt-row">
+                    <span className="label">Order No:</span>
+                    <span className="val order-no">{activeReceiptData.number}</span>
+                  </div>
+                  <div className="pos-receipt-row">
+                    <span className="label">Date/Time:</span>
+                    <span className="val">{activeReceiptData.date}</span>
+                  </div>
+                  <div className="pos-receipt-row">
+                    <span className="label">Cashier:</span>
+                    <span className="val">{activeReceiptData.cashier}</span>
+                  </div>
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Purchased Items Table */}
+                <div className="pos-receipt-items-table">
+                  <div className="pos-receipt-table-header">
+                    <span className="col-item">ITEM</span>
+                    <span className="col-qty">QTY</span>
+                    <span className="col-price">PRICE</span>
+                    <span className="col-total">TOTAL</span>
+                  </div>
+                  <div className="pos-receipt-table-body">
+                    {activeReceiptData.items.map((item, idx) => (
+                      <div className="pos-receipt-table-row" key={idx}>
+                        <span className="col-item item-name" title={item.name}>
+                          {item.name}
+                        </span>
+                        <span className="col-qty">{item.quantity}</span>
+                        <span className="col-price">
+                          {Number(item.price).toFixed(2)}
+                        </span>
+                        <span className="col-total">
+                          {Number(item.total).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Transaction Totals */}
+                <div className="pos-receipt-totals">
+                  <div className="pos-receipt-row">
+                    <span className="label">Gross Subtotal:</span>
+                    <span className="val">
+                      ₱{receiptSubtotal.toFixed(2)}
+                    </span>
+                  </div>
+                  {receiptDiscount > 0 && (
+                    <div className="pos-receipt-row">
+                      <span className="label">Discount:</span>
+                      <span className="val">
+                        -₱{receiptDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="pos-receipt-row pos-receipt-grand-total">
+                    <span className="total-label">TOTAL  DUE :</span>
+                    <span className="total-val">
+                      ₱{receiptTotal.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Payments Breakdown */}
+                <div className="pos-receipt-breakdown">
+                  <div className="pos-receipt-section-title">PAYMENTS BREAKDOWN</div>
+                  <div className="pos-receipt-row">
+                    <span className="label">{activeReceiptData.paymentMethod} :</span>
+                    <span className="val">
+                      ₱{receiptTotal.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="pos-receipt-row">
+                    <span className="label">Amount Tendered:</span>
+                    <span className="val">
+                      ₱{Number(activeReceiptData.amountPaid).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="pos-receipt-row bold">
+                    <span className="label">CHANGE :</span>
+                    <span className="val">
+                      ₱{Number(activeReceiptData.change).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Tax Summary */}
+                <div className="pos-receipt-tax">
+                  <div className="pos-receipt-section-title">TAX SUMMARY (12% VAT)</div>
+                  <div className="pos-receipt-row">
+                    <span className="label">VATable Sales:</span>
+                    <span className="val">
+                      ₱{vatableSales.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="pos-receipt-row">
+                    <span className="label">12% VAT Amount:</span>
+                    <span className="val">
+                      ₱{vatAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="pos-receipt-row">
+                    <span className="label">VAT-Exempt Sales:</span>
+                    <span className="val">₱0.00</span>
+                  </div>
+                </div>
+
+                {/* Dashed divider */}
+                <div className="pos-receipt-dash" />
+
+                {/* Footer */}
+                <div className="pos-receipt-footer">
+                  <p className="pos-receipt-footer-line">
+                    Thank you for shopping at JEM Hardware and Constructions Supply!
+                  </p>
+                  <p className="pos-receipt-footer-line">
+                    Please keep this receipt for your records.
+                  </p>
+                  {storeSettings.website && (
+                    <p className="pos-receipt-footer-line">
+                      Visit us at {storeSettings.website}
+                    </p>
+                  )}
+                  <p className="pos-receipt-footer-line pos-receipt-end-tag">
+                    *** END OF RECEIPT ***
+                  </p>
+                </div>
+              </div>
+
+              {/* Secondary actions outside thermal paper */}
+              <div className="pos-receipt-secondary-actions">
+                <button
+                  type="button"
+                  className="pos-receipt-btn-new-sale"
+                  onClick={handleCloseReceiptModal}
+                >
+                  <Plus size={16} />
+                  <span>{activeReceiptData.isDraftPreview ? 'Continue Editing Cart' : 'New Transaction'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

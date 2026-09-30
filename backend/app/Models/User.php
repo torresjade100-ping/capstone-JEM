@@ -24,10 +24,12 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'google_id',
         'phone',
         'password',
         'role',
         'status',
+        'email_verified_at',
     ];
 
     /**

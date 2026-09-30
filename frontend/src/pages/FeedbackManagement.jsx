@@ -70,6 +70,20 @@ export default function FeedbackManagement() {
     }
   }, [])
 
+  // Deep linking: focus / open feedback when navigated from Global Search (?feedbackId=...)
+  useEffect(() => {
+    if (!feedback || feedback.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const targetFeedbackId = params.get('feedbackId')
+    if (targetFeedbackId) {
+      const match = feedback.find((f) => String(f.id) === String(targetFeedbackId))
+      if (match) {
+        setSelected(match)
+        setResponse(match.admin_response || '')
+      }
+    }
+  }, [feedback])
+
   const respond = async (event) => {
     event.preventDefault()
     if (!selected || !response.trim()) return

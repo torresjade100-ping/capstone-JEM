@@ -156,7 +156,8 @@ async function safeFetch(path, options = {}) {
         const errorMsg = data?.message || `HTTP ${response.status}: Request failed`;
         const serverError = new Error(errorMsg);
         
-        if (response.status === 401 || response.status === 422 || response.status === 403 || response.status === 400) {
+        // If server responded with an HTTP status (4xx/5xx), surface the server error directly
+        if (response.status >= 400) {
           throw serverError;
         }
         lastError = serverError;
@@ -324,6 +325,163 @@ export async function registerCustomer(name, email, password, phone = '') {
     token: localToken,
     message: 'Account created successfully',
   };
+}
+
+/**
+ * Initiate Google Authentication & trigger backend OTP generation
+ */
+export async function initiateGoogleAuth(email, name = '', googleToken = null, googleId = null) {
+  const backendResponse = await safeFetch('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim(),
+      name: name.trim() || undefined,
+      google_id: googleId || undefined,
+      google_token: googleToken || undefined,
+    }),
+  });
+
+  if (backendResponse?.data?.token) {
+    setMobileAuthToken(backendResponse.data.token);
+  }
+  if (backendResponse?.data?.user) {
+    saveStoredUser(backendResponse.data.user);
+  }
+
+  if (backendResponse?.success) {
+    return backendResponse.data;
+  }
+
+  throw new Error(backendResponse?.message || 'Failed to authenticate with Google.');
+}
+
+/**
+ * Sign Up Flow: Request 6-digit email verification code
+ */
+export async function requestSignupCode(email) {
+  const backendResponse = await safeFetch('/auth/signup/request-code', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+    }),
+  });
+
+  if (backendResponse?.success) {
+    return backendResponse;
+  }
+
+  throw new Error(backendResponse?.message || 'Failed to send verification code.');
+}
+
+/**
+ * Sign Up Flow: Verify 6-digit code against server
+ */
+export async function verifySignupCode(email, code) {
+  const cleanCode = String(code || '').trim();
+  const backendResponse = await safeFetch('/auth/signup/verify-code', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      code: cleanCode,
+      otp: cleanCode,
+    }),
+  });
+
+  if (backendResponse?.success) {
+    return backendResponse;
+  }
+
+  throw new Error(backendResponse?.message || 'Invalid verification code. Please try again.');
+}
+
+/**
+ * Sign Up Flow: Resend verification code with cooldown
+ */
+export async function resendSignupCode(email) {
+  const backendResponse = await safeFetch('/auth/signup/resend-code', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+    }),
+  });
+
+  if (backendResponse?.success) {
+    return backendResponse;
+  }
+
+  throw new Error(backendResponse?.message || 'Failed to resend verification code.');
+}
+
+/**
+ * Sign Up Flow: Finalize user account creation ONLY after email verification
+ */
+export async function completeSignup({ email, name, password, phone = '' }) {
+  const backendResponse = await safeFetch('/auth/signup/complete', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      name: name.trim(),
+      password: password,
+      phone: phone?.trim() || undefined,
+    }),
+  });
+
+  if (backendResponse?.data?.token) {
+    setMobileAuthToken(backendResponse.data.token);
+  }
+  if (backendResponse?.data?.user) {
+    saveStoredUser(backendResponse.data.user);
+    saveLocalRegisteredUser(backendResponse.data.user, password);
+  }
+
+  if (backendResponse?.success) {
+    return backendResponse.data;
+  }
+
+  throw new Error(backendResponse?.message || 'Failed to complete registration.');
+}
+
+/**
+ * Verify 6-digit OTP code with backend
+ */
+export async function verifyEmailOtp(email, code) {
+  const cleanCode = String(code || '').trim();
+  const backendResponse = await safeFetch('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim(),
+      otp: cleanCode,
+      code: cleanCode,
+    }),
+  });
+
+  if (backendResponse?.success && backendResponse.data?.token) {
+    setMobileAuthToken(backendResponse.data.token);
+    if (backendResponse.data.user) {
+      saveStoredUser(backendResponse.data.user);
+    }
+    return backendResponse.data;
+  }
+
+  throw new Error(backendResponse?.message || 'Invalid or expired verification code.');
+}
+
+/**
+ * Resend 6-digit OTP code with backend cooldown rate-limiting
+ */
+export async function resendEmailOtp(email) {
+  const backendResponse = await safeFetch('/auth/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email.trim(),
+    }),
+  });
+
+  if (backendResponse?.success) {
+    return backendResponse.data;
+  }
+
+  throw new Error(backendResponse?.message || 'Failed to resend verification code.');
 }
 
 /**

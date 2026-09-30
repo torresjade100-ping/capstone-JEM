@@ -265,17 +265,19 @@
 }
 
 /* Modal */
-.modal-overlay {
+.modal-overlay,
+.modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
   animation: fadeIn 0.2s ease-in;
 }
 
@@ -783,18 +785,47 @@ svg.lucide {
 
 .badge,
 .status-badge,
-.pill-badge {
+.pill-badge,
+.stock-status-badge {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   vertical-align: middle !important;
+  position: static !important;
   line-height: 1 !important;
   gap: 6px;
 }
 
+.stock-status-badge {
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
+.stock-status-badge.in-stock {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #10b981 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+.stock-status-badge.low-stock {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #f59e0b !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.stock-status-badge.out-of-stock {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+
 .badge svg,
 .status-badge svg,
-.pill-badge svg {
+.pill-badge svg,
+.stock-status-badge svg {
   margin: 0 !important;
   display: inline-block;
   vertical-align: middle;

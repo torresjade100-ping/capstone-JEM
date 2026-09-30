@@ -35,6 +35,26 @@ class Product extends Model
         'low_stock_threshold' => 'integer',
     ];
 
+    protected $appends = [
+        'stock_status',
+    ];
+
+    public function getStockStatusAttribute(): string
+    {
+        $qty = (int) ($this->stock_quantity ?? 0);
+        $threshold = (int) ($this->low_stock_threshold ?? 10);
+
+        if ($qty <= 0) {
+            return 'out_of_stock';
+        }
+
+        if ($qty <= $threshold) {
+            return 'low_stock';
+        }
+
+        return 'in_stock';
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);

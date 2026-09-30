@@ -25,9 +25,9 @@ class InventoryService
      *
      * @throws \Throwable
      */
-    public function adjustStock($user, int $productId, ?int $variantId, int $quantityChange, string $reason, string $type = 'other'): array
+    public function adjustStock($user, int $productId, ?int $variantId, int $quantityChange, string $reason, string $type = 'other', ?int $supplierId = null, ?string $referenceNumber = null, ?string $notes = null): array
     {
-        return DB::transaction(function () use ($user, $productId, $variantId, $quantityChange, $reason, $type) {
+        return DB::transaction(function () use ($user, $productId, $variantId, $quantityChange, $reason, $type, $supplierId, $referenceNumber, $notes) {
             if ($variantId) {
                 $variant = ProductVariant::lockForUpdate()->findOrFail($variantId);
 
@@ -50,11 +50,14 @@ class InventoryService
                     'product_id' => $productId,
                     'product_variant_id' => $variantId,
                     'user_id' => $user->id,
+                    'supplier_id' => $supplierId,
                     'adjustment_type' => $type,
                     'quantity_before' => $before,
                     'quantity_changed' => $quantityChange,
                     'quantity_after' => $after,
+                    'reference_number' => $referenceNumber,
                     'reason' => $reason,
+                    'notes' => $notes,
                 ]);
 
                 // Audit log
@@ -93,11 +96,14 @@ class InventoryService
                 'product_id' => $productId,
                 'product_variant_id' => null,
                 'user_id' => $user->id,
+                'supplier_id' => $supplierId,
                 'adjustment_type' => $type,
                 'quantity_before' => $before,
                 'quantity_changed' => $quantityChange,
                 'quantity_after' => $after,
+                'reference_number' => $referenceNumber,
                 'reason' => $reason,
+                'notes' => $notes,
             ]);
 
             // Audit log for product-level adjustment

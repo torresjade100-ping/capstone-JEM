@@ -28,7 +28,12 @@ class ProductController extends Controller
             $query->where('name', 'like', '%'.$request->search.'%');
         }
 
-        $products = $query->orderBy('name')->paginate(20);
+        $perPageInput = $request->input('per_page', 20);
+        $perPage = ($perPageInput === 'all' || (int) $perPageInput > 100)
+            ? min((int) ($perPageInput === 'all' ? 500 : $perPageInput), 500)
+            : min(max((int) $perPageInput, 1), 200);
+
+        $products = $query->orderBy('name')->paginate($perPage);
 
         return response()->json([
             'success' => true,

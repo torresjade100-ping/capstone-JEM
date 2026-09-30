@@ -1,12 +1,16 @@
-import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import React, { useEffect, useMemo, useState, lazy, Suspense, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3, Bell, Box, DollarSign, Package, ShoppingCart,
   TrendingUp, Users, AlertCircle, ArrowUpRight, ArrowDownRight,
-  Home, LogOut, ChevronDown, Menu, X, Check, Truck,
-  MessageSquare, ClipboardList, Search, MoreHorizontal
+  Home, LogOut, Menu, X, Check, Truck,
+  MessageSquare, ClipboardList, Search, MoreHorizontal, Tag,
+  Receipt, KeyRound, RotateCcw, Ban, ShieldCheck, RefreshCw
 } from 'lucide-react'
-import { getAdminOrders, getInventory, getProducts, getRestockRequests, getStoredUser, getUsers, logout, getSharedOrders } from '../api'
+import {
+  getAdminOrders, getInventory, getProducts, getRestockRequests,
+  getStoredUser, getUsers, logout, getSharedOrders, getTransactions
+} from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
@@ -15,6 +19,7 @@ import ErrorBoundary from '../components/ErrorBoundary'
 import '../styles/dashboard.css'
 
 const ProductManagement = lazy(() => import('./ProductManagement'))
+const CategoryManagement = lazy(() => import('./CategoryManagement'))
 const OrdersManagement = lazy(() => import('./OrdersManagement'))
 const UserManagement = lazy(() => import('./UserManagement'))
 const InventoryManagement = lazy(() => import('./InventoryManagement'))
@@ -22,7 +27,108 @@ const SuppliersManagement = lazy(() => import('./SuppliersManagement'))
 const RestockRequestsPage = lazy(() => import('./RestockRequestsPage'))
 const ReportsPage = lazy(() => import('./ReportsPage'))
 const FeedbackManagement = lazy(() => import('./FeedbackManagement'))
+const TransactionsPage = lazy(() => import('./TransactionsPage'))
+const VoidSecurityPage = lazy(() => import('./VoidSecurityPage'))
 
+const SIDEBAR_PAGES = [
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    path: '/dashboard',
+    icon: Home,
+    description: 'Overview, analytics & key business metrics',
+    keywords: ['dashboard', 'dash', 'home', 'overview', 'main', 'analytics'],
+  },
+  {
+    id: 'users',
+    name: 'Users',
+    path: '/users',
+    icon: Users,
+    description: 'User accounts, cashiers, staff roles & permissions',
+    keywords: ['users', 'user', 'staff', 'admin', 'cashier', 'cashiers', 'accounts', 'account', 'customers', 'customer', 'roles'],
+  },
+  {
+    id: 'products',
+    name: 'Products',
+    path: '/products',
+    icon: Package,
+    description: 'Product catalog, prices, batches & inventory details',
+    keywords: ['products', 'product', 'items', 'item', 'catalog', 'goods', 'merchandise'],
+  },
+  {
+    id: 'categories',
+    name: 'Categories',
+    path: '/categories',
+    icon: Tag,
+    description: 'Product categories & hardware classifications',
+    keywords: ['categories', 'category', 'cats', 'cat', 'classification', 'tags', 'tag'],
+  },
+  {
+    id: 'inventory',
+    name: 'Inventory',
+    path: '/inventory',
+    icon: Box,
+    description: 'Stock levels, stock adjustments & low-stock alerts',
+    keywords: ['inventory', 'stock', 'stocks', 'adjustments', 'supplies', 'warehouse'],
+  },
+  {
+    id: 'orders',
+    name: 'Orders',
+    path: '/orders',
+    icon: ShoppingCart,
+    description: 'Customer & store sales orders, statuses & fulfillments',
+    keywords: ['orders', 'order', 'sales', 'sales orders', 'purchases', 'backorders', 'checkout'],
+  },
+  {
+    id: 'transactions',
+    name: 'Transactions',
+    path: '/transactions',
+    icon: Receipt,
+    description: 'Transactions audit ledger, cashier records & refunds',
+    keywords: ['transactions', 'transaction', 'audit', 'ledger', 'receipts', 'receipt', 'refunds', 'refund', 'payments', 'sales history'],
+  },
+  {
+    id: 'suppliers',
+    name: 'Suppliers',
+    path: '/suppliers',
+    icon: Truck,
+    description: 'Vendor directory & supplier management records',
+    keywords: ['suppliers', 'supplier', 'vendors', 'vendor', 'distributors', 'distributor'],
+  },
+  {
+    id: 'restock',
+    name: 'Stock Requests',
+    path: '/stock-requests',
+    icon: ClipboardList,
+    description: 'Staff restock requests & replenishment approvals',
+    keywords: ['stock requests', 'stock request', 'restock', 'restocks', 'restock requests', 'replenishment', 'requests', 'request', 'stock'],
+  },
+  {
+    id: 'reports',
+    name: 'Reports',
+    path: '/reports',
+    icon: BarChart3,
+    description: 'Sales reports, financial analytics & data exports',
+    keywords: ['reports', 'report', 'analytics', 'statistics', 'sales report', 'financials', 'export'],
+  },
+  {
+    id: 'void-security',
+    name: 'Settings',
+    secondaryName: 'Void Security',
+    path: '/void-security',
+    icon: KeyRound,
+    description: 'Void PIN settings & authorization security',
+    keywords: ['settings', 'setting', 'void security', 'void', 'security', 'void pin', 'pin settings', 'pin'],
+  },
+  {
+    id: 'feedback',
+    name: 'Feedback',
+    path: '/feedback',
+    icon: MessageSquare,
+    description: 'Customer feedback, reviews & ratings',
+    keywords: ['feedback', 'reviews', 'review', 'ratings', 'rating', 'comments'],
+  },
+]
 
 export default function AdminDashboard() {
   const location = useLocation()
@@ -33,7 +139,6 @@ export default function AdminDashboard() {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [stats, setStats] = useState({
-
     totalSales: 0,
     totalOrders: 0,
     totalProducts: 0,
@@ -42,9 +147,13 @@ export default function AdminDashboard() {
     pendingOrders: 0,
     outOfStock: 0,
     pendingRestock: 0,
+    refundedTransactions: 0,
+    voidedTransactions: 0,
+    paidTransactions: 0,
   })
   const [orders, setOrders] = useState([])
   const [inventory, setInventory] = useState([])
+  const [recentTransactions, setRecentTransactions] = useState([])
   const [salesYear, setSalesYear] = useState(new Date().getFullYear())
 
   // Derive active route from browser URL
@@ -53,12 +162,14 @@ export default function AdminDashboard() {
     if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
     if (cleanPath.startsWith('/users')) return 'users'
     if (cleanPath.startsWith('/products')) return 'products'
+    if (cleanPath.startsWith('/categories') || cleanPath.startsWith('/category')) return 'categories'
     if (cleanPath.startsWith('/inventory')) return 'inventory'
     if (cleanPath.startsWith('/orders')) return 'orders'
+    if (cleanPath.startsWith('/transactions')) return 'transactions'
+    if (cleanPath.startsWith('/void-security') || cleanPath.startsWith('/settings/void-security') || cleanPath.startsWith('/settings')) return 'void-security'
     if (cleanPath.startsWith('/suppliers')) return 'suppliers'
     if (cleanPath.startsWith('/stock-requests') || cleanPath.startsWith('/stock-request') || cleanPath.startsWith('/restock')) return 'restock'
     if (cleanPath.startsWith('/reports')) return 'reports'
-
     if (cleanPath.startsWith('/feedback')) return 'feedback'
     return 'dashboard'
   }
@@ -69,6 +180,144 @@ export default function AdminDashboard() {
     navigate(path)
     if (window.innerWidth <= 900) {
       setSidebarOpen(false)
+    }
+  }
+
+  // Navigation Search State
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const searchRef = useRef(null)
+  const inputRef = useRef(null)
+  const dropdownRef = useRef(null)
+
+  // Filter matching sidebar pages based on name, secondary name, or keywords
+  const matchingPages = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return SIDEBAR_PAGES
+
+    return SIDEBAR_PAGES.map((page) => {
+      const name = page.name.toLowerCase()
+      const secName = (page.secondaryName || '').toLowerCase()
+      const id = page.id.toLowerCase()
+      const path = page.path.toLowerCase().replace('/', '')
+      const keywords = page.keywords || []
+
+      let score = 0
+
+      // Exact matches
+      if (name === q || secName === q || id === q || path === q) {
+        score = 100
+      } else if (keywords.includes(q)) {
+        score = 90
+      } else if (name.startsWith(q) || secName.startsWith(q) || id.startsWith(q)) {
+        score = 80
+      } else if (keywords.some((k) => k.startsWith(q))) {
+        score = 70
+      } else if (name.includes(q) || secName.includes(q) || id.includes(q)) {
+        score = 60
+      } else if (keywords.some((k) => k.includes(q)) || page.description.toLowerCase().includes(q)) {
+        score = 50
+      }
+
+      return { ...page, score }
+    })
+      .filter((page) => page.score > 0)
+      .sort((a, b) => b.score - a.score)
+  }, [searchQuery])
+
+  // Reset selected index when search query changes
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [searchQuery])
+
+  // Global Ctrl+K / Cmd+K shortcut listener
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        inputRef.current?.focus()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
+  // Outside click listener to dismiss search dropdown
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  // Ensure highlighted result stays visible during keyboard arrow navigation
+  useEffect(() => {
+    if (selectedIndex >= 0 && dropdownRef.current) {
+      const activeEl = dropdownRef.current.querySelector(`.search-result-item[data-index="${selectedIndex}"]`)
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [selectedIndex])
+
+  // Navigate to matching sidebar page directly
+  const handleNavigateToPage = (page) => {
+    if (!page?.path) return
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSelectedIndex(0)
+    inputRef.current?.blur()
+    navigateTo(page.path)
+  }
+
+  // Handle keyboard navigation inside search input
+  const handleSearchKeyDown = (e) => {
+    if (!searchOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setSearchOpen(true)
+      }
+      return
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (matchingPages.length > 0) {
+        setSelectedIndex((prev) => (prev < matchingPages.length - 1 ? prev + 1 : 0))
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (matchingPages.length > 0) {
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : matchingPages.length - 1))
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (matchingPages.length > 0) {
+        const target = (selectedIndex >= 0 && selectedIndex < matchingPages.length)
+          ? matchingPages[selectedIndex]
+          : matchingPages[0]
+        handleNavigateToPage(target)
+      } else {
+        const q = searchQuery.trim().toLowerCase()
+        const fallback = SIDEBAR_PAGES.find((p) =>
+          p.name.toLowerCase() === q ||
+          p.id.toLowerCase() === q ||
+          (p.secondaryName && p.secondaryName.toLowerCase() === q) ||
+          p.keywords.includes(q)
+        )
+        if (fallback) {
+          handleNavigateToPage(fallback)
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setSearchOpen(false)
+      inputRef.current?.blur()
     }
   }
 
@@ -90,12 +339,13 @@ export default function AdminDashboard() {
 
   const fetchDashboardStats = async () => {
     try {
-      const [productData, orderData, inventoryData, userData, restockData] = await Promise.allSettled([
+      const [productData, orderData, inventoryData, userData, restockData, transactionData] = await Promise.allSettled([
         getProducts({ status: 'active' }),
         getAdminOrders(),
         getInventory(),
         getUsers(),
         getRestockRequests(),
+        getTransactions({ per_page: 6 }),
       ])
 
       const extract = (res) => {
@@ -115,7 +365,19 @@ export default function AdminDashboard() {
       const nextUsers = extract(userData)
       const nextRestocks = extract(restockData)
 
-      const sales = nextOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0)
+      let txList = []
+      let txMeta = { counts: {}, summary: {} }
+      if (transactionData.status === 'fulfilled' && transactionData.value) {
+        const tVal = transactionData.value
+        txList = tVal.data?.data || []
+        txMeta = tVal.meta || { counts: {}, summary: {} }
+      }
+      setRecentTransactions(txList)
+
+      const sales = txMeta.summary?.total_net_sales
+        ? Number(txMeta.summary.total_net_sales)
+        : nextOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0)
+
       const lowStock = nextInventory.filter((item) => Number(item?.quantity || 0) > 0 && Number(item?.quantity || 0) <= Number(item?.low_stock_threshold || 5)).length
       const outOfStock = nextInventory.filter((item) => Number(item?.quantity || 0) === 0).length
 
@@ -123,13 +385,16 @@ export default function AdminDashboard() {
       setInventory(nextInventory)
       setStats({
         totalSales: sales,
-        totalOrders: nextOrders.length,
+        totalOrders: (txMeta.counts?.all ?? ((txMeta.counts?.retail || 0) + (txMeta.counts?.gcash || 0))) || nextOrders.length,
         totalProducts: nextProducts.length,
         totalCustomers: nextUsers.filter((u) => u?.role === 'customer').length,
         lowStockProducts: lowStock,
         outOfStock,
         pendingOrders: nextOrders.filter((order) => ['pending', 'confirmed'].includes(order?.status)).length,
         pendingRestock: nextRestocks.filter((request) => request?.status === 'pending').length,
+        refundedTransactions: txMeta.counts?.refunded || 0,
+        voidedTransactions: txMeta.counts?.voided || 0,
+        paidTransactions: txMeta.counts?.paid || 0,
       })
 
     } catch (error) {
@@ -180,8 +445,11 @@ export default function AdminDashboard() {
     dashboard: 'Dashboard',
     users: 'Users Management',
     products: 'Products Catalog',
+    categories: 'Category Management',
     inventory: 'Inventory Stock',
     orders: 'Orders Management',
+    transactions: 'Transactions & Audit Ledger',
+    'void-security': 'Settings (Void PIN Security)',
     suppliers: 'Suppliers Management',
     restock: 'Stock Requests',
     reports: 'Reports & Analytics',
@@ -238,6 +506,13 @@ export default function AdminDashboard() {
           </button>
           <button 
             type="button"
+            className={`nav-item ${activePage === 'categories' ? 'active' : ''}`}
+            onClick={() => navigateTo('/categories')}
+          >
+            <Tag size={18} /> Categories
+          </button>
+          <button 
+            type="button"
             className={`nav-item ${activePage === 'inventory' ? 'active' : ''}`}
             onClick={() => navigateTo('/inventory')}
           >
@@ -249,6 +524,13 @@ export default function AdminDashboard() {
             onClick={() => navigateTo('/orders')}
           >
             <ShoppingCart size={18} /> Orders
+          </button>
+          <button 
+            type="button"
+            className={`nav-item ${activePage === 'transactions' ? 'active' : ''}`}
+            onClick={() => navigateTo('/transactions')}
+          >
+            <Receipt size={18} /> Transactions
           </button>
           <button 
             type="button"
@@ -273,13 +555,19 @@ export default function AdminDashboard() {
             )}
           </button>
 
-
           <button 
             type="button"
             className={`nav-item ${activePage === 'reports' ? 'active' : ''}`}
             onClick={() => navigateTo('/reports')}
           >
             <BarChart3 size={18} /> Reports
+          </button>
+          <button 
+            type="button"
+            className={`nav-item ${activePage === 'void-security' ? 'active' : ''}`}
+            onClick={() => navigateTo('/void-security')}
+          >
+            <KeyRound size={18} /> Settings
           </button>
           <button 
             type="button"
@@ -315,9 +603,120 @@ export default function AdminDashboard() {
             <span>JEM Hardware &amp; Coco Lumber</span>
             <strong>{pageTitles[activePage] || 'Dashboard'}</strong>
           </div>
-          <div className="header-search">
-            <Search size={16} />
-            <input type="text" placeholder="Search..." />
+          <div className="header-search-container" ref={searchRef}>
+            <div className={`header-search ${searchOpen ? 'search-active' : ''}`}>
+              <Search size={16} className="search-icon" />
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Global admin search... (Ctrl+K)"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setSearchOpen(true)
+                }}
+                onFocus={() => {
+                  setSearchOpen(true)
+                }}
+                onKeyDown={handleSearchKeyDown}
+                aria-label="Global admin search"
+                autoComplete="off"
+                spellCheck="false"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setSelectedIndex(0)
+                    inputRef.current?.focus()
+                  }}
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <span className="search-kbd-badge">Ctrl K</span>
+              )}
+            </div>
+
+            {/* Navigation Search Dropdown */}
+            {searchOpen && (
+              <div className="global-search-dropdown" ref={dropdownRef} role="listbox">
+                <div className="search-group-header">
+                  <span className="search-group-title">
+                    <Search size={13} />
+                    {searchQuery.trim() ? `Matching Sidebar Pages (${matchingPages.length})` : 'Jump to Sidebar Page'}
+                  </span>
+                  <span className="search-group-count">{matchingPages.length}</span>
+                </div>
+
+                <div className="search-dropdown-content">
+                  {matchingPages.length === 0 ? (
+                    <div className="search-empty-state">
+                      <Search size={28} className="search-empty-icon" />
+                      <p className="search-empty-title">No sidebar page found for &ldquo;{searchQuery}&rdquo;</p>
+                      <span className="search-empty-hint">Try searching for Users, Products, Categories, Inventory, Orders, Transactions, Suppliers, Reports, or Settings.</span>
+                    </div>
+                  ) : (
+                    matchingPages.map((page, idx) => {
+                      const IconComponent = page.icon
+                      const isSelected = idx === selectedIndex
+                      const isCurrentPage = activePage === page.id
+                      return (
+                        <div
+                          key={page.id}
+                          className={`search-result-item ${isSelected ? 'selected' : ''}`}
+                          data-index={idx}
+                          onClick={() => handleNavigateToPage(page)}
+                          onMouseEnter={() => setSelectedIndex(idx)}
+                          role="option"
+                          aria-selected={isSelected}
+                        >
+                          <div className="search-item-icon-box">
+                            <IconComponent size={16} />
+                          </div>
+                          <div className="search-item-info">
+                            <div className="search-item-title-row">
+                              <span className="search-item-title">
+                                {page.name}
+                                {page.secondaryName && (
+                                  <span style={{ opacity: 0.65, fontWeight: 400, marginLeft: 6 }}>
+                                    ({page.secondaryName})
+                                  </span>
+                                )}
+                              </span>
+                              {isCurrentPage ? (
+                                <span className="search-item-badge" style={{ background: 'rgba(249, 115, 22, 0.18)', color: '#f97316' }}>
+                                  Active Page
+                                </span>
+                              ) : (
+                                <span className="search-item-badge">
+                                  Press Enter ↵
+                                </span>
+                              )}
+                            </div>
+                            <span className="search-item-subtitle">{page.description}</span>
+                          </div>
+                          <div className="search-item-action">
+                            <ArrowUpRight size={14} />
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {matchingPages.length > 0 && (
+                  <div className="search-dropdown-footer">
+                    <span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span>
+                    <span><kbd>↵</kbd> jump to page</span>
+                    <span><kbd>esc</kbd> dismiss</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="header-actions">
@@ -326,7 +725,6 @@ export default function AdminDashboard() {
             <div className="user-menu">
               <span className="avatar">{user?.name ? user.name.charAt(0).toUpperCase() : 'A'}</span>
               <span>{user?.name || 'Administrator'}</span>
-              <ChevronDown size={16} />
             </div>
           </div>
         </header>
@@ -513,14 +911,86 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
+
+                  <div className="dashboard-card table-card" style={{ gridColumn: '1 / -1', marginTop: '12px' }}>
+                    <div className="card-heading">
+                      <div>
+                        <p className="eyebrow">Audit store sales & refunds</p>
+                        <h2>Recent Transactions</h2>
+                      </div>
+                      <button type="button" className="text-button" onClick={() => navigateTo('/transactions')}>
+                        View all transactions <ArrowUpRight size={14} />
+                      </button>
+                    </div>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Order #</th>
+                            <th>Customer</th>
+                            <th>Cashier</th>
+                            <th>Amount</th>
+                            <th>Payment Method</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th style={{ textAlign: 'center' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recentTransactions.map((tx) => (
+                            <tr key={tx.id || tx.transaction_number}>
+                              <td>
+                                <strong style={{
+                                  fontFamily: 'monospace',
+                                  textDecoration: tx.status === 'VOIDED' ? 'line-through' : 'none',
+                                  color: tx.status === 'VOIDED' ? '#ef4444' : 'inherit'
+                                }}>
+                                  {tx.transaction_number}
+                                </strong>
+                              </td>
+                              <td style={{ fontStyle: 'italic' }}>{tx.customer_name || 'Walk-in'}</td>
+                              <td>{tx.cashier_name || 'Staff'}</td>
+                              <td><strong>₱{Number(tx.total_net || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                              <td><span className="payment-chip" style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>{(tx.payment_method || 'CASH').toUpperCase()}</span></td>
+                              <td>
+                                <span className={`status status-${(tx.status || 'paid').toLowerCase()}`}>
+                                  {tx.status}
+                                </span>
+                              </td>
+                              <td>{tx.date_time ? new Date(tx.date_time).toLocaleDateString() : '—'}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="text-button"
+                                  onClick={() => navigateTo('/transactions')}
+                                  style={{ padding: '3px 8px', fontSize: '11.5px' }}
+                                >
+                                  Inspect <ArrowUpRight size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {!recentTransactions.length && (
+                        <div className="empty-state">
+                          <Receipt size={24} />
+                          <p>No transactions recorded yet</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </section>
             )}
 
             <Suspense fallback={<PageSkeletonLoader rows={6} />}>
               {activePage === 'products' && <ProductManagement />}
+              {activePage === 'categories' && <CategoryManagement />}
               {activePage === 'orders' && <OrdersManagement role="admin" defaultTab="orders" />}
               {activePage === 'backorders' && <OrdersManagement role="admin" defaultTab="backorders" />}
+              {activePage === 'transactions' && <TransactionsPage role="admin" />}
+              {activePage === 'void-security' && <VoidSecurityPage />}
               {activePage === 'users' && <UserManagement />}
               {activePage === 'inventory' && <InventoryManagement />}
               {activePage === 'suppliers' && <SuppliersManagement />}

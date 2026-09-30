@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import {
   Search, AlertCircle, Plus, Minus, RefreshCw, Package,
   Layers, Filter, ArrowUpDown, X, Check, Eye, History,
-  CheckCircle2, XCircle, Clock, Power
+  CheckCircle2, XCircle, Clock, Power, AlertTriangle
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { API_BASE_URL, getSuppliers, adjustStock, getStockAdjustments, toggleProductStatus, getProductBatches, createProductBatch } from '../api'
@@ -14,6 +14,72 @@ import {
 } from '../utils/uom'
 import '../styles/management.css'
 
+export function calculateStockStatus(quantity, threshold = 10) {
+  const qty = Number(quantity || 0)
+  const reorder = Number(threshold ?? 10)
+  if (qty <= 0) return 'out_of_stock'
+  if (qty <= reorder) return 'low_stock'
+  return 'in_stock'
+}
+
+export function getTransactionTypeBadge(type) {
+  const t = String(type || 'adjustment').toLowerCase().trim()
+  if (t === 'restock' || t.includes('restock') || t.includes('purchase')) {
+    return {
+      label: 'RESTOCK / STOCK IN',
+      bg: 'rgba(16, 185, 129, 0.15)',
+      color: '#10b981',
+      border: '1px solid rgba(16, 185, 129, 0.35)'
+    }
+  }
+  if (t === 'sale' || t === 'order' || t.includes('sale') || t.includes('order')) {
+    return {
+      label: 'SALE / STOCK OUT',
+      bg: 'rgba(168, 85, 247, 0.15)',
+      color: '#a855f7',
+      border: '1px solid rgba(168, 85, 247, 0.35)'
+    }
+  }
+  if (t === 'damaged') {
+    return {
+      label: 'DAMAGED',
+      bg: 'rgba(239, 68, 68, 0.15)',
+      color: '#ef4444',
+      border: '1px solid rgba(239, 68, 68, 0.35)'
+    }
+  }
+  if (t === 'expired') {
+    return {
+      label: 'EXPIRED',
+      bg: 'rgba(239, 68, 68, 0.15)',
+      color: '#ef4444',
+      border: '1px solid rgba(239, 68, 68, 0.35)'
+    }
+  }
+  if (t === 'return' || t === 'return_to_supplier') {
+    return {
+      label: 'RETURN',
+      bg: 'rgba(234, 179, 8, 0.15)',
+      color: '#eab308',
+      border: '1px solid rgba(234, 179, 8, 0.35)'
+    }
+  }
+  if (t === 'adjustment' || t === 'miscount' || t === 'count') {
+    return {
+      label: 'ADJUSTMENT',
+      bg: 'rgba(59, 130, 246, 0.15)',
+      color: '#3b82f6',
+      border: '1px solid rgba(59, 130, 246, 0.35)'
+    }
+  }
+  return {
+    label: (type || 'OTHER').toUpperCase(),
+    bg: 'var(--bg-hover)',
+    color: 'var(--text-secondary)',
+    border: '1px solid var(--border-color)'
+  }
+}
+
 export default function InventoryManagement() {
   const [inventory, setInventory] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -23,36 +89,34 @@ export default function InventoryManagement() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [activityFilter, setActivityFilter] = useState('all') // all, active, inactive
 
-  // Stock Adjustment Modal
+  // Stock Adjustment Modal (Inventory Correction via Physical Count Only)
   const [showAdjustment, setShowAdjustment] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
   const [adjustmentData, setAdjustmentData] = useState({
-    quantity: '',
-    type: 'add', // add or deduct
-    reason: 'Restock shipment received from supplier',
+    physical_count: '',
+    reason: 'Inventory Count Correction',
+    custom_reason: '',
     notes: ''
   })
   const [submitting, setSubmitting] = useState(false)
 
-  // New Batch Restock Modal
-  const [showBatchModal, setShowBatchModal] = useState(false)
-  const [batchProduct, setBatchProduct] = useState(null)
-  const [batchFormData, setBatchFormData] = useState({
+  // Restock Modal (Receiving New Inventory from Supplier / PO)
+  const [showRestockModal, setShowRestockModal] = useState(false)
+  const [restockProduct, setRestockProduct] = useState(null)
+  const [restockFormData, setRestockFormData] = useState({
     product_id: '',
-    supplier_id: '',
     quantity: '',
+    supplier_id: '',
+    reference_number: '',
     cost_price: '',
-    selling_price: '',
-    received_date: new Date().toISOString().split('T')[0],
-    expiration_date: '',
     notes: ''
   })
-  const [submittingBatch, setSubmittingBatch] = useState(false)
+  const [submittingRestock, setSubmittingRestock] = useState(false)
 
-  // History Modal State (Batches + Movement Logs)
+  // History Modal State (Movement Logs + Batches)
   const [showHistory, setShowHistory] = useState(false)
   const [historyItem, setHistoryItem] = useState(null)
-  const [historyTab, setHistoryTab] = useState('batches') // 'batches' | 'movements'
+  const [historyTab, setHistoryTab] = useState('movements') // default 'movements' tab
   const [historyLogs, setHistoryLogs] = useState([])
   const [productBatchesData, setProductBatchesData] = useState(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -69,6 +133,25 @@ export default function InventoryManagement() {
     window.addEventListener('jem_inventory_update', handleInvUpdate)
     return () => window.removeEventListener('jem_inventory_update', handleInvUpdate)
   }, [])
+
+  // Handle Deep Linking from Global Search
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const targetProdId = urlParams.get('productId')
+      const targetSearch = urlParams.get('search')
+      if (targetSearch && !search) {
+        setSearch(targetSearch)
+      }
+      if (targetProdId && inventory.length > 0) {
+        const matched = inventory.find(i => String(i.id || i.product_id) === String(targetProdId))
+        if (matched) {
+          if (!search) setSearch(matched.product_name)
+          handleOpenHistory(matched, 'movements')
+        }
+      }
+    } catch (e) {}
+  }, [inventory])
 
   const fetchSuppliersList = async () => {
     try {
@@ -98,9 +181,7 @@ export default function InventoryManagement() {
           const qty = Number(item.stock_quantity ?? item.current_quantity ?? item.available_quantity ?? item.product?.stock_quantity ?? item.quantity ?? 0)
           const threshold = Number(item.low_stock_threshold ?? item.threshold ?? item.product?.low_stock_threshold ?? 10)
           const prodStatus = item.status ?? item.product?.status ?? 'active'
-          let stockStatus = 'in_stock'
-          if (qty === 0) stockStatus = 'out_of_stock'
-          else if (qty <= threshold) stockStatus = 'low_stock'
+          const stockStatus = calculateStockStatus(qty, threshold)
 
           const selling = Number(item.selling_price ?? item.unit_price ?? item.price ?? item.product?.selling_price ?? item.product?.base_price ?? 0)
           const cost = Number(item.cost_price ?? item.product?.cost_price ?? (selling * 0.7) ?? 0)
@@ -193,19 +274,19 @@ export default function InventoryManagement() {
   }, [inventory])
 
   // Metric Totals
-  const totalItemsCount = inventory.length
+  const totalCatalogItems = inventory.filter(i => i.status === 'active').length
   const inStockCount = inventory.filter(i => i.stock_status === 'in_stock').length
   const lowStockCount = inventory.filter(i => i.stock_status === 'low_stock').length
   const outOfStockCount = inventory.filter(i => i.stock_status === 'out_of_stock').length
-  const totalValuation = inventory.reduce((sum, i) => sum + (i.unit_price * i.quantity), 0)
+  const totalValuation = inventory.reduce((sum, i) => sum + ((Number(i.cost_price) > 0 ? Number(i.cost_price) : Number(i.unit_price || 0)) * Number(i.quantity || 0)), 0)
 
-  // Handle Adjust Stock
+  // Handle Adjust Stock (Inventory Correction via Physical Count Only)
   const handleOpenAdjustment = (item) => {
     setSelectedItem(item)
     setAdjustmentData({
-      quantity: '',
-      type: 'add',
-      reason: 'Restock shipment received from supplier',
+      physical_count: '',
+      reason: 'Inventory Count Correction',
+      custom_reason: '',
       notes: ''
     })
     setShowAdjustment(true)
@@ -213,150 +294,223 @@ export default function InventoryManagement() {
 
   const handleSaveAdjustment = async (e) => {
     e.preventDefault()
-    const qtyChange = Number(adjustmentData.quantity)
-    if (!qtyChange || qtyChange <= 0) {
+    if (!selectedItem) return
+
+    const rawInput = String(adjustmentData.physical_count).trim()
+    if (rawInput === '' || isNaN(Number(rawInput))) {
       Swal.fire({
         icon: 'error',
-        title: 'Invalid Quantity',
-        text: 'Please enter a valid stock quantity adjustment greater than 0.',
+        title: 'Physical Count Required',
+        text: 'Please enter a valid numeric physical stock count.',
         confirmButtonColor: '#f97316'
       })
       return
     }
 
+    const physicalCount = Number(rawInput)
+    if (physicalCount < 0) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Invalid Physical Count',
+        text: 'Physical stock count cannot be negative.',
+        confirmButtonColor: '#f97316'
+      })
+      return
+    }
+
+    const currentStock = Number(selectedItem.quantity || 0)
+    if (physicalCount === currentStock) {
+      Swal.fire({
+        icon: 'info',
+        title: 'No Adjustment Needed',
+        text: 'No adjustment needed. The physical count matches the current stock.',
+        confirmButtonColor: '#3b82f6'
+      })
+      return
+    }
+
+    if (adjustmentData.reason === 'Other' && !adjustmentData.custom_reason.trim()) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Reason Required',
+        text: 'Please specify the custom reason for this inventory adjustment.',
+        confirmButtonColor: '#f97316'
+      })
+      return
+    }
+
+    const effectiveReason = adjustmentData.reason === 'Other'
+      ? adjustmentData.custom_reason.trim()
+      : adjustmentData.reason
+
+    let adjType = 'adjustment'
+    if (adjustmentData.reason === 'Damaged Stock') adjType = 'damaged'
+    else if (adjustmentData.reason === 'Expired Stock') adjType = 'expired'
+    else if (adjustmentData.reason === 'Returned Stock') adjType = 'return'
+
+    const delta = physicalCount - currentStock
+    const newStatus = calculateStockStatus(physicalCount, selectedItem.low_stock_threshold)
+
     try {
       setSubmitting(true)
-      const delta = adjustmentData.type === 'add' ? qtyChange : -qtyChange
-      const newTotal = Math.max(0, selectedItem.quantity + delta)
-      const newStatus = newTotal === 0 ? 'out_of_stock' : (newTotal <= selectedItem.low_stock_threshold ? 'low_stock' : 'in_stock')
 
-      // 1. Update State immediately for instant UI response
+      // 1. Optimistically update inventory state immediately
       setInventory(prev => prev.map(item => {
         if (item.id === selectedItem.id || item.product_id === selectedItem.product_id) {
           return {
             ...item,
-            quantity: newTotal,
-            stock_quantity: newTotal,
+            quantity: physicalCount,
+            stock_quantity: physicalCount,
             stock_status: newStatus
           }
         }
         return item
       }))
 
-      // 2. Synchronize with Backend & Shared Storage
+      // 2. Synchronize with backend API & shared storage
       await adjustStock({
         product_id: selectedItem.product_id || selectedItem.id,
         product_name: selectedItem.product_name,
         quantity_change: delta,
-        quantity_before: selectedItem.quantity,
-        quantity_after: newTotal,
-        reason: adjustmentData.reason,
-        notes: adjustmentData.notes,
-        adjustment_type: adjustmentData.type === 'add' ? 'restock' : 'damaged'
+        quantity_before: currentStock,
+        quantity_after: physicalCount,
+        reason: effectiveReason,
+        notes: adjustmentData.notes ? adjustmentData.notes.trim() : '',
+        adjustment_type: adjType
       })
 
       Swal.fire({
         icon: 'success',
         title: 'Inventory Count Adjusted! 📦',
-        text: `${selectedItem.product_name} new stock level: ${newTotal} ${selectedItem.unit}.`,
+        text: `${selectedItem.product_name} adjusted from ${currentStock} to ${physicalCount} ${selectedItem.unit} (${delta > 0 ? '+' + delta : delta} ${selectedItem.unit}).`,
         confirmButtonColor: '#f97316',
-        timer: 2200,
+        timer: 2400,
         showConfirmButton: false
       })
 
       setShowAdjustment(false)
       setSelectedItem(null)
+      fetchInventory()
     } catch (err) {
       console.error('Stock adjust error:', err)
+      Swal.fire({
+        icon: 'error',
+        title: 'Adjustment Failed',
+        text: err.message || 'Could not save stock adjustment. Please try again.',
+        confirmButtonColor: '#f97316'
+      })
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Handle Open Restock Batch Modal
-  const handleOpenNewBatch = (item = null) => {
-    setBatchProduct(item)
-    const baseSelling = item ? (item.selling_price ?? item.unit_price ?? '') : ''
-    const baseCost = item ? (item.cost_price ?? (baseSelling ? (Number(baseSelling) * 0.7).toFixed(2) : '')) : ''
-    setBatchFormData({
+  // Handle Open Restock Modal (Receiving New Inventory from Supplier / PO)
+  const handleOpenRestock = (item = null) => {
+    setRestockProduct(item)
+    const baseCost = item ? (item.cost_price ?? '') : ''
+    setRestockFormData({
       product_id: item ? (item.product_id || item.id) : (inventory[0]?.product_id || inventory[0]?.id || ''),
       supplier_id: item?.supplier_id || (suppliers[0]?.id || ''),
       quantity: '',
+      reference_number: '',
       cost_price: baseCost,
-      selling_price: baseSelling,
-      received_date: new Date().toISOString().split('T')[0],
-      expiration_date: '',
       notes: ''
     })
-    setShowBatchModal(true)
+    setShowRestockModal(true)
   }
 
-  // Handle Submit New Batch
-  const handleSaveNewBatch = async (e) => {
+  // Handle Submit Restock
+  const handleSaveRestock = async (e) => {
     e.preventDefault()
-    const prodId = batchFormData.product_id || batchProduct?.product_id || batchProduct?.id
-    if (!prodId) {
-      Swal.fire({ icon: 'error', title: 'Product Required', text: 'Please select a product for this batch.' })
-      return
-    }
-    const qty = parseInt(batchFormData.quantity, 10)
-    if (!qty || qty <= 0) {
-      Swal.fire({ icon: 'error', title: 'Invalid Quantity', text: 'Received batch quantity must be at least 1 unit.' })
-      return
-    }
-    const cost = parseFloat(batchFormData.cost_price)
-    if (isNaN(cost) || cost < 0) {
-      Swal.fire({ icon: 'error', title: 'Invalid Cost Price', text: 'Please enter a valid cost price per unit.' })
-      return
-    }
-    const selling = parseFloat(batchFormData.selling_price)
-    if (isNaN(selling) || selling <= 0) {
-      Swal.fire({ icon: 'error', title: 'Invalid Selling Price', text: 'Please enter a valid selling price per unit.' })
+    const targetProd = restockProduct || inventory.find(i => String(i.product_id || i.id) === String(restockFormData.product_id))
+    const prodId = restockFormData.product_id || targetProd?.product_id || targetProd?.id
+    if (!prodId || !targetProd) {
+      Swal.fire({ icon: 'error', title: 'Product Required', text: 'Please select a product to restock.' })
       return
     }
 
+    const qty = parseInt(restockFormData.quantity, 10)
+    if (!qty || qty <= 0) {
+      Swal.fire({ icon: 'error', title: 'Invalid Quantity', text: 'Received stock quantity must be at least 1 unit.' })
+      return
+    }
+
+    const cost = restockFormData.cost_price !== '' ? parseFloat(restockFormData.cost_price) : parseFloat(targetProd.cost_price || 0)
+    if (isNaN(cost) || cost < 0) {
+      Swal.fire({ icon: 'error', title: 'Invalid Unit Cost', text: 'Please enter a valid unit cost (greater than or equal to 0).' })
+      return
+    }
+
+    const supplierObj = suppliers.find(s => String(s.id) === String(restockFormData.supplier_id))
+    const currentQty = Number(targetProd.quantity || 0)
+    const newTotal = currentQty + qty
+    const newStatus = calculateStockStatus(newTotal, targetProd.low_stock_threshold)
+
     try {
-      setSubmittingBatch(true)
-      const supplierObj = suppliers.find(s => String(s.id) === String(batchFormData.supplier_id))
+      setSubmittingRestock(true)
+
+      // 1. Optimistically update inventory state
+      setInventory(prev => prev.map(item => {
+        if (item.id === targetProd.id || item.product_id === targetProd.product_id) {
+          return {
+            ...item,
+            quantity: newTotal,
+            stock_quantity: newTotal,
+            stock_status: newStatus,
+            cost_price: cost > 0 ? cost : item.cost_price
+          }
+        }
+        return item
+      }))
+
+      // 2. Submit to backend (creates batch and logs stock adjustment record)
       const payload = {
         product_id: Number(prodId),
-        supplier_id: batchFormData.supplier_id ? Number(batchFormData.supplier_id) : null,
-        supplier_name: supplierObj?.name || '',
+        product_name: targetProd.product_name,
         quantity: qty,
+        quantity_before: currentQty,
+        quantity_after: newTotal,
+        supplier_id: restockFormData.supplier_id ? Number(restockFormData.supplier_id) : null,
+        supplier_name: supplierObj?.name || '',
+        reference_number: restockFormData.reference_number ? restockFormData.reference_number.trim() : '',
+        purchase_order: restockFormData.reference_number ? restockFormData.reference_number.trim() : '',
         cost_price: cost,
-        selling_price: selling,
-        received_date: batchFormData.received_date || new Date().toISOString().split('T')[0],
-        expiration_date: batchFormData.expiration_date || null,
-        notes: batchFormData.notes || 'Restock shipment batch'
+        selling_price: Number(targetProd.selling_price || targetProd.unit_price || 0),
+        received_date: new Date().toISOString().split('T')[0],
+        notes: restockFormData.notes ? restockFormData.notes.trim() : ''
       }
 
       await createProductBatch(prodId, payload)
 
       Swal.fire({
         icon: 'success',
-        title: 'New Batch Received! 📦',
-        text: `Successfully created new inventory batch of ${qty} units. Previous batches are safely preserved in history.`,
-        confirmButtonColor: '#f97316'
+        title: 'Stock Replenished! 📦',
+        text: `Received ${qty} ${targetProd.unit} for ${targetProd.product_name}. New stock: ${newTotal} ${targetProd.unit}.`,
+        confirmButtonColor: '#f97316',
+        timer: 2400,
+        showConfirmButton: false
       })
 
-      setShowBatchModal(false)
+      setShowRestockModal(false)
+      setRestockProduct(null)
       fetchInventory()
     } catch (err) {
+      console.error('Restock error:', err)
       Swal.fire({
         icon: 'error',
-        title: 'Batch Creation Failed',
-        text: err.message || 'Could not save inventory batch. Please try again.'
+        title: 'Restock Failed',
+        text: err.message || 'Could not record restock delivery. Please try again.'
       })
     } finally {
-      setSubmittingBatch(false)
+      setSubmittingRestock(false)
     }
   }
 
   // Handle Open History Modal (Batches + Movement Logs)
-  const handleOpenHistory = async (item) => {
+  const handleOpenHistory = async (item, initialTab = 'movements') => {
     setHistoryItem(item)
     setShowHistory(true)
-    setHistoryTab('batches')
+    setHistoryTab(initialTab)
     setLoadingHistory(true)
     try {
       const prodId = item.product_id || item.id
@@ -372,7 +526,8 @@ export default function InventoryManagement() {
       }
 
       if (logsRes.status === 'fulfilled' && logsRes.value) {
-        setHistoryLogs(Array.isArray(logsRes.value) ? logsRes.value : logsRes.value?.data || [])
+        const list = Array.isArray(logsRes.value) ? logsRes.value : logsRes.value?.data || []
+        setHistoryLogs(list)
       } else {
         setHistoryLogs([])
       }
@@ -412,25 +567,37 @@ export default function InventoryManagement() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => handleOpenNewBatch(null)}
-            style={{ padding: '9px 16px', fontSize: '13px' }}
+            onClick={() => handleOpenRestock(null)}
+            style={{ padding: '9px 16px', fontSize: '13px', background: '#ea580c', borderColor: '#ea580c' }}
           >
-            <Plus size={15} /> Receive New Batch
+            <Plus size={15} /> Receive Restock
           </button>
         </div>
       </div>
 
       {/* Stock Status Metrics Grid */}
-      <div className="metrics-grid" style={{ marginBottom: '20px' }}>
+      <div className="metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '20px' }}>
         <div className="metric-card">
           <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
             Total Catalog Items
           </span>
           <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', margin: '4px 0' }}>
-            {totalItemsCount}
+            {totalCatalogItems}
           </div>
-          <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>
-            {inStockCount} In Stock
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            {inventory.length} Total Registered
+          </span>
+        </div>
+
+        <div className="metric-card" style={{ borderLeft: '4px solid #10b981' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: '#10b981', textTransform: 'uppercase' }}>
+            In Stock
+          </span>
+          <div style={{ fontSize: '26px', fontWeight: '800', color: '#10b981', margin: '4px 0' }}>
+            {inStockCount}
+          </div>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Healthy stock level
           </span>
         </div>
 
@@ -466,7 +633,7 @@ export default function InventoryManagement() {
             ₱{totalValuation.toLocaleString('en-PH', { maximumFractionDigits: 0 })}
           </div>
           <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            Across all warehouses
+            Available stock × cost price
           </span>
         </div>
       </div>
@@ -514,9 +681,9 @@ export default function InventoryManagement() {
           style={{ flex: 1, minWidth: '150px' }}
         >
           <option value="all">All Stock Levels</option>
-          <option value="in_stock">🟢 In Stock</option>
-          <option value="low_stock">🟡 Low Stock</option>
-          <option value="out_of_stock">🔴 Out of Stock</option>
+          <option value="in_stock">In Stock</option>
+          <option value="low_stock">Low Stock</option>
+          <option value="out_of_stock">Out of Stock</option>
         </select>
 
         {/* Category Filter */}
@@ -571,6 +738,7 @@ export default function InventoryManagement() {
             <tbody>
               {filteredInventory.map(item => {
                 const isActive = item.status === 'active'
+                const stockStatus = item.stock_status || calculateStockStatus(item.quantity, item.low_stock_threshold)
                 return (
                   <tr key={item.id || item.product_id}>
                     <td>
@@ -612,7 +780,7 @@ export default function InventoryManagement() {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                         <strong style={{ color: '#ea580c', fontSize: '13.5px' }}>
-                          ₱{item.selling_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                           ₱{item.selling_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </strong>
                         <span style={{
                           display: 'inline-block',
@@ -630,7 +798,7 @@ export default function InventoryManagement() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                        <strong style={{ fontSize: '14.5px', color: item.stock_status === 'out_of_stock' ? '#ef4444' : 'var(--text-primary)' }}>
+                        <strong style={{ fontSize: '14.5px', color: stockStatus === 'out_of_stock' ? '#ef4444' : 'var(--text-primary)' }}>
                           {formatQuantityWithUnit(item.quantity, item.unit)}
                         </strong>
                       </div>
@@ -639,19 +807,68 @@ export default function InventoryManagement() {
                       </span>
                     </td>
                     <td>
-                      {item.stock_status === 'in_stock' && (
-                        <span className="badge" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: '800' }}>
-                          ● In Stock
+                      {stockStatus === 'in_stock' ? (
+                        <span
+                          className="stock-status-badge in-stock"
+                          style={{
+                            position: 'static',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <CheckCircle2 size={13} color="#10b981" />
+                          <span>✓ In Stock</span>
                         </span>
-                      )}
-                      {item.stock_status === 'low_stock' && (
-                        <span className="badge" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', fontWeight: '800' }}>
-                          ⚠️ Low Stock
+                      ) : stockStatus === 'low_stock' ? (
+                        <span
+                          className="stock-status-badge low-stock"
+                          style={{
+                            position: 'static',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            background: 'rgba(245, 158, 11, 0.12)',
+                            color: '#f59e0b',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <AlertTriangle size={13} color="#f59e0b" />
+                          <span>⚠ Low Stock</span>
                         </span>
-                      )}
-                      {item.stock_status === 'out_of_stock' && (
-                        <span className="badge" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: '800' }}>
-                          🚨 Out of Stock
+                      ) : (
+                        <span
+                          className="stock-status-badge out-of-stock"
+                          style={{
+                            position: 'static',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <XCircle size={13} color="#ef4444" />
+                          <span>✕ Out of Stock</span>
                         </span>
                       )}
                     </td>
@@ -692,24 +909,24 @@ export default function InventoryManagement() {
                       </button>
                     </td>
 
-                    {/* Actions: Restock Batch + Blended History Button + Adjust */}
+                    {/* Actions: Restock + History + Adjust */}
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', justifyContent: 'flex-end' }}>
-                        {/* Receive Batch Button */}
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                        {/* Restock Button - Orange Primary Action */}
                         <button
                           type="button"
-                          onClick={() => handleOpenNewBatch(item)}
-                          title={`Receive new inventory batch for ${item.product_name}`}
+                          onClick={() => handleOpenRestock(item)}
+                          title={`Receive new inventory stock for ${item.product_name}`}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            padding: '5px 9px',
+                            padding: '5px 10px',
                             fontSize: '11.5px',
                             fontWeight: '700',
-                            color: '#f97316',
-                            background: 'rgba(249, 115, 22, 0.12)',
-                            border: '1px solid rgba(249, 115, 22, 0.3)',
+                            color: '#ffffff',
+                            background: '#ea580c',
+                            border: '1px solid #ea580c',
                             borderRadius: '7px',
                             cursor: 'pointer'
                           }}
@@ -718,16 +935,16 @@ export default function InventoryManagement() {
                           <span>Restock</span>
                         </button>
 
-                        {/* Blended History Button */}
+                        {/* History Button - Neutral Action */}
                         <button
                           type="button"
-                          onClick={() => handleOpenHistory(item)}
-                          title={`View batches and stock movement history for ${item.product_name}`}
+                          onClick={() => handleOpenHistory(item, 'movements')}
+                          title={`View stock movement history for ${item.product_name}`}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            padding: '5px 9px',
+                            padding: '5px 10px',
                             fontSize: '11.5px',
                             fontWeight: '600',
                             color: 'var(--text-primary)',
@@ -741,13 +958,13 @@ export default function InventoryManagement() {
                           <span>History</span>
                         </button>
 
-                        {/* Adjust Stock Button */}
+                        {/* Adjust Button - Secondary Action */}
                         <button
                           type="button"
                           className="btn btn-sm btn-secondary"
                           onClick={() => handleOpenAdjustment(item)}
-                          style={{ padding: '5px 8px', fontSize: '11.5px' }}
-                          title="Adjust Stock Quantity manually"
+                          style={{ padding: '5px 9px', fontSize: '11.5px' }}
+                          title="Correct inventory based on physical count"
                         >
                           Adjust
                         </button>
@@ -762,352 +979,405 @@ export default function InventoryManagement() {
       )}
 
       {/* =========================================================================
-          MODAL: STOCK ADJUSTMENT
+          MODAL: STOCK ADJUSTMENT (INVENTORY CORRECTION ONLY)
           ========================================================================= */}
-      {showAdjustment && selectedItem && (
-        <div className="modal-overlay" onClick={() => setShowAdjustment(false)}>
-          <div className="modal-content" style={{ maxWidth: '440px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                Adjust Stock Quantity
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowAdjustment(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
+      {showAdjustment && selectedItem && (() => {
+        const currentStock = Number(selectedItem.quantity || 0)
+        const hasInput = adjustmentData.physical_count !== '' && !isNaN(Number(adjustmentData.physical_count))
+        const physicalVal = hasInput ? Number(adjustmentData.physical_count) : null
+        const isNegative = hasInput && physicalVal < 0
+        const isSame = hasInput && physicalVal === currentStock
+        const delta = hasInput ? physicalVal - currentStock : 0
+        const deltaFormatted = delta > 0 ? `+${delta}` : `${delta}`
 
-            <form onSubmit={handleSaveAdjustment} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
-                  {selectedItem.category}
-                </span>
-                <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
-                  {selectedItem.product_name}
-                </h4>
-                <div style={{ fontSize: '13px', color: '#ea580c', fontWeight: '700', marginTop: '4px' }}>
-                  Current Stock: {formatQuantityWithUnit(selectedItem.quantity, selectedItem.unit)}
+        return (
+          <div className="modal-overlay" onClick={() => setShowAdjustment(false)}>
+            <div className="modal-content" style={{ maxWidth: '480px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                    Adjust Stock Quantity
+                  </h2>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Inventory correction based on physical stock count
+                  </p>
                 </div>
-              </div>
-
-              {/* Adjustment Type Selector */}
-              <div className="form-group">
-                <label className="form-label">Action Type</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className={`btn ${adjustmentData.type === 'add' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setAdjustmentData({ ...adjustmentData, type: 'add' })}
-                    style={{ padding: '8px' }}
-                  >
-                    <Plus size={14} /> Add Stock (+)
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${adjustmentData.type === 'deduct' ? 'btn-danger' : 'btn-secondary'}`}
-                    onClick={() => setAdjustmentData({ ...adjustmentData, type: 'deduct' })}
-                    style={{ padding: '8px' }}
-                  >
-                    <Minus size={14} /> Deduct Stock (-)
-                  </button>
-                </div>
-              </div>
-
-              {/* Quantity */}
-              <div className="form-group">
-                <label className="form-label">
-                  {getQuantityInputLabel(selectedItem.unit, adjustmentData.type === 'add' ? 'Quantity to Add' : 'Quantity to Deduct')}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  className="form-input"
-                  placeholder={getQuantityPlaceholder(selectedItem.unit, 20)}
-                  value={adjustmentData.quantity}
-                  onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
-                  required
-                />
-                {adjustmentData.quantity && (
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', background: 'var(--bg-hover)', padding: '6px 10px', borderRadius: '6px' }}>
-                    Resulting Stock: <strong style={{ color: 'var(--text-primary)' }}>{formatQuantityWithUnit(
-                      adjustmentData.type === 'add'
-                        ? Number(selectedItem.quantity) + Number(adjustmentData.quantity)
-                        : Math.max(0, Number(selectedItem.quantity) - Number(adjustmentData.quantity)),
-                      selectedItem.unit
-                    )}</strong>
-                  </div>
-                )}
-              </div>
-
-              {/* Reason */}
-              <div className="form-group">
-                <label className="form-label">Reason for Adjustment</label>
-                <select
-                  className="form-input"
-                  value={adjustmentData.reason}
-                  onChange={(e) => setAdjustmentData({ ...adjustmentData, reason: e.target.value })}
-                >
-                  <option value="Restock shipment received from supplier">Restock shipment received from supplier</option>
-                  <option value="Physical inventory count audit correction">Physical inventory count audit correction</option>
-                  <option value="Damaged / weather degraded stock">Damaged / weather degraded stock</option>
-                  <option value="Customer / Job site return">Customer / Job site return</option>
-                  <option value="Stock transfer between store branches">Stock transfer between store branches</option>
-                </select>
-              </div>
-
-              {/* Notes */}
-              <div className="form-group">
-                <label className="form-label">Notes / Reference (Optional)</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g., PO #1042 / Supplier Delivery Slip"
-                  value={adjustmentData.notes}
-                  onChange={(e) => setAdjustmentData({ ...adjustmentData, notes: e.target.value })}
-                />
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
                   onClick={() => setShowAdjustment(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ flex: 2 }}
-                  disabled={submitting}
-                >
-                  {submitting ? 'Updating...' : 'Save Adjustment'}
+                  <X size={18} />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* =========================================================================
-          MODAL: RECEIVE NEW INVENTORY BATCH
-          ========================================================================= */}
-      {showBatchModal && (
-        <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '540px', width: '100%', borderRadius: '16px', padding: '24px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Package size={20} color="#f97316" />
-                <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                  Receive New Stock Batch
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowBatchModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
+              <form onSubmit={handleSaveAdjustment} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Product & Category & Current System Stock */}
+                <div style={{ background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
+                    {selectedItem.category}
+                  </span>
+                  <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px', marginBottom: '6px' }}>
+                    {selectedItem.product_name}
+                  </h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Current / System Stock:</span>
+                    <strong style={{ fontSize: '14px', color: '#ea580c' }}>
+                      {formatQuantityWithUnit(currentStock, selectedItem.unit)}
+                    </strong>
+                  </div>
+                </div>
 
-            {(() => {
-              const activeBatchProduct = batchProduct || inventory.find(i => String(i.product_id || i.id) === String(batchFormData.product_id))
+                {/* Physical Count Input */}
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Physical Count <span style={{ color: '#ef4444' }}>*</span></span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                      Unit: {getUnitBadgeText(selectedItem.unit, true)}
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="form-input"
+                    placeholder={`Enter actual counted ${selectedItem.unit || 'units'}`}
+                    value={adjustmentData.physical_count}
+                    onChange={(e) => setAdjustmentData({ ...adjustmentData, physical_count: e.target.value })}
+                    required
+                    autoFocus
+                  />
+                  {isNegative && (
+                    <span style={{ fontSize: '11.5px', color: '#ef4444', marginTop: '4px', display: 'block' }}>
+                      Physical count cannot be negative.
+                    </span>
+                  )}
+                </div>
 
-              return (
-                <form onSubmit={handleSaveNewBatch} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {/* Product Selector / Display */}
-                  <div className="form-group">
-                    <label className="form-label">Target Product <span style={{ color: '#ef4444' }}>*</span></label>
-                    {batchProduct ? (
-                      <div style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                        <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{batchProduct.product_name}</strong>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          <span>Category: {batchProduct.category}</span>
-                          <span>Current Stock: <strong style={{ color: '#f97316' }}>{formatQuantityWithUnit(batchProduct.quantity, batchProduct.unit)}</strong></span>
-                        </div>
+                {/* Live Calculation Display: Adjustment & New Stock */}
+                {hasInput && !isNegative && (
+                  <div style={{
+                    background: isSame ? 'rgba(59, 130, 246, 0.08)' : delta > 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                    border: `1px solid ${isSame ? 'rgba(59, 130, 246, 0.3)' : delta > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                    borderRadius: '10px',
+                    padding: '12px 14px'
+                  }}>
+                    {isSame ? (
+                      <div style={{ color: '#3b82f6', fontSize: '12.5px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>ℹ️</span>
+                        <span>No adjustment needed. The physical count matches the current stock.</span>
                       </div>
                     ) : (
-                      <select
-                        className="form-input"
-                        value={batchFormData.product_id}
-                        onChange={(e) => {
-                          const selected = inventory.find(i => String(i.product_id || i.id) === String(e.target.value))
-                          setBatchFormData({
-                            ...batchFormData,
-                            product_id: e.target.value,
-                            cost_price: selected?.cost_price || '',
-                            selling_price: selected?.selling_price || ''
-                          })
-                        }}
-                        required
-                      >
-                        <option value="">-- Select Product to Restock --</option>
-                        {inventory.map(item => (
-                          <option key={item.id || item.product_id} value={item.product_id || item.id}>
-                            {item.product_name} ({formatQuantityWithUnit(item.quantity, item.unit)} in stock)
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                            Adjustment
+                          </span>
+                          <strong style={{ fontSize: '15px', color: delta > 0 ? '#10b981' : '#ef4444' }}>
+                            {deltaFormatted} {selectedItem.unit}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                            New Stock
+                          </span>
+                          <strong style={{ fontSize: '15px', color: 'var(--text-primary)' }}>
+                            {formatQuantityWithUnit(physicalVal, selectedItem.unit)}
+                          </strong>
+                        </div>
+                      </div>
                     )}
                   </div>
+                )}
 
-                  {/* Assigned Unit Banner */}
-                  {activeBatchProduct && (
-                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.28)', borderRadius: '8px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                      <span style={{ color: '#10b981' }}>
-                        Tracking Unit: <strong style={{ color: 'var(--text-primary)' }}>{activeBatchProduct.unit || 'Piece'}</strong>
-                      </span>
-                      <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.16)', color: '#10b981', fontWeight: '800', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                        {getUnitBadgeText(activeBatchProduct.unit, true).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Quantity & Supplier */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div className="form-group">
-                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{getQuantityInputLabel(activeBatchProduct?.unit, 'Quantity to Receive')} <span style={{ color: '#ef4444' }}>*</span></span>
-                        <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700' }}>
-                          in {getUnitBadgeText(activeBatchProduct?.unit, true)}
-                        </span>
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        className="form-input"
-                        placeholder={getQuantityPlaceholder(activeBatchProduct?.unit, 100)}
-                        value={batchFormData.quantity}
-                        onChange={(e) => setBatchFormData({ ...batchFormData, quantity: e.target.value })}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Supplier <span style={{ color: '#ef4444' }}>*</span></label>
-                      <select
-                        className="form-input"
-                        value={batchFormData.supplier_id}
-                        onChange={(e) => setBatchFormData({ ...batchFormData, supplier_id: e.target.value })}
-                        required
-                      >
-                        <option value="">-- Select Supplier --</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Pricing (Cost Price & Selling Price) */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        Cost Price (₱ / {getUnitBadgeText(activeBatchProduct?.unit, false)}) <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={batchFormData.cost_price}
-                        onChange={(e) => setBatchFormData({ ...batchFormData, cost_price: e.target.value })}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: '12px', display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
-                        <span>Selling Price (₱ / {getUnitBadgeText(activeBatchProduct?.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
-                        {Number(batchFormData.selling_price) > 0 && Number(batchFormData.cost_price) > 0 && (
-                          <span style={{ color: '#10b981', fontWeight: '700' }}>
-                            {Math.round(((Number(batchFormData.selling_price) - Number(batchFormData.cost_price)) / Number(batchFormData.selling_price)) * 100)}% Margin
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={batchFormData.selling_price}
-                        onChange={(e) => setBatchFormData({ ...batchFormData, selling_price: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-              {/* Dates */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* Reason for Adjustment */}
                 <div className="form-group">
-                  <label className="form-label">Date Received <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input
-                    type="date"
+                  <label className="form-label">Reason for Adjustment <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select
                     className="form-input"
-                    value={batchFormData.received_date}
-                    onChange={(e) => setBatchFormData({ ...batchFormData, received_date: e.target.value })}
+                    value={adjustmentData.reason}
+                    onChange={(e) => setAdjustmentData({ ...adjustmentData, reason: e.target.value })}
                     required
-                  />
+                  >
+                    <option value="Inventory Count Correction">Inventory Count Correction</option>
+                    <option value="Damaged Stock">Damaged Stock</option>
+                    <option value="Lost / Missing Stock">Lost / Missing Stock</option>
+                    <option value="Expired Stock">Expired Stock</option>
+                    <option value="Returned Stock">Returned Stock</option>
+                    <option value="Data Entry Correction">Data Entry Correction</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
 
+                {/* Custom Reason if "Other" */}
+                {adjustmentData.reason === 'Other' && (
+                  <div className="form-group">
+                    <label className="form-label">Specify Custom Reason <span style={{ color: '#ef4444' }}>*</span></label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Broken packaging during store transfer"
+                      value={adjustmentData.custom_reason}
+                      onChange={(e) => setAdjustmentData({ ...adjustmentData, custom_reason: e.target.value })}
+                      required
+                    />
+                  </div>
+                )}
+
+                {/* Notes / Reference */}
                 <div className="form-group">
-                  <label className="form-label">Expiration Date (Optional)</label>
+                  <label className="form-label">Notes / Reference (Optional)</label>
                   <input
-                    type="date"
+                    type="text"
                     className="form-input"
-                    value={batchFormData.expiration_date}
-                    onChange={(e) => setBatchFormData({ ...batchFormData, expiration_date: e.target.value })}
+                    placeholder="e.g., Audit tag #34, inspection remarks"
+                    value={adjustmentData.notes}
+                    onChange={(e) => setAdjustmentData({ ...adjustmentData, notes: e.target.value })}
                   />
                 </div>
-              </div>
 
-              {/* Notes */}
-              <div className="form-group">
-                <label className="form-label">Batch Notes / PO Reference</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g., PO #2026-0819 Delivery"
-                  value={batchFormData.notes}
-                  onChange={(e) => setBatchFormData({ ...batchFormData, notes: e.target.value })}
-                />
-              </div>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() => setShowAdjustment(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ flex: 2 }}
+                    disabled={submitting || isSame || isNegative || !hasInput}
+                  >
+                    {submitting ? 'Saving...' : 'Save Adjustment'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      })()}
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+      {/* =========================================================================
+          MODAL: RESTOCK (RECEIVING NEW INVENTORY ONLY)
+          ========================================================================= */}
+      {showRestockModal && (() => {
+        const activeProd = restockProduct || inventory.find(i => String(i.product_id || i.id) === String(restockFormData.product_id))
+        const currentQty = Number(activeProd?.quantity || 0)
+        const qtyReceived = Number(restockFormData.quantity || 0)
+        const newStock = currentQty + qtyReceived
+
+        return (
+          <div className="modal-overlay" onClick={() => setShowRestockModal(false)}>
+            <div
+              className="modal-content"
+              style={{ maxWidth: '520px', width: '100%', borderRadius: '16px', padding: '24px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Package size={20} color="#ea580c" />
+                  <div>
+                    <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                      Restock Inventory
+                    </h2>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                      Receive incoming stock delivery from supplier or purchase order
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                  onClick={() => setShowBatchModal(false)}
+                  onClick={() => setShowRestockModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ flex: 2 }}
-                  disabled={submittingBatch}
-                >
-                  {submittingBatch ? 'Saving Batch...' : 'Create Batch & Restock'}
+                  <X size={18} />
                 </button>
               </div>
-            </form>
-              )
-            })()}
+
+              <form onSubmit={handleSaveRestock} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Product Selection / Display */}
+                <div className="form-group">
+                  <label className="form-label">Product <span style={{ color: '#ef4444' }}>*</span></label>
+                  {restockProduct ? (
+                    <div style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
+                        {restockProduct.category}
+                      </span>
+                      <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px', marginBottom: '4px' }}>
+                        {restockProduct.product_name}
+                      </h4>
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        Current Stock: <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(currentQty, restockProduct.unit)}</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      className="form-input"
+                      value={restockFormData.product_id}
+                      onChange={(e) => {
+                        const sel = inventory.find(i => String(i.product_id || i.id) === String(e.target.value))
+                        setRestockFormData({
+                          ...restockFormData,
+                          product_id: e.target.value,
+                          cost_price: sel?.cost_price || '',
+                          supplier_id: sel?.supplier_id || restockFormData.supplier_id
+                        })
+                      }}
+                      required
+                    >
+                      <option value="">-- Select Product to Restock --</option>
+                      {inventory.map(item => (
+                        <option key={item.id || item.product_id} value={item.product_id || item.id}>
+                          {item.product_name} ({formatQuantityWithUnit(item.quantity, item.unit)} in stock)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* If selected product from dropdown */}
+                {!restockProduct && activeProd && (
+                  <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', fontSize: '12.5px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Current Stock:</span>
+                    <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(currentQty, activeProd.unit)}</strong>
+                  </div>
+                )}
+
+                {/* Quantity Received & Supplier */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Quantity Received <span style={{ color: '#ef4444' }}>*</span></span>
+                      {activeProd && (
+                        <span style={{ fontSize: '11px', color: '#ea580c', fontWeight: '700' }}>
+                          in {getUnitBadgeText(activeProd.unit, true)}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="form-input"
+                      placeholder={`e.g. 20 ${activeProd?.unit || ''}`}
+                      value={restockFormData.quantity}
+                      onChange={(e) => setRestockFormData({ ...restockFormData, quantity: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Supplier <span style={{ color: '#ef4444' }}>*</span></label>
+                    <select
+                      className="form-input"
+                      value={restockFormData.supplier_id}
+                      onChange={(e) => setRestockFormData({ ...restockFormData, supplier_id: e.target.value })}
+                      required
+                    >
+                      <option value="">-- Select Supplier --</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* PO / Reference Number & Unit Cost */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label">PO / Reference Number</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. PO-1042 / DR #8821"
+                      value={restockFormData.reference_number}
+                      onChange={(e) => setRestockFormData({ ...restockFormData, reference_number: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Unit Cost (₱)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input"
+                      placeholder="0.00"
+                      value={restockFormData.cost_price}
+                      onChange={(e) => setRestockFormData({ ...restockFormData, cost_price: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Live Stock Calculation Banner */}
+                {activeProd && qtyReceived > 0 && (
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                        Calculation
+                      </span>
+                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        {currentQty} + {qtyReceived} = <strong style={{ color: '#10b981' }}>{newStock} {activeProd.unit}</strong>
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                        New Stock
+                      </span>
+                      <strong style={{ fontSize: '16px', color: '#10b981' }}>
+                        {newStock} {activeProd.unit}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes / Remarks */}
+                <div className="form-group">
+                  <label className="form-label">Notes / Remarks</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Delivered via truck 2, inspected good condition"
+                    value={restockFormData.notes}
+                    onChange={(e) => setRestockFormData({ ...restockFormData, notes: e.target.value })}
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() => setShowRestockModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ flex: 2, background: '#ea580c', borderColor: '#ea580c' }}
+                    disabled={submittingRestock || !activeProd || qtyReceived <= 0}
+                  >
+                    {submittingRestock ? 'Saving Restock...' : 'Save Restock'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* =========================================================================
           MODAL: PRODUCT INVENTORY & BATCH HISTORY (DUAL TAB)
@@ -1327,14 +1597,15 @@ export default function InventoryManagement() {
                       </p>
                     </div>
                   ) : (
-                    <table className="management-table" style={{ fontSize: '12.5px' }}>
+                    <table className="management-table" style={{ fontSize: '12px' }}>
                       <thead>
                         <tr>
-                          <th style={{ width: '22%' }}>Date &amp; Time</th>
-                          <th style={{ width: '22%' }}>Change</th>
-                          <th style={{ width: '26%' }}>Before ➔ After</th>
-                          <th style={{ width: '20%' }}>Reason / Action</th>
-                          <th style={{ width: '10%' }}>User</th>
+                          <th style={{ width: '16%' }}>Date &amp; Time</th>
+                          <th style={{ width: '16%' }}>Transaction Type</th>
+                          <th style={{ width: '12%' }}>Quantity Change</th>
+                          <th style={{ width: '16%' }}>Stock Movement</th>
+                          <th style={{ width: '22%' }}>Reason &amp; Reference</th>
+                          <th style={{ width: '18%' }}>Performed By</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1345,10 +1616,31 @@ export default function InventoryManagement() {
                           const dateStr = log.created_at
                             ? new Date(log.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
                             : 'Recent'
+                          const typeBadge = getTransactionTypeBadge(log.adjustment_type || log.type)
+                          const supplierName = log.supplier?.name || log.supplier_name
+                          const refNo = log.reference_number || log.purchase_order
 
                           return (
                             <tr key={log.id || idx}>
-                              <td style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</td>
+                              <td style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '11.5px' }}>
+                                {dateStr}
+                              </td>
+                              <td>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '10.5px',
+                                  fontWeight: '800',
+                                  letterSpacing: '0.03em',
+                                  background: typeBadge.bg,
+                                  color: typeBadge.color,
+                                  border: typeBadge.border,
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {typeBadge.label}
+                                </span>
+                              </td>
                               <td>
                                 <span style={{
                                   display: 'inline-block',
@@ -1356,25 +1648,40 @@ export default function InventoryManagement() {
                                   borderRadius: '6px',
                                   fontWeight: '700',
                                   fontSize: '12px',
-                                  background: isZero ? '#f1f5f9' : isPositive ? '#ecfdf5' : '#fef2f2',
-                                  color: isZero ? '#64748b' : isPositive ? '#16a34a' : '#dc2626',
-                                  border: isZero ? '1px solid #e2e8f0' : isPositive ? '1px solid #bbf7d0' : '1px solid #fecaca'
+                                  background: isZero ? 'var(--bg-hover)' : isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                  color: isZero ? 'var(--text-secondary)' : isPositive ? '#10b981' : '#ef4444',
+                                  border: isZero ? '1px solid var(--border-color)' : isPositive ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                                  whiteSpace: 'nowrap'
                                 }}>
                                   {isPositive ? `+${formatQuantityWithUnit(qtyChanged, historyItem.unit)}` : formatQuantityWithUnit(qtyChanged, historyItem.unit)}
                                 </span>
                               </td>
                               <td>
-                                <span style={{ color: '#475569', fontWeight: '600' }}>
+                                <span style={{ color: 'var(--text-primary)', fontWeight: '700', fontSize: '12px' }}>
                                   {log.quantity_before != null ? formatQuantityWithUnit(log.quantity_before, historyItem.unit) : '—'} ➔ {log.quantity_after != null ? formatQuantityWithUnit(log.quantity_after, historyItem.unit) : '—'}
                                 </span>
                               </td>
                               <td>
-                                <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '12.5px' }}>
-                                  {log.reason || log.adjustment_type || 'Stock Change'}
+                                <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '12px' }}>
+                                  {log.reason || 'Stock Update'}
                                 </strong>
-                                {log.notes && <span style={{ fontSize: '11px', color: '#64748b' }}>{log.notes}</span>}
+                                {(supplierName || refNo) && (
+                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    {supplierName && <span>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{supplierName}</strong> </span>}
+                                    {refNo && <span>(PO/Ref: <strong style={{ color: '#ea580c' }}>{refNo}</strong>)</span>}
+                                  </div>
+                                )}
+                                {log.notes && (
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                                    {log.notes}
+                                  </div>
+                                )}
                               </td>
-                              <td style={{ color: '#64748b' }}>{log.user?.name || 'Staff / Admin'}</td>
+                              <td>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px', fontWeight: '500' }}>
+                                  {log.user?.name || 'System Administrator'}
+                                </span>
+                              </td>
                             </tr>
                           )
                         })}
@@ -1386,17 +1693,17 @@ export default function InventoryManagement() {
             </div>
 
             {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderTop: '1px solid #e2e8f0', marginTop: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderTop: '1px solid var(--border-color)', marginTop: '14px' }}>
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
                   setShowHistory(false)
-                  handleOpenNewBatch(historyItem)
+                  handleOpenRestock(historyItem)
                 }}
-                style={{ padding: '7px 16px', fontSize: '13px' }}
+                style={{ padding: '7px 16px', fontSize: '13px', background: '#ea580c', borderColor: '#ea580c' }}
               >
-                <Plus size={14} /> Receive New Batch For This Product
+                <Plus size={14} /> Receive Restock For This Product
               </button>
               <button
                 type="button"

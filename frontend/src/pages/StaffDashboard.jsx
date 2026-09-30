@@ -13,8 +13,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Warehouse,
+  Receipt,
+  ArrowUpRight,
 } from 'lucide-react'
-import { getStoredUser, logout, getSharedOrders } from '../api'
+import { getStoredUser, logout, getSharedOrders, getTransactions } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
@@ -25,12 +27,14 @@ const POSPage = lazy(() => import('./POSPage'))
 const OrdersManagement = lazy(() => import('./OrdersManagement'))
 const RestockRequestsPage = lazy(() => import('./RestockRequestsPage'))
 const FeedbackManagement = lazy(() => import('./FeedbackManagement'))
+const TransactionsPage = lazy(() => import('./TransactionsPage'))
 
 
 const navItems = [
   { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'pos', path: '/pos', label: 'POS', icon: ShoppingCart },
   { key: 'orders', path: '/orders', label: 'Orders', icon: ClipboardList },
+  { key: 'transactions', path: '/transactions', label: 'Transactions', icon: Receipt },
   { key: 'restock', path: '/stock-requests', label: 'Stock Requests', icon: Package },
   { key: 'feedback', path: '/feedback', label: 'Feedback', icon: MessageSquareText },
 ]
@@ -44,6 +48,7 @@ export default function StaffDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
+  const [recentTransactions, setRecentTransactions] = useState([])
   const [orders, setOrders] = useState(() => {
     const list = getSharedOrders()
     return Array.isArray(list) ? list : []
@@ -54,6 +59,7 @@ export default function StaffDashboard() {
     if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
     if (cleanPath.startsWith('/pos')) return 'pos'
     if (cleanPath.startsWith('/orders')) return 'orders'
+    if (cleanPath.startsWith('/transactions')) return 'transactions'
     if (cleanPath.startsWith('/backorders')) return 'backorders'
     if (cleanPath.startsWith('/stock-requests') || cleanPath.startsWith('/stock-request') || cleanPath.startsWith('/restock')) return 'restock'
     if (cleanPath.startsWith('/feedback')) return 'feedback'
@@ -67,13 +73,27 @@ export default function StaffDashboard() {
     navigate(path)
   }
 
+  const fetchStaffTransactions = async () => {
+    try {
+      const res = await getTransactions({ per_page: 5 })
+      if (res && res.success) {
+        setRecentTransactions(res.data?.data || [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch staff transactions:', e)
+    }
+  }
+
   useEffect(() => {
     setUser(getStoredUser())
     const initialOrders = getSharedOrders()
     setOrders(Array.isArray(initialOrders) ? initialOrders : [])
+    fetchStaffTransactions()
+
     const interval = setInterval(() => {
       const live = getSharedOrders()
       setOrders(Array.isArray(live) ? live : [])
+      fetchStaffTransactions()
     }, 4000)
     return () => clearInterval(interval)
   }, [])
@@ -114,6 +134,14 @@ export default function StaffDashboard() {
             setOrders(Array.isArray(live) ? live : [])
           }}
         />
+      )
+    }
+
+    if (activePage === 'transactions') {
+      return (
+        <Suspense fallback={<PageSkeletonLoader rows={6} />}>
+          <TransactionsPage role="staff" />
+        </Suspense>
       )
     }
 
@@ -223,32 +251,58 @@ export default function StaffDashboard() {
             </div>
           </div>
 
-          <div className="jem-panel-header" style={{ marginTop: '8px' }}>
+          <div className="jem-panel-header" style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p className="jem-eyebrow">Recent activity</p>
               <h2>Latest transactions</h2>
             </div>
+            <button
+              type="button"
+              className="jem-button jem-button-secondary"
+              onClick={() => navigateTo('/transactions')}
+              style={{ fontSize: '12px', padding: '5px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              Open Ledger <ArrowUpRight size={14} />
+            </button>
           </div>
 
           <div className="jem-orders-list">
-            {safeOrders.length === 0 ? (
-              <div className="jem-empty-state compact">
-                <LayoutDashboard size={32} />
-                <p>No sales have been recorded yet. POS transactions will appear here.</p>
-              </div>
-            ) : (
-              safeOrders.slice(0, 5).map((order) => (
-                <div className="jem-order-row" key={order.id}>
+            {(recentTransactions.length > 0 ? recentTransactions : safeOrders.slice(0, 5)).map((tx) => {
+              const txNum = tx.transaction_number || tx.order_number || `#${tx.id}`
+              const isVoided = tx.status === 'VOIDED'
+              const amount = tx.total_net ?? tx.total ?? 0
+              const method = tx.payment_method?.toUpperCase() || 'CASH'
+              const dateDisplay = tx.date_time ? new Date(tx.date_time).toLocaleDateString() : (tx.created_at ? new Date(tx.created_at).toLocaleDateString() : 'Today')
+
+              return (
+                <div className="jem-order-row" key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <strong>{order.order_number || `#${order.id}`}</strong>
-                    <span>{order.created_at ? new Date(order.created_at).toLocaleDateString() : 'Today'}</span>
+                    <strong style={{ textDecoration: isVoided ? 'line-through' : 'none', color: isVoided ? '#ef4444' : 'inherit' }}>
+                      {txNum}
+                    </strong>
+                    <span>{tx.customer_name || 'Walk-in'} • {dateDisplay}</span>
                   </div>
-                  <div>
-                    <span>{order.payment_method?.toUpperCase() || 'COD'}</span>
-                    <strong>₱{Number(order.total || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', marginRight: '6px' }}>{method}</span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: isVoided ? '#ef4444' : tx.status === 'REFUNDED' ? '#f59e0b' : '#10b981'
+                      }}>
+                        {tx.status || 'PAID'}
+                      </span>
+                    </div>
+                    <strong>₱{Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                   </div>
                 </div>
-              ))
+              )
+            })}
+            {recentTransactions.length === 0 && safeOrders.length === 0 && (
+              <div className="jem-empty-state compact">
+                <Receipt size={32} />
+                <p>No sales recorded yet. Completed POS transactions will appear here.</p>
+              </div>
             )}
           </div>
         </div>
@@ -266,13 +320,16 @@ export default function StaffDashboard() {
           position: fixed;
           inset: 0;
           width: 100vw;
+          max-width: 100vw;
           height: 100vh;
           max-height: 100vh;
           overflow: hidden;
+          overflow-x: hidden;
           display: flex;
           background: var(--bg-main);
           color: var(--text-primary);
           transition: background-color 0.2s ease, color 0.2s ease;
+          box-sizing: border-box;
         }
 
         .jem-staff-sidebar {
@@ -461,13 +518,16 @@ export default function StaffDashboard() {
           flex: 1;
           width: 0;
           min-width: 0;
+          max-width: 100%;
           height: 100vh;
           max-height: 100vh;
           background: var(--bg-main);
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          overflow-x: hidden;
           transition: background-color 0.2s ease;
+          box-sizing: border-box;
         }
 
         .jem-header {
@@ -557,9 +617,31 @@ export default function StaffDashboard() {
         .jem-content {
           flex: 1;
           min-height: 0;
+          min-width: 0;
+          width: 100%;
+          max-width: 100%;
           overflow-y: auto;
           overflow-x: hidden;
           padding: 22px 24px 28px;
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 1440px) {
+          .jem-content {
+            padding: 16px 18px 24px;
+          }
+        }
+
+        @media (max-width: 1366px) {
+          .jem-content {
+            padding: 14px 14px 20px;
+          }
+        }
+
+        @media (max-width: 1280px) {
+          .jem-content {
+            padding: 12px 10px 18px;
+          }
         }
 
         .jem-content-panel {

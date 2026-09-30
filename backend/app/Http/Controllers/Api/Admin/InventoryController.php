@@ -49,6 +49,18 @@ class InventoryController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('stock_status') && $request->stock_status !== 'all') {
+            $st = $request->stock_status;
+            if ($st === 'out_of_stock') {
+                $query->where('stock_quantity', '<=', 0);
+            } elseif ($st === 'low_stock') {
+                $query->where('stock_quantity', '>', 0)
+                      ->whereColumn('stock_quantity', '<=', 'low_stock_threshold');
+            } elseif ($st === 'in_stock') {
+                $query->whereColumn('stock_quantity', '>', 'low_stock_threshold');
+            }
+        }
+
         $products = $query->get();
 
         $items = $products->map(function ($p) {

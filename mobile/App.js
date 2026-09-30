@@ -48,6 +48,13 @@ import {
   submitMobileFeedback,
   loginCustomer,
   registerCustomer,
+  requestSignupCode,
+  verifySignupCode,
+  resendSignupCode,
+  completeSignup,
+  initiateGoogleAuth,
+  verifyEmailOtp,
+  resendEmailOtp,
   updateCustomerProfile,
   getStoredUser,
   saveStoredUser,
@@ -59,6 +66,8 @@ import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
+import VerificationCodeScreen from './src/screens/VerificationCodeScreen';
+import GoogleAccountSelectModal from './src/modals/GoogleAccountSelectModal';
 
 // Main Tabs
 import HomeTab from './src/tabs/HomeTab';
@@ -99,8 +108,17 @@ function MainApp() {
   const [authPhone, setAuthPhone] = useState('0917-123-4567');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [signupStep, setSignupStep] = useState(1);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Google OAuth & OTP Verification State
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
+  const [maskedVerificationEmail, setMaskedVerificationEmail] = useState('');
+  const [otpResendCooldown, setOtpResendCooldown] = useState(60);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState('');
 
   // App Tabs & Catalog State
   const [activeTab, setActiveTab] = useState('home'); // home, categories, cart, orders, profile
@@ -292,48 +310,167 @@ function MainApp() {
     }
   };
 
-  const handleBackendSignUp = async () => {
-    if (!authName.trim() || !authEmail.trim() || !authPassword.trim()) {
-      setAuthError('Please fill in all required registration fields.');
-      return;
-    }
-
+  // 1. Sign up step 1: Request 6-digit email OTP
+  const handleRequestSignupCode = async (enteredEmail) => {
+    const targetEmail = (enteredEmail || authEmail).trim().toLowerCase();
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await registerCustomer(authName, authEmail, authPassword, authPhone);
-      showToast(`Account Created! Welcome to JEM Hardware, ${authName}! 👋`);
-      setCurrentScreen('main');
+      await requestSignupCode(targetEmail);
+      setAuthEmail(targetEmail);
+      setPendingVerificationEmail(targetEmail);
+      setMaskedVerificationEmail(targetEmail);
+      setOtpResendCooldown(60);
+      setOtpError('');
+      setCurrentScreen('verify_signup_email');
+      showToast(`Verification code sent to ${targetEmail}! ✉️`);
     } catch (err) {
-      setAuthError(err.message || 'Registration failed. Email might already be taken.');
+      setAuthError(err.message || 'Failed to send verification code.');
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // Google / Gmail Authentication Handler (requested: only gmail with sign up)
-  const handleGoogleAuth = async () => {
+  // 2. Sign up step 2: Verify 6-digit OTP code with backend
+  const handleVerifySignupOtp = async (code) => {
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      await verifySignupCode(pendingVerificationEmail, code);
+      setSignupStep(2);
+      setCurrentScreen('signup');
+      showToast('Email verified! Please complete your account details. 🎉');
+    } catch (err) {
+      setOtpError(err.message || 'Invalid verification code. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // 3. Sign up resend OTP with cooldown
+  const handleResendSignupOtp = async () => {
+    setOtpError('');
+    const res = await resendSignupCode(pendingVerificationEmail);
+    if (res?.resend_cooldown) {
+      setOtpResendCooldown(res.resend_cooldown);
+    }
+    showToast(`New verification code sent to ${pendingVerificationEmail}! ✉️`);
+    return res;
+  };
+
+  // 4. Sign up final step: Complete registration ONLY after email verification
+  const handleCompleteSignup = async (payload) => {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const googleUser = {
-        name: authName.trim() || 'Google Contractor',
-        email: authEmail.includes('@gmail.com')
-          ? authEmail.trim()
-          : (authEmail.trim() ? `${authEmail.trim().split('@')[0]}@gmail.com` : 'contractor.jem@gmail.com'),
-        phone: authPhone || '0917-888-9999',
-      };
-      saveStoredUser(googleUser);
-      setAuthName(googleUser.name);
-      setAuthEmail(googleUser.email);
-      setAuthPhone(googleUser.phone);
-      showToast(`Signed in with Gmail as ${googleUser.name}! 🚀`);
+      const res = await completeSignup(payload);
+      if (res.user?.name) setAuthName(res.user.name);
+      if (res.user?.email) setAuthEmail(res.user.email);
+      if (res.user?.phone) setAuthPhone(res.user.phone);
+
+      showToast(`Account Created! Welcome to JEM Hardware, ${res.user?.name || 'Customer'}! 🎉`);
+      setSignupStep(1);
       setCurrentScreen('main');
     } catch (err) {
-      setAuthError('Google sign in encountered an issue. Please try again.');
+      setAuthError(err.message || 'Failed to create account.');
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  // Google Authentication Handler: Opens Google Account selection
+  const handleGoogleAuth = () => {
+    setAuthError('');
+    setShowGoogleModal(true);
+  };
+
+  // Triggered when user selects a Google account in the Google OAuth prompt
+  const handleGoogleAccountSelected = async (selectedEmail, selectedName) => {
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await initiateGoogleAuth(selectedEmail, selectedName);
+      setShowGoogleModal(false);
+
+      if (res?.user) {
+        if (res.user.name) setAuthName(res.user.name);
+        if (res.user.email) setAuthEmail(res.user.email);
+        if (res.user.phone) setAuthPhone(res.user.phone);
+
+        // Load addresses for signed-in user
+        getCustomerAddresses(res.user.email).then((addrs) => {
+          if (Array.isArray(addrs) && addrs.length > 0) {
+            const def = addrs.find((a) => a.is_default) || addrs[0];
+            if (def) {
+              setDeliveryAddress(def.address);
+              setSelectedAddressObj(def);
+            }
+          }
+        });
+
+        showToast(`Signed in with Google as ${res.user.name}! 👋`);
+        setCurrentScreen('main');
+        return;
+      }
+
+      // Fallback if backend required OTP
+      if (res?.requires_otp) {
+        setPendingVerificationEmail(selectedEmail);
+        setMaskedVerificationEmail(res.masked_email || selectedEmail);
+        if (res.resend_cooldown) {
+          setOtpResendCooldown(res.resend_cooldown);
+        }
+        setOtpError('');
+        setCurrentScreen('verify_otp');
+        showToast(`Verification code sent to ${res.masked_email || selectedEmail}! ✉️`);
+      }
+    } catch (err) {
+      setAuthError(err.message || 'Google sign-in encountered an issue. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Fallback OTP verification if needed
+  const handleVerifyOtp = async (code) => {
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const res = await verifyEmailOtp(pendingVerificationEmail, code);
+      if (res.user?.name) setAuthName(res.user.name);
+      if (res.user?.email) setAuthEmail(res.user.email);
+      if (res.user?.phone) setAuthPhone(res.user.phone);
+
+      // Load user addresses
+      if (res.user?.email) {
+        getCustomerAddresses(res.user.email).then((addrs) => {
+          if (Array.isArray(addrs) && addrs.length > 0) {
+            const def = addrs.find((a) => a.is_default) || addrs[0];
+            if (def) {
+              setDeliveryAddress(def.address);
+              setSelectedAddressObj(def);
+            }
+          }
+        });
+      }
+
+      showToast(`Account Verified! Welcome, ${res.user?.name || 'Customer'}! 🚀`);
+      setCurrentScreen('main');
+    } catch (err) {
+      setOtpError(err.message || 'Verification failed. Please check the code.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Fallback Resend OTP with cooldown
+  const handleResendOtp = async () => {
+    const res = await resendEmailOtp(pendingVerificationEmail);
+    if (res?.resend_cooldown) {
+      setOtpResendCooldown(res.resend_cooldown);
+    }
+    showToast(`New verification code sent to ${res.masked_email || pendingVerificationEmail}! ✉️`);
+    return res;
   };
 
   // Profile Update Handler
@@ -624,26 +761,34 @@ function MainApp() {
   // =========================================================================
   if (currentScreen === 'signin') {
     return (
-      <SignInScreen
-        email={authEmail}
-        setEmail={setAuthEmail}
-        password={authPassword}
-        setPassword={setAuthPassword}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        rememberMe={rememberMe}
-        setRememberMe={setRememberMe}
-        loading={authLoading}
-        errorMsg={authError}
-        onSignIn={handleBackendSignIn}
-        onGoogleSignIn={handleGoogleAuth}
-        onForgotPassword={() => showToast('Password reset instructions sent to contact.')}
-        onNavigateToSignUp={() => {
-          setAuthError('');
-          setCurrentScreen('signup');
-        }}
-        onGoBack={() => setCurrentScreen('onboarding')}
-      />
+      <View style={{ flex: 1, backgroundColor: '#0B1320' }}>
+        <SignInScreen
+          email={authEmail}
+          setEmail={setAuthEmail}
+          password={authPassword}
+          setPassword={setAuthPassword}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          rememberMe={rememberMe}
+          setRememberMe={setRememberMe}
+          loading={authLoading}
+          errorMsg={authError}
+          onSignIn={handleBackendSignIn}
+          onGoogleSignIn={handleGoogleAuth}
+          onForgotPassword={() => showToast('Password reset instructions sent to contact.')}
+          onNavigateToSignUp={() => {
+            setAuthError('');
+            setCurrentScreen('signup');
+          }}
+          onGoBack={() => setCurrentScreen('onboarding')}
+        />
+        <GoogleAccountSelectModal
+          visible={showGoogleModal}
+          onClose={() => setShowGoogleModal(false)}
+          onSelectAccount={handleGoogleAccountSelected}
+          loading={authLoading}
+        />
+      </View>
     );
   }
 
@@ -652,22 +797,73 @@ function MainApp() {
   // =========================================================================
   if (currentScreen === 'signup') {
     return (
-      <SignUpScreen
-        name={authName}
-        setName={setAuthName}
-        email={authEmail}
-        setEmail={setAuthEmail}
-        password={authPassword}
-        setPassword={setAuthPassword}
-        loading={authLoading}
-        errorMsg={authError}
-        onSignUp={handleBackendSignUp}
-        onGoogleSignUp={handleGoogleAuth}
-        onNavigateToSignIn={() => {
-          setAuthError('');
-          setCurrentScreen('signin');
+      <View style={{ flex: 1, backgroundColor: '#0B1320' }}>
+        <SignUpScreen
+          email={authEmail}
+          setEmail={setAuthEmail}
+          name={authName}
+          setName={setAuthName}
+          password={authPassword}
+          setPassword={setAuthPassword}
+          phone={authPhone}
+          setPhone={setAuthPhone}
+          rememberMe={rememberMe}
+          setRememberMe={setRememberMe}
+          step={signupStep}
+          setStep={setSignupStep}
+          loading={authLoading}
+          errorMsg={authError}
+          onRequestVerification={handleRequestSignupCode}
+          onCompleteSignUp={handleCompleteSignup}
+          onGoogleSignUp={handleGoogleAuth}
+          onNavigateToSignIn={() => {
+            setAuthError('');
+            setSignupStep(1);
+            setCurrentScreen('signin');
+          }}
+          onGoBack={() => {
+            setSignupStep(1);
+            setCurrentScreen('onboarding');
+          }}
+        />
+        <GoogleAccountSelectModal
+          visible={showGoogleModal}
+          onClose={() => setShowGoogleModal(false)}
+          onSelectAccount={handleGoogleAccountSelected}
+          loading={authLoading}
+        />
+      </View>
+    );
+  }
+
+  // =========================================================================
+  // 4b. SCREEN: VERIFICATION CODE (EMAIL OTP)
+  // =========================================================================
+  if (currentScreen === 'verify_signup_email' || currentScreen === 'verify_otp') {
+    const isSignupVerify = currentScreen === 'verify_signup_email';
+    return (
+      <VerificationCodeScreen
+        email={pendingVerificationEmail}
+        maskedEmail={maskedVerificationEmail}
+        onVerifyOtp={isSignupVerify ? handleVerifySignupOtp : handleVerifyOtp}
+        onResendOtp={isSignupVerify ? handleResendSignupOtp : handleResendOtp}
+        onChangeEmail={() => {
+          setOtpError('');
+          setCurrentScreen('signup');
+          setSignupStep(1);
         }}
-        onGoBack={() => setCurrentScreen('onboarding')}
+        onCancel={() => {
+          setOtpError('');
+          if (isSignupVerify) {
+            setCurrentScreen('signup');
+            setSignupStep(1);
+          } else {
+            setCurrentScreen('signin');
+          }
+        }}
+        loading={otpLoading}
+        errorMsg={otpError}
+        resendCooldown={otpResendCooldown}
       />
     );
   }

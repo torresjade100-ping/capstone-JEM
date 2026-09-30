@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ArrowUpRight, AlertCircle } from 'lucide-react'
+import { ArrowUpRight, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { login } from '../api'
 import ThemeToggle from '../components/ThemeToggle'
 import '../styles/login.css'
@@ -7,6 +7,7 @@ import '../styles/login.css'
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -81,15 +82,28 @@ export default function LoginPage() {
 
             <div className="form-group">
               <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="form-input"
-                placeholder=""
-                required
-                disabled={loading}
-              />
+              <div className="password-input-wrap">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="form-input"
+                  placeholder=""
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                  disabled={loading}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <div className="form-options">

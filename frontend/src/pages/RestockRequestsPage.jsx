@@ -101,6 +101,25 @@ export default function RestockRequestsPage({ role: propRole }) {
     }
   }
 
+  // Handle Deep Linking from Global Search
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const targetReqId = urlParams.get('requestId')
+      const targetSearch = urlParams.get('search')
+      if (targetSearch && !search) {
+        setSearch(targetSearch)
+      }
+      if (targetReqId && requests.length > 0) {
+        const matched = requests.find(r => String(r.id) === String(targetReqId))
+        if (matched) {
+          setSelectedRequest(matched)
+          setShowDetails(true)
+        }
+      }
+    } catch (e) {}
+  }, [requests])
+
   const fetchProductsList = async () => {
     try {
       const data = await getProducts({ per_page: 100 })

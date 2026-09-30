@@ -334,3 +334,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .button-accent:hover {
   background: var(--primary-hover);
 }
+
+/* Global Print Reset: Ensure print height is purely content-driven for thermal receipts */
+@media print {
+  html,
+  body,
+  #root {
+    width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+

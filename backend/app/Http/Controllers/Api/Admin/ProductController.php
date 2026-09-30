@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use App\Services\AuditService;
 use Illuminate\Support\Facades\Request as RequestFacade;
 
@@ -54,7 +55,10 @@ class ProductController extends Controller
             });
         }
 
-        $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $perPageInput = $request->input('per_page', 20);
+        $perPage = ($perPageInput === 'all' || (int) $perPageInput > 100)
+            ? min((int) ($perPageInput === 'all' ? 500 : $perPageInput), 1000)
+            : min(max((int) $perPageInput, 1), 100);
         $products = $query->orderBy('name')->paginate($perPage);
 
         return response()->json([
@@ -67,7 +71,7 @@ class ProductController extends Controller
     public function store(\App\Http\Requests\ProductStoreRequest $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'category_id' => ['required', 'exists:categories,id'],
+            'category_id' => ['required', Rule::exists('categories', 'id')->where('status', 'active')],
             'brand_id' => ['required', 'exists:brands,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
@@ -83,6 +87,8 @@ class ProductController extends Controller
             'supplier_name' => ['nullable', 'string', 'max:255'],
             'received_date' => ['nullable', 'date'],
             'expiration_date' => ['nullable', 'date'],
+        ], [
+            'category_id.exists' => 'The selected category is inactive or does not exist. Only active categories can be assigned to new products.',
         ]);
 
         if ($validator->fails()) {
@@ -220,6 +226,19 @@ class ProductController extends Controller
                     'message' => "Another product named '{$duplicate->name}' already exists in your inventory catalog.",
                     'errors' => [
                         'name' => ["Another product with this name already exists."],
+                    ],
+                ], 422);
+            }
+        }
+
+        if ($request->filled('category_id') && (int) $request->category_id !== (int) $product->category_id) {
+            $cat = \App\Models\Category::find($request->category_id);
+            if (! $cat || $cat->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot reassign product to an inactive category. Please choose an active category or reactivate this category first.',
+                    'errors' => [
+                        'category_id' => ['The selected category is inactive. Products can only be assigned to active categories.'],
                     ],
                 ], 422);
             }

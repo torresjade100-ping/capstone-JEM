@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Search, Plus, Edit2, Archive, AlertCircle, Filter, Eye,
   Building, Package, Tag, Check, X, Layers, Trash2, ArrowUpDown, ChevronDown,
   AlertTriangle, CheckCircle2, Sparkles, RotateCcw
 } from 'lucide-react'
 import Swal from 'sweetalert2'
-import { API_BASE_URL, getBrands, getCategories, getSuppliers, getProductBatches, createProductBatch } from '../api'
+import { API_BASE_URL, getBrands, getCategories, getAdminCategories, createCategory, getSuppliers, getProductBatches, createProductBatch } from '../api'
 import {
   STANDARD_UOM_OPTIONS,
   formatQuantityWithUnit,
@@ -17,6 +17,179 @@ import '../styles/dashboard.css'
 import '../styles/management.css'
 
 const UNIT_OPTIONS = STANDARD_UOM_OPTIONS
+
+function BatchCategoryDropdown({
+  value,
+  categories,
+  onChange,
+  hasError,
+  isOpen,
+  onToggle,
+  onClose
+}) {
+  const dropdownRef = useRef(null)
+  const activeCategories = useMemo(() => categories.filter((c) => c.status === 'active' || c.status === undefined), [categories])
+  const selectedCat = categories.find((c) => String(c.id) === String(value))
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen, onClose])
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        userSelect: 'none'
+      }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          } else if (e.key === 'Escape') {
+            onClose()
+          }
+        }}
+        className="form-input"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 8px',
+          fontSize: '12.5px',
+          minHeight: '34px',
+          height: '34px',
+          cursor: 'pointer',
+          borderRadius: '8px',
+          background: 'var(--input-bg)',
+          color: selectedCat ? 'var(--text-primary)' : 'var(--text-muted)',
+          borderColor: hasError ? '#ef4444' : isOpen ? '#ea580c' : 'var(--border-color)',
+          boxShadow: isOpen ? '0 0 0 2px rgba(234, 88, 12, 0.15)' : 'none',
+          boxSizing: 'border-box',
+          lineHeight: 'normal'
+        }}
+      >
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            marginRight: '4px',
+            fontWeight: selectedCat ? '600' : '400'
+          }}
+        >
+          {selectedCat ? selectedCat.name : 'Category'}
+        </span>
+        <ChevronDown
+          size={14}
+          style={{
+            color: 'var(--text-secondary)',
+            transform: isOpen ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            width: '100%',
+            minWidth: '180px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+            zIndex: 9999,
+            padding: '4px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div
+            onClick={() => {
+              onChange('')
+              onClose()
+            }}
+            style={{
+              padding: '7px 10px',
+              fontSize: '12px',
+              color: !value ? '#ea580c' : 'var(--text-muted)',
+              background: !value ? 'rgba(234, 88, 12, 0.1)' : 'transparent',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontWeight: !value ? '700' : '400',
+              marginBottom: '2px'
+            }}
+            onMouseEnter={(e) => {
+              if (value) e.currentTarget.style.background = 'var(--bg-hover)'
+            }}
+            onMouseLeave={(e) => {
+              if (value) e.currentTarget.style.background = 'transparent'
+            }}
+          >
+            Category
+          </div>
+
+          {activeCategories.map((c) => {
+            const isSelected = String(c.id) === String(value)
+            return (
+              <div
+                key={c.id}
+                onClick={() => {
+                  onChange(String(c.id))
+                  onClose()
+                }}
+                style={{
+                  padding: '7px 10px',
+                  fontSize: '12px',
+                  color: isSelected ? '#ea580c' : 'var(--text-primary)',
+                  background: isSelected ? 'rgba(234, 88, 12, 0.12)' : 'transparent',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: isSelected ? '700' : '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '2px',
+                  transition: 'background 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {c.name}
+                </span>
+                {isSelected && <Check size={13} color="#ea580c" style={{ flexShrink: 0, marginLeft: '6px' }} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([])
@@ -76,8 +249,43 @@ export default function ProductManagement() {
     { id: 2, name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' }
   ])
   const [batchErrors, setBatchErrors] = useState({})
+  const [openBatchCategoryRowId, setOpenBatchCategoryRowId] = useState(null)
+
+  // Quick Add Category Modal state
+  const [showQuickAddCat, setShowQuickAddCat] = useState(false)
+  const [quickCatName, setQuickCatName] = useState('')
+  const [quickCatSaving, setQuickCatSaving] = useState(false)
 
   const token = localStorage.getItem('jem_api_token')
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const catParam = params.get('category_id') || params.get('category')
+      if (catParam) {
+        setFilters(prev => ({ ...prev, category_id: String(catParam) }))
+      }
+      const prodSearch = params.get('search')
+      if (prodSearch && !search) {
+        setSearch(prodSearch)
+      }
+    } catch (e) {}
+  }, [])
+
+  // Deep Link: Automatically locate and open/view selected product
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const targetProdId = params.get('productId')
+      if (targetProdId && products.length > 0) {
+        const matched = products.find(p => String(p.id) === String(targetProdId))
+        if (matched) {
+          setViewingProduct(matched)
+          setShowViewModal(true)
+        }
+      }
+    } catch (e) {}
+  }, [products])
 
   useEffect(() => {
     fetchProducts()
@@ -102,12 +310,39 @@ export default function ProductManagement() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [unitDropdownOpen])
 
-
+  const handleQuickCreateCategory = async (e) => {
+    if (e) e.preventDefault()
+    if (!quickCatName.trim()) {
+      Swal.fire({ icon: 'warning', title: 'Category Name Required', text: 'Please enter a category name.' })
+      return
+    }
+    try {
+      setQuickCatSaving(true)
+      const res = await createCategory({ name: quickCatName.trim(), status: 'active' })
+      if (!res?.success) throw new Error(res?.message || 'Failed to create category')
+      const newCat = res.data
+      setCategories(prev => [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name)))
+      setFormData(prev => ({ ...prev, category_id: String(newCat.id) }))
+      setQuickCatName('')
+      setShowQuickAddCat(false)
+      Swal.fire({
+        icon: 'success',
+        title: 'Category Created! 🎉',
+        text: `"${newCat.name}" is created and selected. You can add more products to this category at any time.`,
+        timer: 2000,
+        showConfirmButton: false
+      })
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Error Creating Category', text: err.message || 'Could not create category.' })
+    } finally {
+      setQuickCatSaving(false)
+    }
+  }
 
   const loadAuxiliaryData = async () => {
     try {
       const [catRes, brandRes, supRes] = await Promise.allSettled([
-        getCategories(),
+        getAdminCategories({ all: 1 }).catch(() => getCategories()),
         getBrands(),
         getSuppliers()
       ])
@@ -130,12 +365,31 @@ export default function ProductManagement() {
     }
   }
 
+  const getProductCategoryName = useCallback((product) => {
+    if (!product) return 'General Hardware'
+    if (product.category && typeof product.category === 'object' && product.category.name) {
+      return product.category.name
+    }
+    if (typeof product.category === 'string' && product.category.trim()) {
+      return product.category.trim()
+    }
+    if (product.category_name && typeof product.category_name === 'string') {
+      return product.category_name
+    }
+    const catId = product.category_id || (typeof product.category === 'object' ? product.category?.id : product.category)
+    if (catId) {
+      const found = categories.find(c => String(c.id) === String(catId))
+      if (found?.name) return found.name
+    }
+    return 'General Hardware'
+  }, [categories])
+
   const fetchProducts = async () => {
     setLoading(true)
     setError('')
     try {
       const params = new URLSearchParams()
-      params.append('per_page', '100')
+      params.append('per_page', '500')
       if (filters.category_id) params.append('category_id', filters.category_id)
       if (filters.brand_id) params.append('brand_id', filters.brand_id)
       if (filters.status) params.append('status', filters.status)
@@ -150,8 +404,15 @@ export default function ProductManagement() {
       const data = await res.json()
       if (data.success) {
         const list = Array.isArray(data.data) ? data.data : data.data?.data || []
-        // Sort newly added products in ascending order (by name ascending A-Z)
-        const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        // Ensure category object is populated if missing
+        const mapped = list.map(item => {
+          if (!item.category && item.category_id) {
+            const foundCat = categories.find(c => String(c.id) === String(item.category_id))
+            if (foundCat) item.category = foundCat
+          }
+          return item
+        })
+        const sorted = [...mapped].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
         setProducts(sorted)
       } else {
         setProducts([])
@@ -467,20 +728,47 @@ export default function ProductManagement() {
       }
 
       // Update local state immediately for instant feedback
+      const resolvedCategory =
+        resData?.data?.category ||
+        categoryObj ||
+        categories.find(c => String(c.id) === String(payload.category_id || formData.category_id)) ||
+        null
+      const resolvedBrand =
+        resData?.data?.brand ||
+        brandObj ||
+        brands.find(b => String(b.id) === String(payload.brand_id || formData.brand_id)) ||
+        null
+
       if (editingProduct) {
         setProducts(prev => {
-          const updated = prev.map(p => p.id === editingProduct.id ? { ...p, ...payload, category: categoryObj, brand: brandObj } : p)
-          return updated.sort((a, b) => a.name.localeCompare(b.name))
+          const updated = prev.map(p =>
+            p.id === editingProduct.id
+              ? {
+                  ...p,
+                  ...payload,
+                  ...(resData?.data || {}),
+                  category_id: payload.category_id || resData?.data?.category_id,
+                  category: resolvedCategory,
+                  brand: resolvedBrand
+                }
+              : p
+          )
+          return updated.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
         })
       } else {
         const newProduct = {
           id: resData?.data?.id || Date.now(),
           ...payload,
-          category: categoryObj,
-          brand: brandObj,
+          ...(resData?.data || {}),
+          category_id: payload.category_id || resData?.data?.category_id || (resolvedCategory ? resolvedCategory.id : null),
+          category: resolvedCategory,
+          brand: resolvedBrand,
           batches_count: payload.stock_quantity > 0 ? 1 : 0
         }
-        setProducts(prev => [...prev, newProduct].sort((a, b) => a.name.localeCompare(b.name)))
+        setProducts(prev => {
+          const filtered = prev.filter(p => p.id !== newProduct.id)
+          return [newProduct, ...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        })
       }
 
       window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: payload }))
@@ -608,6 +896,7 @@ export default function ProductManagement() {
 
   const handleRemoveBatchRow = (id) => {
     if (batchRows.length <= 1) return
+    if (openBatchCategoryRowId === id) setOpenBatchCategoryRowId(null)
     setBatchRows(prev => prev.filter(r => r.id !== id))
   }
 
@@ -741,8 +1030,12 @@ export default function ProductManagement() {
             onChange={(e) => setFilters({ ...filters, category_id: e.target.value })}
             className="filter-select"
           >
-            <option value="">All Categories</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value="">All Categories ({products.length})</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} {c.products_count !== undefined ? `(${c.products_count})` : ''}
+              </option>
+            ))}
           </select>
 
           <select
@@ -817,9 +1110,16 @@ export default function ProductManagement() {
                         )}
                       </td>
                       <td>
-                        <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.14)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.28)' }}>
-                          {product.category?.name || 'General Hardware'}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setFilters(prev => ({ ...prev, category_id: String(product.category_id || product.category?.id || '') }))}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                          title={`Filter all products in ${getProductCategoryName(product)}`}
+                        >
+                          <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.14)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.28)' }}>
+                            {getProductCategoryName(product)}
+                          </span>
+                        </button>
                       </td>
                       <td>
                         <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
@@ -1190,7 +1490,7 @@ export default function ProductManagement() {
                                   <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)', display: 'block' }}>{p.name}</strong>
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', gap: '6px', marginTop: '3px', alignItems: 'center', flexWrap: 'wrap' }}>
                                     <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '10.5px', padding: '1px 6px' }}>
-                                      {p.category?.name || 'General'}
+                                      {getProductCategoryName(p)}
                                     </span>
                                     {p.brand?.name && (
                                       <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '10.5px', padding: '1px 6px' }}>
@@ -1239,7 +1539,7 @@ export default function ProductManagement() {
                           </h3>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px', fontSize: '11.5px' }}>
                             <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
-                              Category: <strong>{selectedExistingProduct.category?.name || 'General'}</strong>
+                              Category: <strong>{getProductCategoryName(selectedExistingProduct)}</strong>
                             </span>
                             {selectedExistingProduct.brand?.name && (
                               <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
@@ -1329,16 +1629,45 @@ export default function ProductManagement() {
                   {/* 2-Column Row: Category & Brand */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div className="form-group">
-                      <label className="form-label">
-                        Category <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label className="form-label" style={{ margin: 0 }}>
+                          Category <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowQuickAddCat(true)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#ea580c',
+                            fontSize: '11.5px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                          title="Create a new category for products"
+                        >
+                          <Plus size={12} /> New Category
+                        </button>
+                      </div>
                       <select
                         className="form-input"
                         value={formData.category_id}
                         onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                       >
-                        <option value="">Select Category</option>
-                        {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                        <option value="">Select Existing Category</option>
+                        {categories.map((cat) => {
+                          const isCatActive = cat.status === 'active' || cat.status === undefined
+                          const isCurrentProductCat = Boolean(editingProduct && String(cat.id) === String(formData.category_id))
+                          if (!isCatActive && !isCurrentProductCat) return null
+                          return (
+                            <option key={cat.id} value={cat.id} disabled={!isCatActive && !isCurrentProductCat}>
+                              {cat.name} {!isCatActive ? '(Inactive)' : ''} {cat.products_count !== undefined ? `(${cat.products_count} products)` : ''}
+                            </option>
+                          )
+                        })}
                       </select>
                       {formErrors.category_id && (
                         <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
@@ -1692,13 +2021,13 @@ export default function ProductManagement() {
             </div>
 
             <form onSubmit={handleBatchSubmit}>
-              <div style={{ maxHeight: '420px', overflowY: 'auto', marginBottom: '14px' }}>
-                <table className="management-table" style={{ fontSize: '12.5px' }}>
+              <div style={{ maxHeight: '420px', minHeight: '260px', overflowY: 'auto', marginBottom: '14px', paddingBottom: openBatchCategoryRowId ? '180px' : '10px' }}>
+                <table className="management-table" style={{ fontSize: '12.5px', width: '100%' }}>
                   <thead>
                     <tr>
+                      <th style={{ width: '20%' }}>Category *</th>
                       <th style={{ width: '28%' }}>Product Name *</th>
                       <th style={{ width: '16%' }}>Price (₱) *</th>
-                      <th style={{ width: '20%' }}>Category *</th>
                       <th style={{ width: '16%' }}>Supplier</th>
                       <th style={{ width: '12%' }}>Stock Qty *</th>
                       <th style={{ width: '8%', textAlign: 'center' }}></th>
@@ -1707,8 +2036,21 @@ export default function ProductManagement() {
                   <tbody>
                     {batchRows.map((row, idx) => {
                       const err = batchErrors[row.id] || {}
+                      const isCatOpen = openBatchCategoryRowId === row.id
                       return (
-                        <tr key={row.id}>
+                        <tr key={row.id} style={{ position: 'relative', zIndex: isCatOpen ? 100 : 1 }}>
+                          <td style={{ position: 'relative', zIndex: isCatOpen ? 100 : 1 }}>
+                            <BatchCategoryDropdown
+                              value={row.category_id}
+                              categories={categories}
+                              onChange={(val) => handleUpdateBatchField(row.id, 'category_id', val)}
+                              hasError={!!err.category_id}
+                              isOpen={isCatOpen}
+                              onToggle={() => setOpenBatchCategoryRowId(prev => prev === row.id ? null : row.id)}
+                              onClose={() => setOpenBatchCategoryRowId(null)}
+                            />
+                            {err.category_id && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.category_id}</span>}
+                          </td>
                           <td>
                             <input
                               type="text"
@@ -1716,8 +2058,6 @@ export default function ProductManagement() {
                               style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.name ? '#ef4444' : 'var(--border-color)' }}
                               placeholder="Enter product name"
                               value={row.name}
-
-
                               onChange={(e) => handleUpdateBatchField(row.id, 'name', e.target.value)}
                             />
                             {err.name && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.name}</span>}
@@ -1732,18 +2072,6 @@ export default function ProductManagement() {
                               onChange={(e) => handleUpdateBatchField(row.id, 'base_price', e.target.value)}
                             />
                             {err.base_price && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.base_price}</span>}
-                          </td>
-                          <td>
-                            <select
-                              className="form-input"
-                              style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.category_id ? '#ef4444' : 'var(--border-color)' }}
-                              value={row.category_id}
-                              onChange={(e) => handleUpdateBatchField(row.id, 'category_id', e.target.value)}
-                            >
-                              <option value="">Category</option>
-                              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                            {err.category_id && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.category_id}</span>}
                           </td>
                           <td>
                             <select
@@ -1838,7 +2166,7 @@ export default function ProductManagement() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ background: 'rgba(249, 115, 22, 0.1)', border: '1.5px solid rgba(249, 115, 22, 0.3)', borderRadius: '12px', padding: '16px' }}>
                 <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '800', textTransform: 'uppercase' }}>
-                  {viewingProduct.category?.name || 'Hardware Supply'}
+                  {getProductCategoryName(viewingProduct)}
                 </span>
                 <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px' }}>
                   {viewingProduct.name}
@@ -2087,6 +2415,67 @@ export default function ProductManagement() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: QUICK ADD NEW CATEGORY */}
+      {showQuickAddCat && (
+        <div className="modal-overlay" onClick={() => setShowQuickAddCat(false)} style={{ zIndex: 100000 }}>
+          <div className="modal-content" style={{ maxWidth: '420px', width: '100%', borderRadius: '16px', padding: '22px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Tag size={17} color="#ea580c" /> Add New Category
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQuickAddCat(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickCreateCategory}>
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: 'var(--text-primary)' }}>
+                  Category Name <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={quickCatName}
+                  onChange={(e) => setQuickCatName(e.target.value)}
+                  placeholder="e.g. Electrical, Plumbing, Safety..."
+                  style={{ width: '100%', padding: '9px 12px', fontSize: '13px', borderRadius: '8px' }}
+                  autoFocus
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                  Once created, you can assign multiple products to this category.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowQuickAddCat(false)}
+                  disabled={quickCatSaving}
+                  style={{ padding: '8px 14px', fontSize: '12.5px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={quickCatSaving || !quickCatName.trim()}
+                  style={{ padding: '8px 16px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {quickCatSaving ? <RotateCcw size={13} className="spin" /> : <Plus size={13} />}
+                  Create &amp; Select
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

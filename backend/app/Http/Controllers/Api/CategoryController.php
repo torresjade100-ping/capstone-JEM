@@ -12,7 +12,10 @@ class CategoryController extends Controller
 {
     public function index(): JsonResponse
     {
-        $categories = Category::where('status', 'active')->orderBy('name')->get();
+        $categories = Category::where('status', 'active')
+            ->withCount('products')
+            ->orderBy('name')
+            ->get();
 
         return response()->json([
             'success' => true,
