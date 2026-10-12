@@ -156,6 +156,8 @@ Route::middleware(['auth:sanctum', 'active', 'role:admin'])->group(function () {
 
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::get('user', [AuthController::class, 'user']);
+    Route::get('auth/user', [AuthController::class, 'user']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
 });
 
@@ -233,6 +235,7 @@ Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('staff
     Route::get('order-adjustments/{orderAdjustment}', [App\Http\Controllers\Api\OrderAdjustmentController::class, 'show']);
     Route::post('walk-in-orders', [App\Http\Controllers\Api\POSController::class, 'checkout']);
     Route::get('feedback', [App\Http\Controllers\Api\FeedbackController::class, 'adminIndex']);
+    Route::post('feedback/{id}/respond', [App\Http\Controllers\Api\FeedbackController::class, 'respond']);
 });
 
 Route::middleware(['auth:sanctum', 'active', 'role:admin'])->group(function () {

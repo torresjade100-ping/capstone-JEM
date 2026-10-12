@@ -976,6 +976,15 @@ export function getFeedback() { return request('/feedback').then((payload) => pa
 export function getPayments() { return request('/payments').then((payload) => payload.data) }
 export function getStaffFeedback() { return request('/staff/feedback').then((payload) => payload.data) }
 export function getAdminFeedback() { return request('/admin/feedback').then((payload) => payload.data) }
+export function respondToFeedback(id, adminResponse, status = 'responded') {
+  return request(`/admin/feedback/${id}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({
+      admin_response: adminResponse,
+      status: status,
+    }),
+  }).then((payload) => payload.data || payload)
+}
 
 export function getCart() { return request('/cart').then((payload) => payload.data) }
 export function addToCart(productId, quantity, productVariantId = null) {

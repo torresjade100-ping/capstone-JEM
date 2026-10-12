@@ -39,6 +39,13 @@ export default function VerificationCodeScreen({
     return () => clearTimeout(timerId);
   }, []);
 
+  // Sync timer when resendCooldown prop changes or screen mounts
+  useEffect(() => {
+    if (resendCooldown !== undefined && resendCooldown !== null) {
+      setTimer(resendCooldown > 0 ? resendCooldown : 60);
+    }
+  }, [resendCooldown]);
+
   // Countdown timer for resend rate limiting
   useEffect(() => {
     let interval = null;

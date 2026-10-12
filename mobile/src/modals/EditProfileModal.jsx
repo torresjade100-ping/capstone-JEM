@@ -70,7 +70,7 @@ export default function EditProfileModal({
             <View>
               <Text style={styles.modalNavTitle}>Edit Customer Profile 👤</Text>
               <Text style={{ fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500' }}>
-                Update your contractor account information
+                Update your customer account information
               </Text>
             </View>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>

@@ -2362,7 +2362,7 @@ export default function POSPage({ onTransactionComplete }) {
                 <div className="pos-summary-row">
                   <span className="pos-summary-label">Payment Method:</span>
                   <span className="pos-summary-value">
-                    {paymentMethod === 'cash' ? '💵 Cash' : paymentMethod === 'gcash' ? '📱 GCash' : '💳 Maya'}
+                    {paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'gcash' ? 'GCash' : 'Maya'}
                   </span>
                 </div>
 

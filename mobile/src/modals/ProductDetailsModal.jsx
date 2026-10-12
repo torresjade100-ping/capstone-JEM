@@ -105,7 +105,7 @@ export default function ProductDetailsModal({
                 ★ {product.rating || '4.9'}
               </Text>
               <Text style={{ fontSize: 12, color: COLORS.textMuted }}>
-                ({product.reviews || 128} verified contractor reviews)
+                ({product.reviews || 128} customer reviews)
               </Text>
               <Text style={{ color: COLORS.border }}>•</Text>
               <Text style={{ fontSize: 12, color: COLORS.success, fontWeight: '700' }}>
@@ -129,7 +129,7 @@ export default function ProductDetailsModal({
             >
               <View>
                 <Text style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: '600', textTransform: 'uppercase' }}>
-                  Unit Contractor Price
+                  Retail Price
                 </Text>
                 <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.primaryDark, marginTop: 2 }}>
                   ₱{Number(currentPrice || 0).toLocaleString()}{' '}

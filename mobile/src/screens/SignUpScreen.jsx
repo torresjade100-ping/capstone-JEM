@@ -20,6 +20,8 @@ import {
   GoogleIcon,
   JemHexBadge,
 } from '../components/AuthIcons';
+import VerificationCodeScreen from './VerificationCodeScreen';
+import { requestSignupCode, verifySignupCode, resendSignupCode } from '../api/mobileApi';
 
 export default function SignUpScreen({
   email,
@@ -46,6 +48,9 @@ export default function SignUpScreen({
   const currentStep = step !== undefined ? step : internalStep;
   const changeStep = setStep || setInternalStep;
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpResendCooldown, setOtpResendCooldown] = useState(60);
   const [localError, setLocalError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showHelpTip, setShowHelpTip] = useState(false);
@@ -63,7 +68,7 @@ export default function SignUpScreen({
     }
   };
 
-  const handleNextPress = () => {
+  const handleNextPress = async () => {
     const rawEmail = (email || '').trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!rawEmail || !emailRegex.test(rawEmail)) {
@@ -71,8 +76,20 @@ export default function SignUpScreen({
       return;
     }
     setLocalError('');
-    if (onRequestVerification) {
-      onRequestVerification(rawEmail);
+    setIsSubmitting(true);
+    try {
+      if (onRequestVerification) {
+        await onRequestVerification(rawEmail);
+      } else {
+        const res = await requestSignupCode(rawEmail);
+        const cooldown = res?.data?.resend_cooldown || res?.resend_cooldown || 60;
+        setOtpResendCooldown(cooldown);
+        changeStep('otp');
+      }
+    } catch (err) {
+      setLocalError(err?.message || 'Failed to send verification code. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -97,6 +114,45 @@ export default function SignUpScreen({
   };
 
   const activeError = localError || errorMsg;
+  const isBtnLoading = loading || isSubmitting;
+
+  if (currentStep === 'otp') {
+    return (
+      <VerificationCodeScreen
+        email={email}
+        maskedEmail={email}
+        onVerifyOtp={async (code) => {
+          setOtpLoading(true);
+          try {
+            await verifySignupCode(email, code);
+            changeStep(2);
+          } catch (err) {
+            setLocalError(err?.message || 'Invalid verification code.');
+            throw err;
+          } finally {
+            setOtpLoading(false);
+          }
+        }}
+        onResendOtp={async () => {
+          const res = await resendSignupCode(email);
+          const cooldown = res?.data?.resend_cooldown || res?.resend_cooldown || 60;
+          setOtpResendCooldown(cooldown);
+          return res;
+        }}
+        onChangeEmail={() => {
+          setLocalError('');
+          changeStep(1);
+        }}
+        onCancel={() => {
+          setLocalError('');
+          changeStep(1);
+        }}
+        loading={otpLoading}
+        errorMsg={localError}
+        resendCooldown={otpResendCooldown}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
@@ -197,12 +253,12 @@ export default function SignUpScreen({
 
               {/* Full-width NEXT Button */}
               <TouchableOpacity
-                style={[styles.primaryBtn, loading && { opacity: 0.85 }]}
+                style={[styles.primaryBtn, isBtnLoading && { opacity: 0.85 }]}
                 onPress={handleNextPress}
-                disabled={loading}
+                disabled={isBtnLoading}
                 activeOpacity={0.88}
               >
-                {loading ? (
+                {isBtnLoading ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <Text style={styles.primaryBtnText}>NEXT</Text>

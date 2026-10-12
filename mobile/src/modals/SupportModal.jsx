@@ -41,7 +41,7 @@ export default function SupportModal({
         subject: selectedOrderNumber ? `[Order #${selectedOrderNumber}] ${subject}` : subject,
         message: message.trim(),
         order_number: selectedOrderNumber || '',
-        customer_name: customerName || 'Contractor',
+        customer_name: customerName || 'Customer',
         customer_email: customerEmail || '',
         rating: 5,
       });
@@ -65,9 +65,9 @@ export default function SupportModal({
 
           <View style={styles.modalNav}>
             <View>
-              <Text style={styles.modalNavTitle}>Help &amp; Contractor Support ❓</Text>
+              <Text style={styles.modalNavTitle}>Help &amp; Customer Support ❓</Text>
               <Text style={{ fontSize: 11.5, color: COLORS.textMuted, fontWeight: '500' }}>
-                Direct assistance for hardware orders &amp; site deliveries
+                Direct assistance for hardware orders &amp; home deliveries
               </Text>
             </View>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
@@ -231,7 +231,7 @@ export default function SupportModal({
                     }}
                   >
                     <Text style={{ fontWeight: '900', color: COLORS.textMain, fontSize: 14 }}>
-                      📞 Contractor Dispatch Hotline
+                      📞 Customer Support Hotline
                     </Text>
                     <Text style={{ fontSize: 13, color: COLORS.primaryDark, marginTop: 4, fontWeight: '800' }}>
                       (049) 562-8899 / +63 917 888 5364

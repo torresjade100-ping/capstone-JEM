@@ -30,8 +30,8 @@ export default function GoogleAccountSelectModal({
       initial: 'C',
     },
     {
-      name: 'JEM Contractor',
-      email: 'contractor.jem@gmail.com',
+      name: 'JEM Customer',
+      email: 'customer.jem@gmail.com',
       avatarColor: '#4285F4',
       initial: 'J',
     },

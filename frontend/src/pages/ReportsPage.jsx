@@ -292,7 +292,6 @@ export default function ReportsPage() {
                         gap: '8px'
                       }}
                     >
-                      <span style={{ fontSize: '16px' }}>{method === 'cash' ? '💵' : method === 'gcash' ? '📱' : '💳'}</span>
                       <div>
                         <strong style={{ textTransform: 'uppercase', color: 'var(--text-primary)' }}>{method}</strong>:{' '}
                         <span style={{ color: 'var(--text-secondary)' }}>{count} transactions</span>

@@ -1,27 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
-import { styles, COLORS } from '../styles/appStyles';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, Animated, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { ScreenHeader, GlassIconButton, SearchBar, SectionHeader } from '../components/ui/Primitives';
+import PressableScale from '../components/ui/PressableScale';
+import ProductCard from '../components/ui/ProductCard';
+import { PALETTE, GRADIENTS, RADIUS, SHADOWS, getCategoryVisual } from '../components/ui/theme';
 
 const PROMO_SLIDES = [
   {
-    badge: '🔥 FLASH PROMO',
+    badge: 'FLASH PROMO',
+    badgeIcon: 'flame',
     headline: 'Build Stronger,\nBuild Smarter',
     subheadline: 'Up to 25% off on cement & steel rebar this week',
-    bg: '#ea580c',
+    colors: ['#FF9A4D', '#F97316', '#C2410C'],
+    art: 'wall',
   },
   {
-    badge: '🚚 JOB SITE SPECIAL',
+    badge: 'CUSTOMER SPECIAL',
+    badgeIcon: 'car',
     headline: 'Fast Truck Delivery\nAcross Laguna & Cavite',
-    subheadline: 'Free standard freight on contractor orders ₱8,000+',
-    bg: '#0f172a',
+    subheadline: 'Free standard freight on qualifying orders ₱8,000+',
+    colors: ['#1E2F52', '#14213A', '#0B1220'],
+    art: 'truck-fast',
   },
   {
-    badge: '🛠️ POWER TOOLS',
-    headline: 'Bosch & DeWalt\nContractor Bundles',
-    subheadline: 'Special trade pricing with official brand warranty',
-    bg: '#0369a1',
+    badge: 'POWER TOOLS',
+    badgeIcon: 'construct',
+    headline: 'Bosch & DeWalt\nPower Tool Bundles',
+    subheadline: 'Best retail pricing with official brand warranty',
+    colors: ['#38BDF8', '#0369A1', '#0C4A6E'],
+    art: 'hammer-wrench',
   },
 ];
+
+const VALUE_PROPS = [
+  { icon: 'truck-delivery', title: 'Site Delivery', caption: 'Truck dispatch', tint: PALETTE.orange500, bg: PALETTE.orange50 },
+  { icon: 'shield-check', title: 'PNS / ASTM', caption: 'Certified grade', tint: PALETTE.success, bg: PALETTE.successBg },
+  { icon: 'wallet', title: 'GCash · COD', caption: 'Flexible pay', tint: PALETTE.info, bg: PALETTE.infoBg },
+];
+
+const USE_NATIVE = Platform.OS !== 'web';
+
+const greetingForNow = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+};
 
 export default function HomeTab({
   searchQuery,
@@ -38,270 +64,265 @@ export default function HomeTab({
   userName = '',
 }) {
   const [promoIndex, setPromoIndex] = useState(0);
+  const fade = useRef(new Animated.Value(1)).current;
 
-  // Auto rotate promo slides
+  // Auto rotate promo slides with a soft cross-fade
   useEffect(() => {
     const timer = setInterval(() => {
-      setPromoIndex((prev) => (prev + 1) % PROMO_SLIDES.length);
+      Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: USE_NATIVE }).start(() => {
+        setPromoIndex((prev) => (prev + 1) % PROMO_SLIDES.length);
+        Animated.timing(fade, { toValue: 1, duration: 320, useNativeDriver: USE_NATIVE }).start();
+      });
     }, 4500);
     return () => clearInterval(timer);
   }, []);
 
-  const currentPromo = PROMO_SLIDES[promoIndex];
+  const promo = PROMO_SLIDES[promoIndex];
+  const firstName = userName ? userName.split(' ')[0] : '';
+  const initial = (firstName || 'J').charAt(0).toUpperCase();
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 1. Header with Brand, Search & Action Icons */}
-      <View style={styles.homeHeader}>
-        <View style={styles.homeHeaderTop}>
-          <View style={styles.homeHeaderGreetingRow}>
-            <View style={styles.homeHeaderAvatarBox}>
-              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>J</Text>
-            </View>
-            <View>
-              <Text style={styles.homeHeaderGreeting}>
-                {userName ? `Hello, ${userName.split(' ')[0]}! 👋` : 'Good day! 👋'}
-              </Text>
-              <Text style={styles.homeHeaderBrand}>JEM Hardware</Text>
+      {/* 1. Header */}
+      <ScreenHeader>
+        <View style={s.topRow}>
+          <View style={s.userRow}>
+            <LinearGradient colors={GRADIENTS.orange} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatar}>
+              <Text style={s.avatarText}>{initial}</Text>
+            </LinearGradient>
+            <View style={{ flex: 1 }}>
+              <Text style={s.greeting}>{greetingForNow()}{firstName ? ',' : ''}</Text>
+              <Text style={s.userName} numberOfLines={1}>{firstName || 'Builder'} 👷</Text>
             </View>
           </View>
-
-          <View style={styles.homeHeaderActions}>
-            <TouchableOpacity style={styles.bellBtn} onPress={onOpenNotifications}>
-              <Text style={{ fontSize: 18 }}>🔔</Text>
-              <View style={styles.bellBadgeDot} />
-            </TouchableOpacity>
-          </View>
+          <GlassIconButton icon="notifications-outline" onPress={onOpenNotifications} badge />
         </View>
 
-        {/* Search Bar with Instant Clear */}
-        <View style={styles.homeSearchBox}>
-          <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
-          <TextInput
-            style={styles.homeSearchInput}
-            placeholder="Search cement, lumber, steel, paint, tools..."
-            placeholderTextColor="#94a3b8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-          />
-          {searchQuery ? (
-            <TouchableOpacity style={styles.homeSearchClear} onPress={() => setSearchQuery('')}>
-              <Text style={{ color: '#94a3b8', fontSize: 16, fontWeight: '700' }}>✕</Text>
-            </TouchableOpacity>
-          ) : null}
+        <View style={s.locationRow}>
+          <Ionicons name="location" size={13} color={PALETTE.orange400} />
+          <Text style={s.locationText}>Delivering across Laguna & Cavite</Text>
         </View>
-      </View>
 
-      {/* 2. Scrollable Body Content */}
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search cement, lumber, steel, paint..."
+        />
+      </ScreenHeader>
+
+      {/* 2. Body */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 }}
+        contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
       >
-        {/* 2. Hero Banner Promo Carousel */}
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={[styles.heroBanner, { backgroundColor: currentPromo.bg }]}
-          onPress={onNavigateToCategories}
-        >
-          <View style={styles.heroBannerDeco1} />
-          <View style={styles.heroBannerDeco2} />
+        {!searchQuery ? (
+          <>
+            {/* Hero promo */}
+            <PressableScale onPress={onNavigateToCategories} scaleTo={0.98} style={[s.heroShell, SHADOWS.raised]}>
+              <Animated.View style={{ opacity: fade }}>
+                <LinearGradient colors={promo.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+                  <View style={s.heroRing} />
+                  <View style={s.heroRingSmall} />
+                  <MaterialCommunityIcons name={promo.art} size={118} color="rgba(255,255,255,0.14)" style={s.heroArt} />
 
-          <View>
-            <View style={styles.heroBadgeTag}>
-              <Text style={styles.heroBadgeTagText}>{currentPromo.badge}</Text>
+                  <View style={s.heroBadge}>
+                    <Ionicons name={promo.badgeIcon} size={12} color="#FFFFFF" />
+                    <Text style={s.heroBadgeText}>{promo.badge}</Text>
+                  </View>
+                  <Text style={s.heroHeadline}>{promo.headline}</Text>
+                  <Text style={s.heroSub}>{promo.subheadline}</Text>
+
+                  <View style={s.heroFooter}>
+                    <View style={s.heroCta}>
+                      <Text style={s.heroCtaText}>Shop now</Text>
+                      <Ionicons name="arrow-forward" size={14} color={PALETTE.text} />
+                    </View>
+                    <View style={s.dots}>
+                      {PROMO_SLIDES.map((_, idx) => (
+                        <View key={idx} style={[s.dot, idx === promoIndex && s.dotActive]} />
+                      ))}
+                    </View>
+                  </View>
+                </LinearGradient>
+              </Animated.View>
+            </PressableScale>
+
+            {/* Value props */}
+            <View style={s.valueRow}>
+              {VALUE_PROPS.map((vp) => (
+                <View key={vp.title} style={[s.valueCard, SHADOWS.card]}>
+                  <View style={[s.valueIcon, { backgroundColor: vp.bg }]}>
+                    <MaterialCommunityIcons name={vp.icon} size={18} color={vp.tint} />
+                  </View>
+                  <Text style={s.valueTitle} numberOfLines={1}>{vp.title}</Text>
+                  <Text style={s.valueCaption} numberOfLines={1}>{vp.caption}</Text>
+                </View>
+              ))}
             </View>
-            <Text style={styles.heroHeadline}>{currentPromo.headline}</Text>
-            <Text style={styles.heroSubheadline}>{currentPromo.subheadline}</Text>
-          </View>
 
-          <View style={styles.heroDotsRow}>
-            {PROMO_SLIDES.map((_, idx) => (
-              <View
-                key={idx}
-                style={idx === promoIndex ? styles.heroPillActive : styles.heroDot}
+            {/* Categories */}
+            <SectionHeader
+              title="Shop by Category"
+              caption="Find the right material fast"
+              actionLabel={`All ${categories.length}`}
+              onAction={onNavigateToCategories}
+            />
+            <View style={s.catGrid}>
+              {categories.map((cat, idx) => {
+                const v = getCategoryVisual(cat);
+                return (
+                  <PressableScale
+                    key={cat.id || idx}
+                    onPress={() => onSelectCategory(cat.id, cat.name || cat.title)}
+                    style={s.catItem}
+                    containerStyle={s.catCell}
+                    scaleTo={0.92}
+                  >
+                    <LinearGradient colors={v.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.catIcon, SHADOWS.card]}>
+                      <MaterialCommunityIcons name={v.icon} size={24} color="#FFFFFF" />
+                    </LinearGradient>
+                    <Text style={s.catLabel} numberOfLines={2}>{cat.name || cat.title}</Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+
+        {/* Products */}
+        <SectionHeader
+          title={searchQuery ? 'Search Results' : 'Featured Materials'}
+          caption={
+            searchQuery
+              ? `${products.length} ${products.length === 1 ? 'match' : 'matches'} for “${searchQuery}”`
+              : 'Top picks from customers this week'
+          }
+          actionLabel={searchQuery ? null : 'Catalog'}
+          onAction={onNavigateToCategories}
+        />
+
+        {products.length === 0 ? (
+          <View style={[s.noResults, SHADOWS.card]}>
+            <Ionicons name="search-outline" size={28} color={PALETTE.textFaint} />
+            <Text style={s.noResultsTitle}>No materials found</Text>
+            <Text style={s.noResultsText}>Try a different keyword or brand name.</Text>
+          </View>
+        ) : (
+          <View style={s.grid}>
+            {products.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isWished={wishlist.includes(product.id)}
+                onPress={() => onSelectProduct(product)}
+                onToggleWish={() => toggleWishlist(product.id)}
+                onAdd={() => addToCart(product, 1)}
               />
             ))}
           </View>
-        </TouchableOpacity>
-
-        {/* 3. Value Props Row */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            backgroundColor: '#ffffff',
-            borderRadius: 14,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: COLORS.border,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 16 }}>🚚</Text>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textBody }}>
-              Site Truck Delivery
-            </Text>
-          </View>
-          <View style={{ width: 1, height: 16, backgroundColor: COLORS.border }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 16 }}>🛡️</Text>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textBody }}>
-              PNS / ASTM Quality
-            </Text>
-          </View>
-          <View style={{ width: 1, height: 16, backgroundColor: COLORS.border }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 16 }}>💳</Text>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textBody }}>
-              GCash / Maya / COD
-            </Text>
-          </View>
-        </View>
-
-        {/* 4. Shop by Category Section */}
-        <View style={styles.sectionTitleRow}>
-          <View style={styles.sectionTitleWithIcon}>
-            <Text style={{ fontSize: 18 }}>🏗️</Text>
-            <Text style={styles.sectionHeaderTitle}>Shop by Category</Text>
-          </View>
-          <TouchableOpacity onPress={onNavigateToCategories}>
-            <Text style={styles.seeAllOrangeLink}>View All ({categories.length}) ›</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Category Grid (4x2) */}
-        <View style={styles.categoryGrid4x2}>
-          {categories.map((cat, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={styles.categoryCardItem}
-              onPress={() => onSelectCategory(cat.id, cat.name || cat.title)}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.categoryIconBadge, { backgroundColor: cat.bg || '#f1f5f9' }]}>
-                <Text style={{ fontSize: 24 }}>{cat.icon || '🧱'}</Text>
-              </View>
-              <Text style={styles.categoryCardLabel} numberOfLines={1}>
-                {cat.name || cat.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* 5. Featured / Best Seller Construction Supplies */}
-        <View style={styles.sectionTitleRow}>
-          <View style={styles.sectionTitleWithIcon}>
-            <Text style={{ fontSize: 18 }}>⭐</Text>
-            <Text style={styles.sectionHeaderTitle}>Featured Materials</Text>
-          </View>
-          <TouchableOpacity onPress={onNavigateToCategories}>
-            <Text style={styles.seeAllOrangeLink}>Catalog ›</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 2-Column Product Grid */}
-        <View style={styles.featuredProductGrid}>
-          {products.map((product) => {
-            const isWish = wishlist.includes(product.id);
-            const isLowStock = Number(product.stock_quantity || 0) <= 30;
-            const isOutOfStock = Number(product.stock_quantity || 0) === 0;
-
-            return (
-              <TouchableOpacity
-                key={product.id}
-                style={styles.featuredCard}
-                onPress={() => onSelectProduct(product)}
-                activeOpacity={0.88}
-              >
-                <View style={styles.featuredThumbBox}>
-                  {product.discount_pct ? (
-                    <View style={styles.discountTagBadge}>
-                      <Text style={styles.discountTagText}>{product.discount_pct}</Text>
-                    </View>
-                  ) : null}
-
-                  <TouchableOpacity
-                    style={styles.heartBtn}
-                    onPress={() => toggleWishlist(product.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 16 }}>{isWish ? '❤️' : '🤍'}</Text>
-                  </TouchableOpacity>
-
-                  <Text style={{ fontSize: 50 }}>{product.emoji || '🧱'}</Text>
-
-                  {/* Stock pill */}
-                  <View
-                    style={[
-                      styles.stockPillBadge,
-                      isOutOfStock && { backgroundColor: COLORS.danger },
-                      isLowStock && !isOutOfStock && { backgroundColor: '#d97706' },
-                    ]}
-                  >
-                    <Text style={styles.stockPillText}>
-                      {isOutOfStock
-                        ? 'Out of Stock'
-                        : isLowStock
-                        ? `Only ${product.stock_quantity} left`
-                        : `${product.stock_quantity} in stock`}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.featuredCardBody}>
-                  <View style={styles.featuredBrandRow}>
-                    <Text style={styles.featuredBrandName} numberOfLines={1}>
-                      {product.brand}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: COLORS.textMuted }}>
-                      {product.unit || 'unit'}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.featuredProductName} numberOfLines={2}>
-                    {product.name}
-                  </Text>
-
-                  <View style={styles.featuredRatingRow}>
-                    <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: '800' }}>
-                      ★ {product.rating || '4.9'}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: COLORS.textMuted, marginLeft: 4 }}>
-                      ({product.reviews || 128})
-                    </Text>
-                  </View>
-
-                  <View style={styles.featuredPriceRow}>
-                    <View>
-                      <Text style={styles.featuredProductPrice}>
-                        ₱{Number(product.base_price || 0).toLocaleString()}
-                      </Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.featuredAddBtn,
-                        isOutOfStock && { backgroundColor: '#cbd5e1' },
-                      ]}
-                      onPress={() => addToCart(product, 1)}
-                      disabled={isOutOfStock}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.featuredAddBtnText}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        )}
       </ScrollView>
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, paddingRight: 12 },
+  avatar: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', ...SHADOWS.orange },
+  avatarText: { color: '#FFFFFF', fontSize: 19, fontWeight: '900' },
+  greeting: { fontSize: 12.5, color: '#9AA8BF', fontWeight: '600' },
+  userName: { fontSize: 21, color: '#FFFFFF', fontWeight: '900', letterSpacing: -0.4, marginTop: 1 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14 },
+  locationText: { fontSize: 12, color: '#CBD5E1', fontWeight: '600' },
+
+  scroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 120 },
+
+  heroShell: { borderRadius: RADIUS.xl, marginBottom: 16 },
+  hero: { borderRadius: RADIUS.xl, padding: 20, minHeight: 186, overflow: 'hidden' },
+  heroRing: {
+    position: 'absolute',
+    right: -50,
+    top: -50,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 26,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  heroRingSmall: {
+    position: 'absolute',
+    right: 70,
+    bottom: -40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  heroArt: { position: 'absolute', right: -6, bottom: 8 },
+  heroBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.pill,
+    marginBottom: 12,
+  },
+  heroBadgeText: { color: '#FFFFFF', fontSize: 10.5, fontWeight: '900', letterSpacing: 1 },
+  heroHeadline: { fontSize: 23, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.6, lineHeight: 28 },
+  heroSub: { fontSize: 12.5, color: 'rgba(255,255,255,0.86)', marginTop: 6, fontWeight: '600', maxWidth: '78%' },
+  heroFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+  heroCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: RADIUS.pill,
+  },
+  heroCtaText: { fontSize: 12.5, fontWeight: '900', color: PALETTE.text },
+  dots: { flexDirection: 'row', gap: 5 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  dotActive: { width: 20, backgroundColor: '#FFFFFF' },
+
+  valueRow: { flexDirection: 'row', gap: 10, marginBottom: 26 },
+  valueCard: {
+    flex: 1,
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+  },
+  valueIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  valueTitle: { fontSize: 12, fontWeight: '900', color: PALETTE.text },
+  valueCaption: { fontSize: 10.5, color: PALETTE.textMuted, fontWeight: '600', marginTop: 1 },
+
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 22 },
+  catCell: { width: '25%', paddingHorizontal: 4, marginBottom: 14 },
+  catItem: { alignItems: 'center' },
+  catIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
+  catLabel: { fontSize: 11, fontWeight: '700', color: PALETTE.textBody, textAlign: 'center', lineHeight: 14 },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+
+  noResults: {
+    alignItems: 'center',
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.xl,
+    paddingVertical: 32,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+  },
+  noResultsTitle: { fontSize: 15, fontWeight: '900', color: PALETTE.text, marginTop: 10 },
+  noResultsText: { fontSize: 12.5, color: PALETTE.textMuted, marginTop: 4 },
+});

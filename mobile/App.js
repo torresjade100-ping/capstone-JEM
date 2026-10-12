@@ -3,6 +3,7 @@ import {
   StatusBar,
   View,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -59,6 +60,8 @@ import {
   getStoredUser,
   saveStoredUser,
   getCustomerAddresses,
+  fetchCurrentUser,
+  clearMobileStorage,
 } from './src/api/mobileApi';
 
 // Screens
@@ -158,13 +161,44 @@ function MainApp() {
 
   // 1. Session Restoration & Dynamic Backend API Fetching on Mount
   useEffect(() => {
-    // Restore User Session
-    const storedUser = getStoredUser();
-    if (storedUser) {
-      if (storedUser.name) setAuthName(storedUser.name);
-      if (storedUser.email) setAuthEmail(storedUser.email);
-      if (storedUser.phone) setAuthPhone(storedUser.phone);
-    }
+    // Restore and guard User Session
+    const checkUserSession = async () => {
+      const storedUser = getStoredUser();
+      if (storedUser) {
+        if (storedUser.role && storedUser.role !== 'customer') {
+          await clearMobileStorage();
+          Alert.alert('Access Denied', 'This app is strictly for customer accounts only.');
+          setCurrentScreen('signin');
+          return;
+        }
+        if (storedUser.name) setAuthName(storedUser.name);
+        if (storedUser.email) setAuthEmail(storedUser.email);
+        if (storedUser.phone) setAuthPhone(storedUser.phone);
+      }
+
+      try {
+        const validatedUser = await fetchCurrentUser();
+        if (validatedUser) {
+          if (validatedUser.role && validatedUser.role !== 'customer') {
+            await clearMobileStorage();
+            Alert.alert('Access Denied', 'This app is strictly for customer accounts only.');
+            setCurrentScreen('signin');
+            return;
+          }
+          if (validatedUser.name) setAuthName(validatedUser.name);
+          if (validatedUser.email) setAuthEmail(validatedUser.email);
+          if (validatedUser.phone) setAuthPhone(validatedUser.phone);
+        }
+      } catch (err) {
+        if (err?.message?.includes('customer accounts only') || err?.status === 403) {
+          await clearMobileStorage();
+          Alert.alert('Access Denied', 'This app is strictly for customer accounts only.');
+          setCurrentScreen('signin');
+        }
+      }
+    };
+
+    checkUserSession();
 
     // Restore Wishlist
     if (typeof localStorage !== 'undefined') {
@@ -254,12 +288,22 @@ function MainApp() {
     };
   }, []);
 
-  // 2. Splash Screen Auto Transition
+  // 2. Splash Screen Auto Transition Guard
   useEffect(() => {
     if (currentScreen === 'splash') {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         const user = getStoredUser();
         if (user && user.email) {
+          if (user.role && user.role !== 'customer') {
+            await clearMobileStorage();
+            Alert.alert(
+              'Access Denied',
+              'This app is strictly for customer accounts only.',
+              [{ text: 'OK' }]
+            );
+            setCurrentScreen('signin');
+            return;
+          }
           setCurrentScreen('main');
         } else {
           setCurrentScreen('onboarding');
@@ -286,6 +330,16 @@ function MainApp() {
     setAuthError('');
     try {
       const res = await loginCustomer(authEmail, authPassword);
+      if (res.user?.role && res.user.role !== 'customer') {
+        await clearMobileStorage();
+        Alert.alert(
+          'Access Denied',
+          'This app is strictly for customer accounts only.',
+          [{ text: 'OK' }]
+        );
+        setAuthError('Access denied. This app is strictly for customer accounts only.');
+        return;
+      }
       if (res.user?.name) setAuthName(res.user.name);
       if (res.user?.email) setAuthEmail(res.user.email);
       if (res.user?.phone) setAuthPhone(res.user.phone);
@@ -304,7 +358,16 @@ function MainApp() {
       showToast(`Welcome back, ${res.user?.name || 'Customer'}! 👋`);
       setCurrentScreen('main');
     } catch (err) {
-      setAuthError(err.message || 'Invalid credentials. Please verify your login details.');
+      if (err?.message?.includes('customer accounts only') || err?.status === 403) {
+        Alert.alert(
+          'Access Denied',
+          'This app is strictly for customer accounts only.',
+          [{ text: 'OK' }]
+        );
+        setAuthError('Access denied. This app is strictly for customer accounts only.');
+      } else {
+        setAuthError(err.message || 'Invalid credentials. Please verify your login details.');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -316,18 +379,22 @@ function MainApp() {
     setAuthLoading(true);
     setAuthError('');
     try {
-      await requestSignupCode(targetEmail);
+      const res = await requestSignupCode(targetEmail);
       setAuthEmail(targetEmail);
       setPendingVerificationEmail(targetEmail);
       setMaskedVerificationEmail(targetEmail);
-      setOtpResendCooldown(60);
+      const cooldown = res?.data?.resend_cooldown || res?.resend_cooldown || 60;
+      setOtpResendCooldown(cooldown);
       setOtpError('');
+      // Stop loading state immediately and navigate to 6-digit OTP verification screen
+      setAuthLoading(false);
       setCurrentScreen('verify_signup_email');
       showToast(`Verification code sent to ${targetEmail}! ✉️`);
+      return res;
     } catch (err) {
-      setAuthError(err.message || 'Failed to send verification code.');
-    } finally {
       setAuthLoading(false);
+      setAuthError(err.message || 'Failed to send verification code.');
+      throw err;
     }
   };
 
@@ -872,8 +939,8 @@ function MainApp() {
   // 5. SCREEN: SIGNED-IN MAIN APP (5 TABS)
   // =========================================================================
   return (
-    <SafeAreaView style={[styles.container, isDarkMode && { backgroundColor: themeColors.bgPage }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={isDarkMode ? themeColors.bgPage : '#131d2e'} />
+    <SafeAreaView edges={['left', 'right']} style={[styles.container, isDarkMode && { backgroundColor: themeColors.bgPage }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
 
       {/* Floating Toast Notification */}
       <Toast message={toast} />

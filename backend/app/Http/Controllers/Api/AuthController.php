@@ -125,6 +125,19 @@ class AuthController extends Controller
             ], 403);
         }
 
+        // Strict role check for mobile client requests
+        $isMobile = $request->header('X-App-Platform') === 'mobile'
+            || $request->input('source') === 'mobile'
+            || $request->input('client') === 'mobile'
+            || $request->input('platform') === 'mobile'
+            || $request->is('api/mobile/*');
+
+        if ($isMobile && $user->role !== 'customer') {
+            return response()->json([
+                'message' => 'Access denied. This app is strictly for customer accounts only.',
+            ], 403);
+        }
+
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
@@ -137,6 +150,34 @@ class AuthController extends Controller
         ]);
     }
 
+    public function user(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $isMobile = $request->header('X-App-Platform') === 'mobile'
+            || $request->input('source') === 'mobile'
+            || $request->input('client') === 'mobile'
+            || $request->input('platform') === 'mobile'
+            || $request->is('api/mobile/*');
+
+        if ($isMobile && $user->role !== 'customer') {
+            return response()->json([
+                'message' => 'Access denied. This app is strictly for customer accounts only.',
+            ], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'status']),
+                'customer' => $user->customer,
+            ],
+            'user' => $user->only(['id', 'name', 'email', 'phone', 'role', 'status']),
+        ]);
+    }
 
     public function logout(Request $request): JsonResponse
     {
@@ -224,17 +265,22 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Rate limiting: 60-second cooldown between code requests for this email
+        // If a code was recently dispatched (within 60 seconds) and is not expired,
+        // succeed and pass cooldown so the user can advance to enter their OTP!
         $existing = EmailVerificationCode::where('email', $email)->first();
-        if ($existing && $existing->updated_at) {
+        if ($existing && $existing->updated_at && ! $existing->isExpired()) {
             $elapsedSeconds = $existing->updated_at->diffInSeconds(now());
             if ($elapsedSeconds < 60) {
-                $cooldownRemaining = 60 - $elapsedSeconds;
+                $cooldownRemaining = max(1, 60 - $elapsedSeconds);
                 return response()->json([
-                    'success' => false,
-                    'message' => "Please wait {$cooldownRemaining} seconds before requesting a new code.",
-                    'cooldown_remaining' => $cooldownRemaining,
-                ], 429);
+                    'success' => true,
+                    'message' => 'Verification code already sent to your email. Please check your inbox.',
+                    'data' => [
+                        'email' => $email,
+                        'expires_in' => 600,
+                        'resend_cooldown' => $cooldownRemaining,
+                    ],
+                ]);
             }
         }
 
@@ -269,7 +315,7 @@ class AuthController extends Controller
                 'expires_in' => 600,
                 'resend_cooldown' => 60,
             ],
-        ]);
+        ])->header('Connection', 'close');
     }
 
     /**
@@ -366,7 +412,7 @@ class AuthController extends Controller
             'data' => [
                 'email' => $email,
             ],
-        ]);
+        ])->header('Connection', 'close');
     }
 
     /**
@@ -440,7 +486,7 @@ class AuthController extends Controller
                 'expires_in' => 600,
                 'resend_cooldown' => 60,
             ],
-        ]);
+        ])->header('Connection', 'close');
     }
 
     /**

@@ -15,7 +15,7 @@ const INITIAL_NOTIFICATIONS = [
   {
     id: 2,
     title: '🏷️ Flash Sale: 25% Off Cement',
-    desc: 'Holcim & Republic Portland cement bags on special contractor promo today!',
+    desc: 'Holcim & Republic Portland cement bags on special retail promo today!',
     time: '2h ago',
     type: 'promo',
     isUnread: true,
@@ -31,7 +31,7 @@ const INITIAL_NOTIFICATIONS = [
   {
     id: 4,
     title: '🎉 Welcome to JEM Hardware',
-    desc: 'Thank you for joining our contractor network. Enjoy fast trade dispatch!',
+    desc: 'Thank you for shopping with JEM Hardware. Enjoy fast delivery to your doorstep!',
     time: '3d ago',
     type: 'general',
     isUnread: false,

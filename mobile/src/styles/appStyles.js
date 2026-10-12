@@ -1034,6 +1034,21 @@ export const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
+  profileCustomerBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(249, 115, 22, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.4)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  profileCustomerBadgeText: {
+    color: '#fed7aa',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
   profileContractorBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(249, 115, 22, 0.2)',

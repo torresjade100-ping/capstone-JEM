@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
-import { styles, COLORS } from '../styles/appStyles';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { ScreenHeader, GradientButton, EmptyState } from '../components/ui/Primitives';
+import PressableScale from '../components/ui/PressableScale';
+import { PALETTE, GRADIENTS, RADIUS, SHADOWS, peso } from '../components/ui/theme';
+
+const PAYMENT_OPTIONS = [
+  { id: 'gcash', title: 'GCash E-Wallet', desc: 'Instant mobile checkout', icon: 'phone-portrait-outline', tint: '#0EA5E9', bg: '#F0F9FF' },
+  { id: 'maya', title: 'Maya E-Wallet', desc: 'Secure QR & digital payment', icon: 'wallet-outline', tint: '#10B981', bg: '#ECFDF5' },
+  { id: 'bank_transfer', title: 'Bank Transfer', desc: 'BDO, BPI, UnionBank direct', icon: 'business-outline', tint: '#6366F1', bg: '#EEF2FF' },
+  { id: 'cod', title: 'Cash on Delivery (COD)', desc: 'Pay driver upon site unloading', icon: 'cash-outline', tint: '#F97316', bg: '#FFF7ED' },
+];
 
 export default function CartTab({
   cart = [],
@@ -12,7 +23,6 @@ export default function CartTab({
   paymentMethod = 'gcash',
   setPaymentMethod,
   cartSubtotal = 0,
-  cartTotal = 0,
   deliveryType = 'delivery',
   setDeliveryType,
   deliveryFee = 200,
@@ -41,351 +51,631 @@ export default function CartTab({
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 1. Cart Header */}
-      <View style={styles.cartTopHeader}>
-        <View>
-          <Text style={styles.cartTopTitle}>Shopping Cart</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted, fontWeight: '500', marginTop: 2 }}>
-            Review hardware items before checkout
-          </Text>
-        </View>
+      {/* 1. Header */}
+      <ScreenHeader
+        eyebrow="Order Preparation"
+        title="Shopping Cart"
+        subtitle={
+          cart.length > 0
+            ? `${totalItemCount} ${totalItemCount === 1 ? 'material' : 'materials'} ready for checkout`
+            : 'Review selected hardware supplies'
+        }
+        right={
+          cart.length > 0 ? (
+            <View style={s.countBadge}>
+              <Text style={s.countBadgeText}>{totalItemCount}</Text>
+            </View>
+          ) : null
+        }
+      />
 
-        {cart.length > 0 && (
-          <View style={styles.cartItemBadgeCount}>
-            <Text style={styles.cartItemBadgeCountText}>
-              {totalItemCount} {totalItemCount === 1 ? 'item' : 'items'}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* 2. Scrollable Cart Content */}
+      {/* 2. Scrollable Body */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
       >
         {cart.length === 0 ? (
-        <View style={styles.cartEmptyContainer}>
-          <View style={styles.cartEmptyIconCircle}>
-            <Text style={{ fontSize: 54 }}>🛒</Text>
-          </View>
-          <Text style={styles.cartEmptyTitle}>Your cart is empty</Text>
-          <Text style={styles.cartEmptySubtitle}>
-            Browse our materials catalog and add cement, lumber, steel, and tools to your cart.
-          </Text>
-          <TouchableOpacity style={styles.startShoppingBtn} onPress={onStartShopping} activeOpacity={0.85}>
-            <Text style={styles.startShoppingBtnText}>Browse Materials Catalog 🏗️</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-          {/* 3. Delivery Method Toggle (Truck Delivery vs Store Pickup) */}
-          <View style={{ marginBottom: 14 }}>
-            <Text style={{ fontSize: 12.5, fontWeight: '800', color: COLORS.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Fulfillment Method
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  borderRadius: 12,
-                  backgroundColor: deliveryType === 'delivery' ? COLORS.primaryLight : COLORS.surface,
-                  borderWidth: 1.5,
-                  borderColor: deliveryType === 'delivery' ? COLORS.primary : COLORS.border,
-                  alignItems: 'center',
-                }}
+          <EmptyState
+            icon="cart-outline"
+            title="Your cart is empty"
+            message="Explore our hardware catalog to add cement, rebar, plywood, and electrical supplies."
+            actionLabel="Explore Materials Catalog"
+            onAction={onStartShopping}
+          />
+        ) : (
+          <>
+            {/* Fulfillment Mode Toggle */}
+            <Text style={s.groupLabel}>Fulfillment Method</Text>
+            <View style={s.fulfillmentRow}>
+              <PressableScale
                 onPress={() => setDeliveryType && setDeliveryType('delivery')}
-                activeOpacity={0.8}
+                style={[
+                  s.methodCard,
+                  SHADOWS.card,
+                  deliveryType === 'delivery' && s.methodCardActive,
+                ]}
+                scaleTo={0.97}
               >
-                <Text style={{ fontSize: 13, fontWeight: '800', color: deliveryType === 'delivery' ? COLORS.primaryDark : COLORS.textMain }}>
-                  🚚 Truck Freight
+                <View style={s.methodIconWrap}>
+                  <Ionicons
+                    name="car"
+                    size={22}
+                    color={deliveryType === 'delivery' ? PALETTE.orange600 : PALETTE.textMuted}
+                  />
+                </View>
+                <Text
+                  style={[
+                    s.methodTitle,
+                    deliveryType === 'delivery' && { color: PALETTE.orange700 },
+                  ]}
+                >
+                  Truck Freight
                 </Text>
-                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
-                  ₱200 Job Site Dispatch
-                </Text>
-              </TouchableOpacity>
+                <Text style={s.methodSub}>₱200 Site Dispatch</Text>
+                {deliveryType === 'delivery' && (
+                  <View style={s.activeCheck}>
+                    <Ionicons name="checkmark-circle" size={18} color={PALETTE.orange600} />
+                  </View>
+                )}
+              </PressableScale>
 
-              <TouchableOpacity
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  borderRadius: 12,
-                  backgroundColor: deliveryType === 'pickup' ? COLORS.primaryLight : COLORS.surface,
-                  borderWidth: 1.5,
-                  borderColor: deliveryType === 'pickup' ? COLORS.primary : COLORS.border,
-                  alignItems: 'center',
-                }}
+              <PressableScale
                 onPress={() => setDeliveryType && setDeliveryType('pickup')}
-                activeOpacity={0.8}
+                style={[
+                  s.methodCard,
+                  SHADOWS.card,
+                  deliveryType === 'pickup' && s.methodCardActive,
+                ]}
+                scaleTo={0.97}
               >
-                <Text style={{ fontSize: 13, fontWeight: '800', color: deliveryType === 'pickup' ? COLORS.primaryDark : COLORS.textMain }}>
-                  🏬 Yard Pickup
+                <View style={s.methodIconWrap}>
+                  <Ionicons
+                    name="business"
+                    size={22}
+                    color={deliveryType === 'pickup' ? PALETTE.orange600 : PALETTE.textMuted}
+                  />
+                </View>
+                <Text
+                  style={[
+                    s.methodTitle,
+                    deliveryType === 'pickup' && { color: PALETTE.orange700 },
+                  ]}
+                >
+                  Yard Pickup
                 </Text>
-                <Text style={{ fontSize: 11, color: COLORS.success, marginTop: 2, fontWeight: '700' }}>
+                <Text style={[s.methodSub, { color: PALETTE.successDeep, fontWeight: '800' }]}>
                   FREE (₱0 Freight)
                 </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* 4. Delivery Destination Card / Pickup Location */}
-          <TouchableOpacity
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: 16,
-              padding: 14,
-              marginBottom: 14,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              flexDirection: 'row',
-              alignItems: 'center',
-            }}
-            onPress={deliveryType === 'delivery' ? onChangeAddress : null}
-            activeOpacity={deliveryType === 'delivery' ? 0.75 : 1}
-          >
-            <Text style={{ fontSize: 24, marginRight: 10 }}>
-              {deliveryType === 'delivery' ? '📍' : '🏬'}
-            </Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.primaryDark, textTransform: 'uppercase' }}>
-                {deliveryType === 'delivery' ? 'Job Site Delivery Address' : 'Pickup Store Station'}
-              </Text>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textMain, marginTop: 2 }}>
-                {deliveryType === 'delivery' ? deliveryAddress : 'JEM Main Yard, National Highway, Santa Rosa, Laguna'}
-              </Text>
-            </View>
-            {deliveryType === 'delivery' && (
-              <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 12, marginLeft: 8 }}>
-                Change ›
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {/* 5. Cart Items List */}
-          <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.textMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Selected Materials ({cart.length})
-          </Text>
-
-          {cart.map((item) => {
-            const itemPrice = Number(item.base_price || item.price || 0);
-            const lineTotal = itemPrice * item.quantity;
-
-            return (
-              <View key={item.id + (item.product_variant_id ? `-${item.product_variant_id}` : '')} style={styles.cartItemCard}>
-                <View style={styles.cartItemThumb}>
-                  <Text style={{ fontSize: 32 }}>{item.emoji || '🧱'}</Text>
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13.5, fontWeight: '800', color: COLORS.textMain }} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-                  {item.variant_label ? (
-                    <Text style={{ fontSize: 11, color: COLORS.primaryDark, fontWeight: '700', marginTop: 1 }}>
-                      Spec: {item.variant_label}
-                    </Text>
-                  ) : null}
-                  <Text style={{ fontSize: 12, color: COLORS.primaryDark, fontWeight: '800', marginTop: 2 }}>
-                    ₱{itemPrice.toLocaleString()} <Text style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: '400' }}>/ {item.unit || 'unit'}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 11.5, color: COLORS.textMuted, fontWeight: '600' }}>
-                    Line Total: ₱{lineTotal.toLocaleString()}
-                  </Text>
-                </View>
-
-                {/* Quantity Controls */}
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <TouchableOpacity
-                    style={styles.cartItemDeleteBtn}
-                    onPress={() => updateQuantity(item.id, -item.quantity)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 14, color: COLORS.danger }}>🗑️</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.cartQtyControls}>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => updateQuantity(item.id, -1)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.qtyBtnText}>-</Text>
-                    </TouchableOpacity>
-
-                    <Text style={styles.qtyValueText}>{item.quantity}</Text>
-
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => updateQuantity(item.id, 1)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.qtyBtnText}>+</Text>
-                    </TouchableOpacity>
+                {deliveryType === 'pickup' && (
+                  <View style={s.activeCheck}>
+                    <Ionicons name="checkmark-circle" size={18} color={PALETTE.orange600} />
                   </View>
-                </View>
-              </View>
-            );
-          })}
-
-          {/* 6. Voucher Code Input */}
-          <View style={styles.voucherBox}>
-            <TextInput
-              style={styles.voucherInput}
-              placeholder="Voucher Code (e.g. JEMBUILD10)"
-              placeholderTextColor="#94a3b8"
-              value={voucher}
-              onChangeText={setVoucher}
-              autoCapitalize="characters"
-            />
-
-            <TouchableOpacity style={styles.voucherBtn} onPress={onApplyVoucher} activeOpacity={0.8}>
-              <Text style={styles.voucherBtnText}>Apply</Text>
-            </TouchableOpacity>
-          </View>
-
-          {discount > 0 && (
-            <View
-              style={{
-                backgroundColor: COLORS.successBg,
-                borderWidth: 1,
-                borderColor: COLORS.successBorder,
-                padding: 10,
-                borderRadius: 12,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ fontSize: 16 }}>🎉</Text>
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: COLORS.success }}>
-                Voucher applied: ₱{discount.toLocaleString()} savings deducted!
-              </Text>
+                )}
+              </PressableScale>
             </View>
-          )}
 
-          {/* 7. Payment Method Selector */}
-          <View style={{ marginVertical: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '800', marginBottom: 8, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Select Payment Method
-            </Text>
+            {/* Destination Address Card */}
+            <PressableScale
+              onPress={deliveryType === 'delivery' ? onChangeAddress : null}
+              disabled={deliveryType !== 'delivery'}
+              style={[s.addressCard, SHADOWS.card]}
+              scaleTo={0.98}
+            >
+              <LinearGradient
+                colors={deliveryType === 'delivery' ? GRADIENTS.orange : ['#64748B', '#334155']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.addressIconBox}
+              >
+                <Ionicons
+                  name={deliveryType === 'delivery' ? 'location' : 'storefront'}
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </LinearGradient>
 
-            {[
-              { id: 'gcash', title: 'GCash E-Wallet', desc: 'Instant mobile wallet payment', icon: '📱' },
-              { id: 'maya', title: 'Maya E-Wallet', desc: 'Fast digital checkout', icon: '💚' },
-              { id: 'bank_transfer', title: 'BDO / BPI Bank Transfer', desc: 'Direct online bank deposit', icon: '🏦' },
-              { id: 'cod', title: 'Cash on Delivery (COD)', desc: 'Pay truck driver upon site unloading', icon: '💵' },
-            ].map((pm) => {
-              const isSelected = paymentMethod === pm.id;
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Text style={s.addressTag}>
+                  {deliveryType === 'delivery' ? 'Job Site Delivery Address' : 'Pickup Store Yard'}
+                </Text>
+                <Text style={s.addressText} numberOfLines={2}>
+                  {deliveryType === 'delivery'
+                    ? deliveryAddress
+                    : 'JEM Main Yard, National Highway, Santa Rosa, Laguna'}
+                </Text>
+              </View>
+
+              {deliveryType === 'delivery' && (
+                <View style={s.changeBtn}>
+                  <Text style={s.changeBtnText}>Change</Text>
+                  <Ionicons name="chevron-forward" size={14} color={PALETTE.orange600} />
+                </View>
+              )}
+            </PressableScale>
+
+            {/* Cart Items List */}
+            <View style={s.sectionHeaderRow}>
+              <Text style={s.groupLabel}>Selected Materials ({cart.length})</Text>
+              <Text style={s.sectionHeaderHelp}>Slide or tap to adjust qty</Text>
+            </View>
+
+            {cart.map((item) => {
+              const itemPrice = Number(item.base_price || item.price || 0);
+              const lineTotal = itemPrice * item.quantity;
+              const cartKey =
+                item.cart_key ||
+                `${item.id}${item.product_variant_id ? `-${item.product_variant_id}` : ''}`;
+
               return (
-                <TouchableOpacity
-                  key={pm.id}
-                  style={[styles.payOption, isSelected && styles.payOptionActive]}
-                  onPress={() => setPaymentMethod(pm.id)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.payOptionLeft}>
-                    <Text style={{ fontSize: 24 }}>{pm.icon}</Text>
-                    <View>
-                      <Text style={styles.payOptionLabel}>{pm.title}</Text>
-                      <Text style={{ fontSize: 11.5, color: COLORS.textMuted }}>{pm.desc}</Text>
+                <View key={cartKey} style={[s.itemCard, SHADOWS.card]}>
+                  <LinearGradient colors={GRADIENTS.thumb} style={s.itemThumb}>
+                    <Text style={s.itemEmoji}>{item.emoji || '🧱'}</Text>
+                  </LinearGradient>
+
+                  <View style={{ flex: 1, paddingHorizontal: 10 }}>
+                    <Text style={s.itemName} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    {item.variant_label ? (
+                      <View style={s.variantPill}>
+                        <Text style={s.variantText}>Spec: {item.variant_label}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={s.itemUnitPrice}>
+                      {peso(itemPrice)}{' '}
+                      <Text style={s.itemUnit}>/ {item.unit || 'unit'}</Text>
+                    </Text>
+                    <Text style={s.itemLineTotal}>Line Total: {peso(lineTotal)}</Text>
+                  </View>
+
+                  {/* Actions & Stepper */}
+                  <View style={s.itemRightCol}>
+                    <TouchableOpacity
+                      style={s.deleteBtn}
+                      onPress={() => updateQuantity(item.id, -item.quantity)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={PALETTE.danger} />
+                    </TouchableOpacity>
+
+                    <View style={s.stepper}>
+                      <PressableScale
+                        onPress={() => updateQuantity(item.id, -1)}
+                        style={s.stepBtn}
+                        scaleTo={0.85}
+                      >
+                        <Ionicons name="remove" size={15} color={PALETTE.text} />
+                      </PressableScale>
+
+                      <Text style={s.stepVal}>{item.quantity}</Text>
+
+                      <PressableScale
+                        onPress={() => updateQuantity(item.id, 1)}
+                        style={[s.stepBtn, s.stepBtnAdd]}
+                        scaleTo={0.85}
+                      >
+                        <Ionicons name="add" size={15} color="#FFFFFF" />
+                      </PressableScale>
                     </View>
                   </View>
-
-                  <Text style={{ fontSize: 16, color: isSelected ? COLORS.primary : '#cbd5e1', fontWeight: '900' }}>
-                    {isSelected ? '●' : '○'}
-                  </Text>
-                </TouchableOpacity>
+                </View>
               );
             })}
 
-            {/* Digital Payment Reference Number simulation input */}
-            {(paymentMethod === 'gcash' || paymentMethod === 'maya' || paymentMethod === 'bank_transfer') && (
-              <View style={{ marginTop: 8, backgroundColor: '#f8fafc', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 }}>
-                  Transaction Reference / Deposit Slip No. (Optional):
-                </Text>
+            {/* Voucher Box */}
+            <Text style={[s.groupLabel, { marginTop: 18 }]}>Voucher Discount</Text>
+            <View style={s.voucherRow}>
+              <View style={s.voucherInputWrap}>
+                <Ionicons name="ticket-outline" size={18} color="#94A3B8" />
                 <TextInput
-                  style={{
-                    backgroundColor: '#ffffff',
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    fontSize: 13,
-                    color: COLORS.textMain,
-                  }}
+                  style={s.voucherInput}
+                  placeholder="Enter promo code (e.g. BUILD10)"
+                  placeholderTextColor="#94A3B8"
+                  value={voucher}
+                  onChangeText={setVoucher}
+                  autoCapitalize="characters"
+                />
+              </View>
+
+              <PressableScale onPress={onApplyVoucher} scaleTo={0.92}>
+                <LinearGradient
+                  colors={GRADIENTS.midnight}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={s.voucherBtn}
+                >
+                  <Text style={s.voucherBtnText}>Apply</Text>
+                </LinearGradient>
+              </PressableScale>
+            </View>
+
+            {discount > 0 && (
+              <View style={s.discountAppliedBox}>
+                <Ionicons name="sparkles" size={16} color={PALETTE.success} />
+                <Text style={s.discountAppliedText}>
+                  Voucher applied! Saved {peso(discount)} on this order
+                </Text>
+              </View>
+            )}
+
+            {/* Payment Method Selector */}
+            <Text style={[s.groupLabel, { marginTop: 20 }]}>Select Payment Option</Text>
+            <View style={s.paymentList}>
+              {PAYMENT_OPTIONS.map((pm) => {
+                const isSelected = paymentMethod === pm.id;
+                return (
+                  <PressableScale
+                    key={pm.id}
+                    onPress={() => setPaymentMethod(pm.id)}
+                    style={[
+                      s.paymentCard,
+                      SHADOWS.card,
+                      isSelected && s.paymentCardActive,
+                    ]}
+                    scaleTo={0.98}
+                  >
+                    <View style={[s.paymentIconBox, { backgroundColor: pm.bg }]}>
+                      <Ionicons name={pm.icon} size={22} color={pm.tint} />
+                    </View>
+
+                    <View style={{ flex: 1, paddingHorizontal: 12 }}>
+                      <Text style={[s.paymentTitle, isSelected && { color: PALETTE.orange700 }]}>
+                        {pm.title}
+                      </Text>
+                      <Text style={s.paymentDesc}>{pm.desc}</Text>
+                    </View>
+
+                    <View style={[s.radioCircle, isSelected && s.radioCircleActive]}>
+                      {isSelected ? <View style={s.radioDot} /> : null}
+                    </View>
+                  </PressableScale>
+                );
+              })}
+            </View>
+
+            {/* Reference input for digital payments */}
+            {(paymentMethod === 'gcash' ||
+              paymentMethod === 'maya' ||
+              paymentMethod === 'bank_transfer') && (
+              <View style={[s.refBox, SHADOWS.card]}>
+                <Text style={s.refLabel}>Payment Reference / Trace No. (Optional)</Text>
+                <TextInput
+                  style={s.refInput}
                   placeholder="e.g. GCash Ref # 9018-2940-1284"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor="#94A3B8"
                   value={referenceNumber}
                   onChangeText={setReferenceNumber}
                 />
               </View>
             )}
-          </View>
 
-          {/* 8. Price Summary Breakdown */}
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryHeader}>Payment Summary</Text>
+            {/* Summary Breakdown */}
+            <View style={[s.summaryCard, SHADOWS.card]}>
+              <View style={s.summaryHead}>
+                <Ionicons name="receipt-outline" size={17} color={PALETTE.orange600} />
+                <Text style={s.summaryHeadTitle}>Order Breakdown</Text>
+              </View>
 
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Materials Subtotal</Text>
-              <Text style={styles.summaryVal}>₱{Number(cartSubtotal || 0).toLocaleString()}</Text>
-            </View>
+              <View style={s.summaryLine}>
+                <Text style={s.summaryLabel}>Materials Subtotal</Text>
+                <Text style={s.summaryValue}>{peso(cartSubtotal)}</Text>
+              </View>
 
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>
-                {deliveryType === 'pickup' ? 'Yard Store Pickup' : 'Site Delivery Freight'}
-              </Text>
-              <Text style={[styles.summaryVal, deliveryType === 'pickup' && { color: COLORS.success, fontWeight: '800' }]}>
-                {deliveryType === 'pickup' ? 'FREE (₱0)' : `₱${effectiveFreight}`}
-              </Text>
-            </View>
-
-            {discount > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: COLORS.success }]}>Promo Discount</Text>
-                <Text style={[styles.summaryVal, { color: COLORS.success }]}>
-                  -₱{Number(discount).toLocaleString()}
+              <View style={s.summaryLine}>
+                <Text style={s.summaryLabel}>
+                  {deliveryType === 'pickup' ? 'Yard Store Pickup' : 'Site Delivery Freight'}
+                </Text>
+                <Text
+                  style={[
+                    s.summaryValue,
+                    deliveryType === 'pickup' && { color: PALETTE.success, fontWeight: '800' },
+                  ]}
+                >
+                  {deliveryType === 'pickup' ? 'FREE (₱0)' : peso(effectiveFreight)}
                 </Text>
               </View>
-            )}
 
-            <View style={[styles.summaryRow, styles.summaryTotalRow]}>
-              <View>
-                <Text style={{ fontSize: 15, fontWeight: '900', color: COLORS.textMain }}>
-                  Total Payment
-                </Text>
-                <Text style={{ fontSize: 11, color: COLORS.textMuted }}>
-                  Includes all applicable taxes &amp; fees
-                </Text>
+              {discount > 0 && (
+                <View style={s.summaryLine}>
+                  <Text style={[s.summaryLabel, { color: PALETTE.success }]}>Promo Discount</Text>
+                  <Text style={[s.summaryValue, { color: PALETTE.success }]}>
+                    -{peso(discount)}
+                  </Text>
+                </View>
+              )}
+
+              <View style={s.summaryTotalLine}>
+                <View>
+                  <Text style={s.totalTitle}>Total Due</Text>
+                  <Text style={s.totalCaption}>VAT inclusive · Official invoice issued</Text>
+                </View>
+                <Text style={s.totalAmount}>{peso(calculatedTotal)}</Text>
               </View>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: COLORS.primaryDark }}>
-                ₱{Number(calculatedTotal || 0).toLocaleString()}
-              </Text>
             </View>
-          </View>
 
-          {/* 9. Checkout Action Button */}
-          <TouchableOpacity
-            style={[styles.primaryAuthBtn, { marginBottom: 30 }]}
-            onPress={handlePlaceOrder}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.primaryAuthBtnText}>
-              Place Order • ₱{Number(calculatedTotal || 0).toLocaleString()} →
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            {/* Primary Action Button */}
+            <GradientButton
+              label={`Place Order · ${peso(calculatedTotal)}`}
+              icon="checkmark-circle"
+              onPress={handlePlaceOrder}
+              style={{ marginTop: 14, marginBottom: 30 }}
+            />
+          </>
+        )}
       </ScrollView>
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  countBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+  },
+  countBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+
+  scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
+
+  groupLabel: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: PALETTE.textMuted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+
+  fulfillmentRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  methodCard: {
+    flex: 1,
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: PALETTE.line,
+    position: 'relative',
+  },
+  methodCardActive: {
+    borderColor: PALETTE.orange400,
+    backgroundColor: PALETTE.orange50,
+  },
+  methodIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: PALETTE.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  methodTitle: { fontSize: 13, fontWeight: '800', color: PALETTE.text },
+  methodSub: { fontSize: 11, color: PALETTE.textMuted, marginTop: 2, fontWeight: '600' },
+  activeCheck: { position: 'absolute', top: 10, right: 10 },
+
+  addressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginBottom: 18,
+  },
+  addressIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  addressTag: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: PALETTE.orange600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  addressText: { fontSize: 13, fontWeight: '700', color: PALETTE.text, marginTop: 2 },
+  changeBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 6 },
+  changeBtnText: { fontSize: 12, fontWeight: '800', color: PALETTE.orange600 },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionHeaderHelp: { fontSize: 11, color: PALETTE.textFaint, fontWeight: '600' },
+
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginBottom: 10,
+  },
+  itemThumb: {
+    width: 58,
+    height: 58,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemEmoji: { fontSize: 32 },
+  itemName: { fontSize: 13.5, fontWeight: '800', color: PALETTE.text, lineHeight: 18 },
+  variantPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: PALETTE.orange50,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+  },
+  variantText: { fontSize: 10, fontWeight: '700', color: PALETTE.orange700 },
+  itemUnitPrice: { fontSize: 12, color: PALETTE.orange600, fontWeight: '800', marginTop: 3 },
+  itemUnit: { color: PALETTE.textMuted, fontWeight: '500' },
+  itemLineTotal: { fontSize: 11.5, color: PALETTE.textMuted, fontWeight: '600', marginTop: 1 },
+
+  itemRightCol: { alignItems: 'flex-end', justifyContent: 'space-between', height: 64 },
+  deleteBtn: { padding: 4 },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PALETTE.surfaceAlt,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    padding: 2,
+    gap: 4,
+  },
+  stepBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: PALETTE.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBtnAdd: { backgroundColor: PALETTE.orange500 },
+  stepVal: { minWidth: 20, textAlign: 'center', fontSize: 12.5, fontWeight: '900', color: PALETTE.text },
+
+  voucherRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  voucherInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    gap: 8,
+  },
+  voucherInput: { flex: 1, fontSize: 13, fontWeight: '700', color: PALETTE.text, paddingVertical: 0 },
+  voucherBtn: {
+    height: 48,
+    paddingHorizontal: 20,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voucherBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  discountAppliedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: PALETTE.successBg,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    padding: 10,
+    borderRadius: RADIUS.md,
+    marginBottom: 8,
+  },
+  discountAppliedText: { fontSize: 12, fontWeight: '800', color: PALETTE.successDeep },
+
+  paymentList: { gap: 8, marginBottom: 10 },
+  paymentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: PALETTE.lineSoft,
+  },
+  paymentCardActive: {
+    borderColor: PALETTE.orange400,
+    backgroundColor: PALETTE.orange50,
+  },
+  paymentIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentTitle: { fontSize: 13.5, fontWeight: '800', color: PALETTE.text },
+  paymentDesc: { fontSize: 11, color: PALETTE.textMuted, marginTop: 1 },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleActive: { borderColor: PALETTE.orange500 },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: PALETTE.orange500 },
+
+  refBox: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginBottom: 12,
+  },
+  refLabel: { fontSize: 11.5, fontWeight: '700', color: PALETTE.textMuted, marginBottom: 6 },
+  refInput: {
+    backgroundColor: PALETTE.surfaceAlt,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 13,
+    color: PALETTE.text,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+  },
+
+  summaryCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.xl,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginVertical: 10,
+  },
+  summaryHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginBottom: 10,
+  },
+  summaryHeadTitle: { fontSize: 13, fontWeight: '900', color: PALETTE.text, letterSpacing: 0.2 },
+  summaryLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  summaryLabel: { fontSize: 13, color: PALETTE.textMuted, fontWeight: '500' },
+  summaryValue: { fontSize: 13, color: PALETTE.text, fontWeight: '700' },
+  summaryTotalLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    borderTopWidth: 1.5,
+    borderColor: PALETTE.line,
+    paddingTop: 12,
+    marginTop: 10,
+  },
+  totalTitle: { fontSize: 15, fontWeight: '900', color: PALETTE.text },
+  totalCaption: { fontSize: 10.5, color: PALETTE.textMuted, marginTop: 1 },
+  totalAmount: { fontSize: 22, fontWeight: '900', color: PALETTE.orange600, letterSpacing: -0.4 },
+});

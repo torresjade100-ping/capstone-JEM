@@ -65,7 +65,7 @@ export default function FeedbackModal({
     '2 ★ Fair - Needs Improvement',
     '3 ★ Good Delivery',
     '4 ★ Very Good Service',
-    '5 ★ Outstanding Contractor Service! 🌟',
+    '5 ★ Outstanding Customer Service! 🌟',
   ];
 
   return (

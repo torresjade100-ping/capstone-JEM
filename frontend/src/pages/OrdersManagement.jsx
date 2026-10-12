@@ -746,7 +746,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
-                                {order.payment_method === 'cod' ? '💵 Cash on Delivery' : (order.payment_method === 'gcash' ? '💳 GCash' : '💚 Maya')}
+                                {order.payment_method === 'cod' ? 'Cash on Delivery' : (order.payment_method === 'gcash' ? 'GCash' : (order.payment_method === 'maya' ? 'Maya' : (order.payment_method || 'Cash')))}
                               </span>
                               <span style={{ fontSize: '10.5px', color: order.payment_method === 'cod' ? '#d97706' : '#059669', fontWeight: '600' }}>
                                 {order.payment_method === 'cod' ? 'Pending Collection' : '✓ Verified Paid'}

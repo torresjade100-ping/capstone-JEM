@@ -224,7 +224,7 @@ export const HARDWARE_PRODUCTS = [
     reviews: 54,
     discount_pct: '-5%',
     emoji: '🏠',
-    description: '1/2" mesh galvanized welded wire screen (4ft width) sold per meter or wholesale roll (₱4,285).'
+    description: '1/2" mesh galvanized welded wire screen (4ft width) sold per meter or full roll (₱4,285).'
   },
   {
     id: 15,
@@ -240,7 +240,7 @@ export const HARDWARE_PRODUCTS = [
     reviews: 48,
     discount_pct: '-5%',
     emoji: '🏠',
-    description: '1" mesh galvanized welded wire screen (4ft width) sold per meter or wholesale roll (₱3,575).'
+    description: '1" mesh galvanized welded wire screen (4ft width) sold per meter or full roll (₱3,575).'
   },
   {
     id: 16,

@@ -4,7 +4,7 @@ import { HARDWARE_PRODUCTS, CATEGORY_ITEMS } from '../data/initialData';
 
 let cachedWorkingBaseUrl = null;
 
-// Dynamic API Base URL resolution for Expo Go, Emulators, Physical Phones, and Web
+// Dynamic API Base URL resolution for Expo Go, Emulators, Physical Phones, Dev Tunnels, and Web
 const getBaseUrls = () => {
   const hostUri =
     Constants?.expoConfig?.hostUri ||
@@ -20,27 +20,56 @@ const getBaseUrls = () => {
     urls.push(cachedWorkingBaseUrl);
   }
 
-  // 2. Detected host from Expo Go on Physical Device / LAN
-  if (detectedHost && !detectedHost.includes('exp.direct') && !detectedHost.includes('ngrok')) {
+  const isHttpsBrowser = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+  const isDevTunnelHost = typeof window !== 'undefined' && window.location?.hostname?.includes('.devtunnels.ms');
+
+  // 2. Microsoft Dev Tunnels auto-detection (when web app is opened on devtunnels.ms)
+  if (isDevTunnelHost) {
+    const webHost = window.location.hostname;
+    const tunnelBackend = webHost.replace(/-\d+\./, '-8000.');
+    urls.push(`https://${tunnelBackend}/api`);
+  }
+
+  // 3. Expo Go on Physical Device using Dev Tunnel hostUri
+  if (detectedHost && detectedHost.includes('.devtunnels.ms')) {
+    const tunnelBackend = detectedHost.replace(/-\d+\./, '-8000.');
+    urls.push(`https://${tunnelBackend}/api`);
+  }
+
+  // 4. In Web Browser Preview (localhost or 127.0.0.1) - prioritize local server directly!
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      urls.push('http://127.0.0.1:8000/api');
+      urls.push('http://localhost:8000/api');
+    } else if (!isDevTunnelHost && !isHttpsBrowser) {
+      urls.push(`http://${host}:8000/api`);
+    }
+  }
+
+  // 5. Standard Localhost Loopback for non-https browser / local node
+  if (!isHttpsBrowser) {
+    urls.push('http://127.0.0.1:8000/api');
+    urls.push('http://localhost:8000/api');
+  }
+
+  // 6. Current Machine Wi-Fi LAN IP (active IPv4 from ipconfig)
+  if (!isHttpsBrowser) {
+    urls.push('http://192.168.254.106:8000/api');
+  }
+
+  // 7. Detected host from Expo Go on Physical Device / LAN
+  if (detectedHost && !detectedHost.includes('exp.direct') && !detectedHost.includes('ngrok') && !detectedHost.includes('.devtunnels.ms') && !isHttpsBrowser) {
     urls.push(`http://${detectedHost}:8000/api`);
   }
 
-  // 3. Current Machine Wi-Fi LAN IP (active IPv4 from ipconfig)
-  urls.push('http://192.168.254.106:8000/api');
-
-  // 4. In Web Browser Preview (e.g., localhost or LAN hostname)
-  if (typeof window !== 'undefined' && window.location?.hostname) {
-    urls.push(`http://${window.location.hostname}:8000/api`);
-  }
-
-  // 5. Android Emulator Loopback
+  // 8. Android Emulator Loopback
   if (Platform.OS === 'android') {
     urls.push('http://10.0.2.2:8000/api');
   }
 
-  // 6. Standard Localhost Loopback
-  urls.push('http://127.0.0.1:8000/api');
-  urls.push('http://localhost:8000/api');
+  // 9. Known active Dev Tunnel backend fallback
+  urls.push('https://hkwb6wps-8000.asse.devtunnels.ms/api');
 
   return Array.from(new Set(urls.filter(Boolean)));
 };
@@ -118,6 +147,24 @@ export function saveLocalRegisteredUser(user, password) {
   }
 }
 
+export async function clearMobileStorage() {
+  cachedAuthToken = null;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem('jem_mobile_token');
+      localStorage.removeItem('jem_mobile_user');
+      localStorage.removeItem('jem_mobile_wishlist');
+    } catch (e) {}
+  }
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const storageObj = AsyncStorage?.default || AsyncStorage;
+    if (storageObj && typeof storageObj.clear === 'function') {
+      await storageObj.clear();
+    }
+  } catch (e) {}
+}
+
 /**
  * Universal safe request helper with timeout and fallback
  */
@@ -126,6 +173,7 @@ async function safeFetch(path, options = {}) {
   const headers = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
+    'X-App-Platform': 'mobile',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
@@ -137,7 +185,8 @@ async function safeFetch(path, options = {}) {
     let timeoutId = null;
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      timeoutId = controller ? setTimeout(() => controller.abort(), 1800) : null;
+      const timeoutMs = (path.includes('/signup') || path.includes('/otp') || path.includes('/auth') || path.includes('/verify') || path.includes('/request-code')) ? 15000 : 10000;
+      timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
       const response = await fetch(`${base}${path}`, {
         ...options,
@@ -145,13 +194,29 @@ async function safeFetch(path, options = {}) {
         signal: controller ? controller.signal : undefined,
       });
 
-      if (timeoutId) clearTimeout(timeoutId);
-
-      const data = await response.json().catch(() => null);
+      // Safely read response text with a bounded timeout so chunked streams never freeze the UI
+      let data = null;
+      try {
+        const textPromise = response.text();
+        const bodyTimeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Body timeout')), 4000)
+        );
+        const text = await Promise.race([textPromise, bodyTimeoutPromise]);
+        if (text) {
+          data = JSON.parse(text);
+        }
+      } catch (readErr) {
+        // If HTTP status is already 2xx OK, treat as success even if body stream stalled
+        if (response.ok) {
+          data = { success: true };
+        }
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
 
       if (response.ok) {
         cachedWorkingBaseUrl = base;
-        return data;
+        return data || { success: true };
       } else {
         const errorMsg = data?.message || `HTTP ${response.status}: Request failed`;
         const serverError = new Error(errorMsg);
@@ -199,6 +264,52 @@ async function safeFetch(path, options = {}) {
 }
 
 /**
+ * Fetch and validate current authenticated user session (/user)
+ * Enforces customer role check.
+ */
+export async function fetchCurrentUser() {
+  const token = getMobileAuthToken();
+  if (!token) return null;
+
+  try {
+    const res = await safeFetch('/user', {
+      method: 'GET',
+    });
+
+    const user = res?.user || res?.data?.user || res?.data;
+    if (user) {
+      if (user.role && user.role !== 'customer') {
+        await clearMobileStorage();
+        const error = new Error('Access denied. This app is strictly for customer accounts only.');
+        error.status = 403;
+        throw error;
+      }
+      saveStoredUser(user);
+      return user;
+    }
+  } catch (err) {
+    const msg = (err?.message || '').toLowerCase();
+    if (msg.includes('customer accounts only') || msg.includes('access denied') || err?.status === 403) {
+      await clearMobileStorage();
+      throw err;
+    }
+    if (err?.status === 401 || msg.includes('401') || msg.includes('unauthenticated')) {
+      await clearMobileStorage();
+      throw err;
+    }
+  }
+
+  const localUser = getStoredUser();
+  if (localUser && localUser.role && localUser.role !== 'customer') {
+    await clearMobileStorage();
+    const error = new Error('Access denied. This app is strictly for customer accounts only.');
+    error.status = 403;
+    throw error;
+  }
+  return localUser;
+}
+
+/**
  * Login Customer
  */
 export async function loginCustomer(emailOrPhone, password) {
@@ -209,21 +320,35 @@ export async function loginCustomer(emailOrPhone, password) {
       body: JSON.stringify({
         email: emailOrPhone.trim(),
         password: password,
+        source: 'mobile',
+        client: 'mobile',
       }),
     });
   } catch (err) {
     const msg = (err?.message || '').toLowerCase();
-    if (msg.includes('invalid credentials') || msg.includes('incorrect password') || msg.includes('401')) {
+    if (
+      msg.includes('access denied') ||
+      msg.includes('customer accounts only') ||
+      msg.includes('403') ||
+      msg.includes('invalid credentials') ||
+      msg.includes('incorrect password') ||
+      msg.includes('401')
+    ) {
       throw err;
     }
   }
 
-  if (backendResponse?.data?.token) {
-    setMobileAuthToken(backendResponse.data.token);
-  }
-
   if (backendResponse?.data?.user) {
     const user = backendResponse.data.user;
+    if (user.role && user.role !== 'customer') {
+      await clearMobileStorage();
+      const err = new Error('Access denied. This app is strictly for customer accounts only.');
+      err.status = 403;
+      throw err;
+    }
+    if (backendResponse?.data?.token) {
+      setMobileAuthToken(backendResponse.data.token);
+    }
     saveStoredUser(user);
     return {
       success: true,
@@ -253,6 +378,13 @@ export async function loginCustomer(emailOrPhone, password) {
     role: 'customer',
     status: 'active',
   };
+
+  if (user.role && user.role !== 'customer') {
+    await clearMobileStorage();
+    const err = new Error('Access denied. This app is strictly for customer accounts only.');
+    err.status = 403;
+    throw err;
+  }
 
   const localToken = 'local-token-' + Date.now();
   setMobileAuthToken(localToken);
@@ -552,7 +684,7 @@ export async function getMobileProducts() {
               : p.category?.name?.toLowerCase().includes('elec')
               ? '⚡'
               : '🪵'),
-          description: p.description || 'Contractor-grade building and hardware supply manufactured strictly to Philippine National Standards (PNS).',
+          description: p.description || 'High quality building and hardware supply manufactured strictly to Philippine National Standards (PNS).',
         };
       });
     }

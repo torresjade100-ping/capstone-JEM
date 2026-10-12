@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { MessageSquare, Send, RefreshCw, AlertCircle, Star } from 'lucide-react'
-import { API_BASE_URL, getAdminFeedback } from '../api'
+import { MessageSquare, Send, RefreshCw, AlertCircle, CheckCircle, Star } from 'lucide-react'
+import { API_BASE_URL, getAdminFeedback, respondToFeedback } from '../api'
 import '../styles/management.css'
 
 export default function FeedbackManagement() {
@@ -10,6 +10,8 @@ export default function FeedbackManagement() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [modalError, setModalError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const token = localStorage.getItem('jem_api_token')
 
   const load = async () => {
@@ -80,6 +82,7 @@ export default function FeedbackManagement() {
       if (match) {
         setSelected(match)
         setResponse(match.admin_response || '')
+        setModalError('')
       }
     }
   }, [feedback])
@@ -88,27 +91,47 @@ export default function FeedbackManagement() {
     event.preventDefault()
     if (!selected || !response.trim()) return
     setSaving(true)
+    setModalError('')
     try {
-      const result = await fetch(`${API_BASE_URL}/admin/feedback/${selected.id}/respond`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          admin_response: response,
-          status: 'responded'
-        })
-      })
-      if (!result.ok) throw new Error('Unable to save response')
+      const trimmedResponse = response.trim()
+      await respondToFeedback(selected.id, trimmedResponse, 'responded')
+
+      // Optimistically update feedback in memory
+      setFeedback((prev) =>
+        prev.map((item) =>
+          item.id === selected.id
+            ? { ...item, admin_response: trimmedResponse, status: 'responded' }
+            : item
+        )
+      )
+
+      // Sync with local shared cache if present
+      try {
+        const localRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('jem_shared_feedbacks') : null
+        if (localRaw) {
+          const localFeedbacks = JSON.parse(localRaw)
+          const updated = localFeedbacks.map((f) =>
+            f.id === selected.id
+              ? { ...f, admin_response: trimmedResponse, status: 'responded' }
+              : f
+          )
+          localStorage.setItem('jem_shared_feedbacks', JSON.stringify(updated))
+        }
+      } catch (e) {}
+
       setSelected(null)
       setResponse('')
+      setSuccessMessage('Store reply saved and delivered to customer successfully!')
+      setTimeout(() => setSuccessMessage(''), 5000)
+
       await load()
     } catch (err) {
-      alert(err.message || 'Response recorded locally!')
-      setSelected(null)
-      setResponse('')
+      console.error('Failed to save feedback response:', err)
+      const message =
+        err.errors && typeof err.errors === 'object'
+          ? Object.values(err.errors).flat().join(' ')
+          : err.message || 'Unable to save response. Please try again.'
+      setModalError(message)
     } finally {
       setSaving(false)
     }
@@ -125,6 +148,13 @@ export default function FeedbackManagement() {
           <RefreshCw size={14} /> Refresh
         </button>
       </div>
+
+      {successMessage && (
+        <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '12px 16px', borderRadius: '8px' }}>
+          <CheckCircle size={16} />
+          <span>{successMessage}</span>
+        </div>
+      )}
 
       {error && (
         <div className="alert alert-info" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
@@ -212,6 +242,7 @@ export default function FeedbackManagement() {
                         onClick={() => {
                           setSelected(item)
                           setResponse(item.admin_response || '')
+                          setModalError('')
                         }}
                       >
                         <Send size={13} /> {item.admin_response ? 'Edit Reply' : 'Respond'}
@@ -235,6 +266,28 @@ export default function FeedbackManagement() {
               </strong>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>{selected.message}</p>
             </div>
+
+            {modalError && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  background: '#fef2f2',
+                  color: '#b91c1c',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  marginBottom: '14px',
+                  lineHeight: '1.4'
+                }}
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
             <form onSubmit={respond}>
               <textarea
                 value={response}

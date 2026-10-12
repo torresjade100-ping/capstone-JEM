@@ -22,6 +22,8 @@ import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
+import SidebarFloatingTooltip from '../components/SidebarFloatingTooltip'
+import useSidebarCollapse from '../hooks/useSidebarCollapse'
 
 const POSPage = lazy(() => import('./POSPage'))
 const OrdersManagement = lazy(() => import('./OrdersManagement'))
@@ -45,7 +47,12 @@ export default function StaffDashboard() {
   const navigate = useNavigate()
 
   const [user, setUser] = useState(() => getStoredUser())
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const {
+    isCollapsed,
+    toggleSidebar,
+    activeTooltip,
+    getTooltipProps,
+  } = useSidebarCollapse()
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [recentTransactions, setRecentTransactions] = useState([])
@@ -333,9 +340,9 @@ export default function StaffDashboard() {
         }
 
         .jem-staff-sidebar {
-          width: 260px;
-          min-width: 260px;
-          flex: 0 0 260px;
+          width: 256px;
+          min-width: 256px;
+          flex: 0 0 256px;
           height: 100vh;
           flex-shrink: 0;
           position: sticky;
@@ -345,32 +352,124 @@ export default function StaffDashboard() {
           box-sizing: border-box;
           background: var(--navy, #17293a);
           color: #dfe7e4;
-          padding: 22px 16px 18px;
+          padding: 22px 14px 18px;
           display: flex;
           flex-direction: column;
           border-right: 1px solid rgba(255,255,255,0.06);
-          transition: width 0.2s ease;
+          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                      min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                      flex-basis 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                      padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
           overflow-y: auto;
           overflow-x: hidden;
         }
 
         .jem-staff-sidebar.collapsed {
-          width: 76px;
-          min-width: 76px;
-          flex-basis: 76px;
+          width: 80px;
+          min-width: 80px;
+          flex-basis: 80px;
+          padding: 22px 12px 18px;
         }
 
         .jem-staff-sidebar.collapsed .jem-brand-copy,
         .jem-staff-sidebar.collapsed .jem-badge,
         .jem-staff-sidebar.collapsed .jem-nav-label,
-        .jem-staff-sidebar.collapsed .jem-nav-indicator {
+        .jem-staff-sidebar.collapsed .jem-nav-indicator,
+        .jem-staff-sidebar.collapsed .jem-collapse-btn {
           display: none;
+        }
+
+        .jem-staff-sidebar.collapsed .jem-brand {
+          justify-content: center;
+          padding: 2px 0 16px;
+        }
+
+        .jem-staff-sidebar.collapsed .jem-brand-main {
+          justify-content: center;
+          width: 100%;
         }
 
         .jem-staff-sidebar.collapsed .jem-nav-item {
           justify-content: center;
           padding-left: 0;
           padding-right: 0;
+        }
+
+        .jem-staff-sidebar.collapsed .jem-nav-main {
+          justify-content: center;
+          gap: 0;
+          width: 100%;
+        }
+
+        .jem-staff-sidebar.collapsed .jem-sidebar-footer .jem-nav-item {
+          justify-content: center;
+          padding-left: 0;
+          padding-right: 0;
+        }
+
+        .clickable-brand-logo {
+          cursor: pointer;
+          border: none;
+          outline: none;
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, filter 0.2s ease;
+          user-select: none;
+        }
+
+        .clickable-brand-logo:hover {
+          transform: scale(1.08);
+          filter: brightness(1.1);
+          box-shadow: 0 0 14px rgba(249, 115, 22, 0.5);
+        }
+
+        .clickable-brand-logo:active {
+          transform: scale(0.95);
+        }
+
+        /* Floating Tooltip */
+        .sidebar-floating-tooltip {
+          display: flex;
+          align-items: center;
+          filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.45));
+          animation: sidebarTooltipIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes sidebarTooltipIn {
+          from {
+            opacity: 0;
+            transform: translateY(-50%) translateX(-4px) scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0) scale(1);
+          }
+        }
+
+        .sidebar-tooltip-content {
+          position: relative;
+          background: #0f172a;
+          color: #ffffff;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          display: flex;
+          align-items: center;
+        }
+
+        .sidebar-tooltip-content::before {
+          content: '';
+          position: absolute;
+          left: -5px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 0;
+          height: 0;
+          border-top: 5px solid transparent;
+          border-bottom: 5px solid transparent;
+          border-right: 5px solid #0f172a;
         }
 
         .jem-brand {
@@ -864,19 +963,37 @@ export default function StaffDashboard() {
         message="Are you sure you want to log out?"
       />
 
+      {/* Floating tooltip for icon-only collapsed mode */}
+      <SidebarFloatingTooltip tooltip={activeTooltip} />
+
       <div className="jem-staff-shell">
 
-        <aside className={`jem-staff-sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
+        <aside className={`jem-staff-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
           <div className="jem-brand">
             <div className="jem-brand-main">
-              <div className="jem-brand-mark">J</div>
+              <button
+                type="button"
+                className="jem-brand-mark clickable-brand-logo"
+                onClick={toggleSidebar}
+                title={isCollapsed ? "Expand sidebar (J)" : "Collapse sidebar (J)"}
+                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                {...getTooltipProps(isCollapsed ? "Expand Sidebar" : "Collapse Sidebar")}
+              >
+                J
+              </button>
               <div className="jem-brand-copy">
                 <strong>JEM Hardware</strong>
                 <span>&amp; Coco Lumber</span>
               </div>
             </div>
-            <button className="jem-collapse-btn" onClick={() => setSidebarOpen((state) => !state)} aria-label="Toggle sidebar">
-              {sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+            <button
+              type="button"
+              className="jem-collapse-btn"
+              onClick={toggleSidebar}
+              aria-label="Toggle sidebar"
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {!isCollapsed ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
             </button>
           </div>
 
@@ -889,6 +1006,8 @@ export default function StaffDashboard() {
                 type="button"
                 className={`jem-nav-item ${activePage === key ? 'active' : ''}`}
                 onClick={() => navigateTo(path)}
+                aria-label={label}
+                {...getTooltipProps(label)}
               >
                 <span className="jem-nav-main">
                   <Icon size={17} />
@@ -900,7 +1019,13 @@ export default function StaffDashboard() {
           </nav>
 
           <div className="jem-sidebar-footer">
-            <button type="button" className="jem-nav-item" onClick={handleLogoutClick}>
+            <button
+              type="button"
+              className="jem-nav-item"
+              onClick={handleLogoutClick}
+              aria-label="Logout"
+              {...getTooltipProps("Logout")}
+            >
               <span className="jem-nav-main">
                 <LogOut size={17} />
                 <span className="jem-nav-label">Logout</span>

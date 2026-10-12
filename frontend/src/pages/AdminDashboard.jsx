@@ -5,17 +5,21 @@ import {
   TrendingUp, Users, AlertCircle, ArrowUpRight, ArrowDownRight,
   Home, LogOut, Menu, X, Check, Truck,
   MessageSquare, ClipboardList, Search, MoreHorizontal, Tag,
-  Receipt, KeyRound, RotateCcw, Ban, ShieldCheck, RefreshCw
+  Receipt, KeyRound, RotateCcw, Ban, ShieldCheck, RefreshCw,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
 import {
   getAdminOrders, getInventory, getProducts, getRestockRequests,
-  getStoredUser, getUsers, logout, getSharedOrders, getTransactions
+  getStoredUser, getUsers, logout, getSharedOrders, getTransactions,
+  clearApiCache
 } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
+import SidebarFloatingTooltip from '../components/SidebarFloatingTooltip'
+import useSidebarCollapse from '../hooks/useSidebarCollapse'
 import '../styles/dashboard.css'
 
 const ProductManagement = lazy(() => import('./ProductManagement'))
@@ -136,6 +140,12 @@ export default function AdminDashboard() {
 
   const [user, setUser] = useState(() => getStoredUser())
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900)
+  const {
+    isCollapsed,
+    toggleSidebar,
+    activeTooltip,
+    getTooltipProps,
+  } = useSidebarCollapse()
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [stats, setStats] = useState({
@@ -155,6 +165,9 @@ export default function AdminDashboard() {
   const [inventory, setInventory] = useState([])
   const [recentTransactions, setRecentTransactions] = useState([])
   const [salesYear, setSalesYear] = useState(new Date().getFullYear())
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshSuccess, setRefreshSuccess] = useState(false)
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null)
 
   // Derive active route from browser URL
   const getActivePage = (pathname) => {
@@ -337,7 +350,12 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = async (isManual = false) => {
+    if (isManual) {
+      setIsRefreshing(true)
+      setRefreshSuccess(false)
+      clearApiCache()
+    }
     try {
       const [productData, orderData, inventoryData, userData, restockData, transactionData] = await Promise.allSettled([
         getProducts({ status: 'active' }),
@@ -369,14 +387,14 @@ export default function AdminDashboard() {
       let txMeta = { counts: {}, summary: {} }
       if (transactionData.status === 'fulfilled' && transactionData.value) {
         const tVal = transactionData.value
-        txList = tVal.data?.data || []
+        txList = tVal.data?.data || (Array.isArray(tVal.data) ? tVal.data : [])
         txMeta = tVal.meta || { counts: {}, summary: {} }
       }
       setRecentTransactions(txList)
 
-      const sales = txMeta.summary?.total_net_sales
+      const sales = (txMeta.summary?.total_net_sales !== undefined && txMeta.summary?.total_net_sales !== null && Number(txMeta.summary.total_net_sales) > 0)
         ? Number(txMeta.summary.total_net_sales)
-        : nextOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0)
+        : nextOrders.filter((o) => o.status !== 'cancelled' && o.status !== 'voided').reduce((sum, order) => sum + Number(order?.total || 0), 0)
 
       const lowStock = nextInventory.filter((item) => Number(item?.quantity || 0) > 0 && Number(item?.quantity || 0) <= Number(item?.low_stock_threshold || 5)).length
       const outOfStock = nextInventory.filter((item) => Number(item?.quantity || 0) === 0).length
@@ -390,15 +408,24 @@ export default function AdminDashboard() {
         totalCustomers: nextUsers.filter((u) => u?.role === 'customer').length,
         lowStockProducts: lowStock,
         outOfStock,
-        pendingOrders: nextOrders.filter((order) => ['pending', 'confirmed'].includes(order?.status)).length,
+        pendingOrders: nextOrders.filter((order) => ['pending', 'confirmed', 'processing'].includes(order?.status)).length,
         pendingRestock: nextRestocks.filter((request) => request?.status === 'pending').length,
         refundedTransactions: txMeta.counts?.refunded || 0,
         voidedTransactions: txMeta.counts?.voided || 0,
         paidTransactions: txMeta.counts?.paid || 0,
       })
 
+      setLastRefreshedAt(new Date())
+      if (isManual) {
+        setRefreshSuccess(true)
+        setTimeout(() => setRefreshSuccess(false), 2200)
+      }
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error)
+    } finally {
+      if (isManual) {
+        setIsRefreshing(false)
+      }
     }
   }
 
@@ -472,14 +499,37 @@ export default function AdminDashboard() {
       {/* Mobile backdrop */}
       {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
 
+      {/* Floating tooltip for icon-only collapsed mode */}
+      <SidebarFloatingTooltip tooltip={activeTooltip} />
+
       {/* Sidebar - Fixed and Persistent */}
-      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'} ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand-mark">J</div>
-          <div className="brand-text">
-            <strong>JEM Hardware</strong>
-            <small>&amp; Coco Lumber</small>
+          <div className="sidebar-brand-main">
+            <button
+              type="button"
+              className="brand-mark clickable-brand-logo"
+              onClick={toggleSidebar}
+              title={isCollapsed ? "Expand sidebar (J)" : "Collapse sidebar (J)"}
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              {...getTooltipProps(isCollapsed ? "Expand Sidebar" : "Collapse Sidebar")}
+            >
+              J
+            </button>
+            <div className="brand-text">
+              <strong>JEM Hardware</strong>
+              <small>&amp; Coco Lumber</small>
+            </div>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {!isCollapsed ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -487,69 +537,93 @@ export default function AdminDashboard() {
             type="button"
             className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
             onClick={() => navigateTo('/dashboard')}
+            aria-label="Dashboard"
+            {...getTooltipProps("Dashboard")}
           >
-            <Home size={18} /> Dashboard
+            <Home size={18} />
+            <span className="nav-label">Dashboard</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'users' ? 'active' : ''}`}
             onClick={() => navigateTo('/users')}
+            aria-label="Users"
+            {...getTooltipProps("Users")}
           >
-            <Users size={18} /> Users
+            <Users size={18} />
+            <span className="nav-label">Users</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'products' ? 'active' : ''}`}
             onClick={() => navigateTo('/products')}
+            aria-label="Products"
+            {...getTooltipProps("Products")}
           >
-            <Package size={18} /> Products
+            <Package size={18} />
+            <span className="nav-label">Products</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'categories' ? 'active' : ''}`}
             onClick={() => navigateTo('/categories')}
+            aria-label="Categories"
+            {...getTooltipProps("Categories")}
           >
-            <Tag size={18} /> Categories
+            <Tag size={18} />
+            <span className="nav-label">Categories</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'inventory' ? 'active' : ''}`}
             onClick={() => navigateTo('/inventory')}
+            aria-label="Inventory"
+            {...getTooltipProps("Inventory")}
           >
-            <Box size={18} /> Inventory
+            <Box size={18} />
+            <span className="nav-label">Inventory</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'orders' ? 'active' : ''}`}
             onClick={() => navigateTo('/orders')}
+            aria-label="Orders"
+            {...getTooltipProps("Orders")}
           >
-            <ShoppingCart size={18} /> Orders
+            <ShoppingCart size={18} />
+            <span className="nav-label">Orders</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'transactions' ? 'active' : ''}`}
             onClick={() => navigateTo('/transactions')}
+            aria-label="Transactions"
+            {...getTooltipProps("Transactions")}
           >
-            <Receipt size={18} /> Transactions
+            <Receipt size={18} />
+            <span className="nav-label">Transactions</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'suppliers' ? 'active' : ''}`}
             onClick={() => navigateTo('/suppliers')}
+            aria-label="Suppliers"
+            {...getTooltipProps("Suppliers")}
           >
-            <Truck size={18} /> Suppliers
+            <Truck size={18} />
+            <span className="nav-label">Suppliers</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'restock' ? 'active' : ''}`}
             onClick={() => navigateTo('/stock-requests')}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            aria-label="Stock Requests"
+            {...getTooltipProps("Stock Requests")}
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-              <ClipboardList size={18} /> Stock Requests
-            </span>
+            <ClipboardList size={18} />
+            <span className="nav-label">Stock Requests</span>
             {stats.pendingRestock > 0 && (
-              <span style={{ background: '#f59e0b', color: '#ffffff', fontSize: '11px', fontWeight: 800, padding: '1px 7px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+              <span className="nav-badge" title={`${stats.pendingRestock} pending requests`}>
                 {stats.pendingRestock}
               </span>
             )}
@@ -559,28 +633,44 @@ export default function AdminDashboard() {
             type="button"
             className={`nav-item ${activePage === 'reports' ? 'active' : ''}`}
             onClick={() => navigateTo('/reports')}
+            aria-label="Reports"
+            {...getTooltipProps("Reports")}
           >
-            <BarChart3 size={18} /> Reports
+            <BarChart3 size={18} />
+            <span className="nav-label">Reports</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'void-security' ? 'active' : ''}`}
             onClick={() => navigateTo('/void-security')}
+            aria-label="Settings"
+            {...getTooltipProps("Settings")}
           >
-            <KeyRound size={18} /> Settings
+            <KeyRound size={18} />
+            <span className="nav-label">Settings</span>
           </button>
           <button 
             type="button"
             className={`nav-item ${activePage === 'feedback' ? 'active' : ''}`}
             onClick={() => navigateTo('/feedback')}
+            aria-label="Feedback"
+            {...getTooltipProps("Feedback")}
           >
-            <MessageSquare size={18} /> Feedback
+            <MessageSquare size={18} />
+            <span className="nav-label">Feedback</span>
           </button>
         </nav>
 
         <div className="sidebar-footer">
-          <button type="button" className="sidebar-logout" onClick={handleLogoutClick}>
-            <LogOut size={18} /> Logout
+          <button
+            type="button"
+            className="sidebar-logout"
+            onClick={handleLogoutClick}
+            aria-label="Logout"
+            {...getTooltipProps("Logout")}
+          >
+            <LogOut size={18} />
+            <span className="nav-label">Logout</span>
           </button>
         </div>
       </aside>
@@ -593,10 +683,17 @@ export default function AdminDashboard() {
           <button 
             type="button"
             className="toggle-sidebar"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={() => {
+              if (window.innerWidth <= 900) {
+                setSidebarOpen((prev) => !prev)
+              } else {
+                toggleSidebar()
+              }
+            }}
             aria-label="Toggle navigation menu"
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            {sidebarOpen && !isCollapsed ? <PanelLeftClose size={20} /> : <Menu size={20} />}
           </button>
 
           <div className="header-context">
@@ -738,10 +835,35 @@ export default function AdminDashboard() {
                   <div>
                     <p className="eyebrow">Operations overview</p>
                     <h1>Good morning, {user?.name ? user.name.split(' ')[0] : 'Admin'}.</h1>
-                    <p className="section-subtitle">A clear view of today’s sales, stock, and order flow.</p>
+                    <p className="section-subtitle">
+                      A clear view of today’s sales, stock, and order flow.
+                      {lastRefreshedAt && (
+                        <span className="dashboard-last-refreshed">
+                          · Synced {lastRefreshedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </span>
+                      )}
+                    </p>
                   </div>
-                  <button type="button" className="button button-accent" onClick={fetchDashboardStats}>
-                    <TrendingUp size={16} /> Refresh data
+                  <button
+                    type="button"
+                    className={`button button-accent ${refreshSuccess ? 'button-success-state' : ''}`}
+                    onClick={() => fetchDashboardStats(true)}
+                    disabled={isRefreshing}
+                    title="Refresh data from server"
+                  >
+                    {isRefreshing ? (
+                      <>
+                        <RefreshCw size={16} className="spin-icon" /> Refreshing...
+                      </>
+                    ) : refreshSuccess ? (
+                      <>
+                        <Check size={16} /> Data updated!
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={16} /> Refresh data
+                      </>
+                    )}
                   </button>
                 </div>
 

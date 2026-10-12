@@ -2412,9 +2412,9 @@ export default function CustomerApp() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { id: 'gcash', name: 'GCash E-Wallet', desc: 'Instant QR/OTP payment with official gateway', icon: '💳', bg: '#007dfe' },
-                    { id: 'maya', name: 'Maya E-Wallet', desc: 'Secure card & wallet checkout', icon: '💚', bg: '#00be64' },
-                    { id: 'cod', name: 'Cash on Delivery (COD)', desc: 'Pay cash upon truck delivery & material inspection', icon: '💵', bg: '#10b981' }
+                    { id: 'gcash', name: 'GCash E-Wallet', desc: 'Instant QR/OTP payment with official gateway' },
+                    { id: 'maya', name: 'Maya E-Wallet', desc: 'Secure card & wallet checkout' },
+                    { id: 'cod', name: 'Cash on Delivery (COD)', desc: 'Pay cash upon truck delivery & material inspection' }
                   ].map((pm) => (
                     <div
                       key={pm.id}
@@ -2422,9 +2422,6 @@ export default function CustomerApp() {
                       onClick={() => setCheckoutPaymentMethod(pm.id)}
                     >
                       <div className="payment-method-left">
-                        <div className="payment-method-icon-wrap" style={{ background: pm.bg }}>
-                          {pm.icon}
-                        </div>
                         <div className="payment-method-info">
                           <h4>{pm.name}</h4>
                           <p>{pm.desc}</p>

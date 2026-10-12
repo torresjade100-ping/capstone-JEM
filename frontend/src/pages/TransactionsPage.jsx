@@ -384,7 +384,6 @@ export default function TransactionsPage({ role = 'staff' }) {
           className={`tx-tab-item ${activeTab === 'gcash' ? 'active' : ''}`}
           onClick={() => { setActiveTab('gcash'); setCurrentPage(1); }}
         >
-          <span className="tx-tab-gcash-mark">G</span>
           <span>GCash</span>
           <span className="tx-tab-counter">{meta.counts?.gcash ?? 0}</span>
         </button>

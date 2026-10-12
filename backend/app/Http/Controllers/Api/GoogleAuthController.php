@@ -80,6 +80,13 @@ class GoogleAuthController extends Controller
             ]);
         }
 
+        // Strict customer role guard for mobile Google authentication
+        if ($user->role !== 'customer') {
+            return response()->json([
+                'message' => 'Access denied. This app is strictly for customer accounts only.',
+            ], 403);
+        }
+
         $token = $user->createToken('mobile-google-auth')->plainTextToken;
 
         return response()->json([

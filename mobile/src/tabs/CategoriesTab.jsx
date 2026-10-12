@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
-import { styles, COLORS } from '../styles/appStyles';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { ScreenHeader, SearchBar, EmptyState } from '../components/ui/Primitives';
+import ProductCard from '../components/ui/ProductCard';
+import { PALETTE, GRADIENTS, RADIUS, SHADOWS, getCategoryVisual } from '../components/ui/theme';
 
 const SORT_OPTIONS = [
-  { id: 'popular', label: '⭐ Popular' },
-  { id: 'price_low', label: '💵 Price: Low to High' },
-  { id: 'price_high', label: '💎 Price: High to Low' },
-  { id: 'rating', label: '🏆 Top Rated' },
+  { id: 'popular', label: 'Popular', icon: 'flame-outline' },
+  { id: 'price_low', label: 'Price ↑', icon: 'trending-up-outline' },
+  { id: 'price_high', label: 'Price ↓', icon: 'trending-down-outline' },
+  { id: 'rating', label: 'Top Rated', icon: 'star-outline' },
 ];
 
 export default function CategoriesTab({
@@ -47,7 +51,7 @@ export default function CategoriesTab({
       const matchCat =
         activeCat === 'all' ||
         String(p.category_id || '').toLowerCase().trim() === String(activeCat || '').toLowerCase().trim() ||
-        (p.category && p.category.toLowerCase().trim() === activeCat.toLowerCase().trim());
+        (p.category && p.category.toLowerCase().trim() === String(activeCat).toLowerCase().trim());
 
       const matchBrand =
         activeBrand === 'all' ||
@@ -76,310 +80,240 @@ export default function CategoriesTab({
     }
   };
 
+  const resetFilters = () => {
+    setActiveCat('all');
+    setActiveBrand('all');
+    setInStockOnly(false);
+    setCatalogSearch('');
+    setSortOption('popular');
+  };
+
+  const activeFilterCount =
+    (activeCat !== 'all' ? 1 : 0) + (activeBrand !== 'all' ? 1 : 0) + (inStockOnly ? 1 : 0);
+
+  const renderCatChip = (id, label, icon, colors) => {
+    const isActive = activeCat === id;
+    const content = (
+      <>
+        <View style={[s.chipIcon, { backgroundColor: isActive ? 'rgba(255,255,255,0.22)' : `${colors[1]}18` }]}>
+          <MaterialCommunityIcons name={icon} size={14} color={isActive ? '#FFFFFF' : colors[1]} />
+        </View>
+        <Text style={[s.chipText, isActive && s.chipTextActive]} numberOfLines={1}>{label}</Text>
+      </>
+    );
+    return (
+      <TouchableOpacity key={id} onPress={() => handleSelectCategory(id, label)} activeOpacity={0.8}>
+        {isActive ? (
+          <LinearGradient colors={GRADIENTS.orange} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.chip, s.chipActive, SHADOWS.orange]}>
+            {content}
+          </LinearGradient>
+        ) : (
+          <View style={s.chip}>{content}</View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      {/* 1. Header with Catalog Title & Search Bar */}
-      <View style={styles.categoriesHeader}>
-        <Text style={styles.categoriesHeaderTitle}>Materials Catalog</Text>
-        <Text style={styles.categoriesHeaderSubtitle}>
-          Browse high-grade construction &amp; hardware supplies
-        </Text>
-
-        <View style={[styles.homeSearchBox, { marginTop: 14 }]}>
-          <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
-          <TextInput
-            style={styles.homeSearchInput}
-            placeholder="Search within catalog (e.g. Holcim, Boysen, 12mm)..."
-            placeholderTextColor="#94a3b8"
-            value={catalogSearch}
-            onChangeText={setCatalogSearch}
-            autoCapitalize="none"
-          />
-          {catalogSearch ? (
-            <TouchableOpacity onPress={() => setCatalogSearch('')} style={styles.homeSearchClear}>
-              <Text style={{ color: '#94a3b8', fontSize: 16, fontWeight: '700' }}>✕</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      {/* 2. Horizontal Category Filter Pills */}
-      <View style={{ backgroundColor: '#ffffff', borderBottomWidth: 1, borderColor: COLORS.border }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterPillScroll}
-        >
-          <TouchableOpacity
-            style={[styles.filterPill, activeCat === 'all' && styles.filterPillActive]}
-            onPress={() => handleSelectCategory('all', 'All Materials')}
-          >
-            <Text style={[styles.filterPillText, activeCat === 'all' && styles.filterPillTextActive]}>
-              🧱 All ({products.length})
-            </Text>
-          </TouchableOpacity>
-
-          {categories.map((cat, idx) => {
-            const isActive = activeCat === cat.id;
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[styles.filterPill, isActive && styles.filterPillActive]}
-                onPress={() => handleSelectCategory(cat.id, cat.name || cat.title)}
-              >
-                <Text style={{ fontSize: 14 }}>{cat.icon || '📦'}</Text>
-                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                  {cat.name || cat.title}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* 3. Brand Filter & Availability Filters Bar */}
-      <View style={{ backgroundColor: '#f8fafc', paddingVertical: 8, borderBottomWidth: 1, borderColor: COLORS.borderLight }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 6, alignItems: 'center' }}
-        >
-          <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textMuted, marginRight: 2, textTransform: 'uppercase' }}>
-            Brand:
-          </Text>
-          <TouchableOpacity
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 8,
-              backgroundColor: activeBrand === 'all' ? COLORS.navy : '#ffffff',
-              borderWidth: 1,
-              borderColor: activeBrand === 'all' ? COLORS.navy : COLORS.border,
-            }}
-            onPress={() => setActiveBrand('all')}
-          >
-            <Text style={{ fontSize: 11.5, fontWeight: '700', color: activeBrand === 'all' ? '#ffffff' : COLORS.textBody }}>
-              All Brands
-            </Text>
-          </TouchableOpacity>
-
-          {brandsList.map((br) => {
-            const isBrActive = activeBrand === br;
-            return (
-              <TouchableOpacity
-                key={br}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 8,
-                  backgroundColor: isBrActive ? COLORS.navy : '#ffffff',
-                  borderWidth: 1,
-                  borderColor: isBrActive ? COLORS.navy : COLORS.border,
-                }}
-                onPress={() => setActiveBrand(isBrActive ? 'all' : br)}
-              >
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: isBrActive ? '#ffffff' : COLORS.textBody }}>
-                  {br}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          <View style={{ width: 1, height: 16, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
-
-          {/* In Stock Only Toggle */}
-          <TouchableOpacity
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 8,
-              backgroundColor: inStockOnly ? COLORS.successBg : '#ffffff',
-              borderWidth: 1,
-              borderColor: inStockOnly ? COLORS.successBorder : COLORS.border,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-            }}
-            onPress={() => setInStockOnly(!inStockOnly)}
-          >
-            <Text style={{ fontSize: 12 }}>{inStockOnly ? '✓' : '📦'}</Text>
-            <Text style={{ fontSize: 11.5, fontWeight: '700', color: inStockOnly ? COLORS.success : COLORS.textBody }}>
-              In Stock Only
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* 4. Sort & Results Summary Bar */}
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 10,
-        }}
+      {/* 1. Header */}
+      <ScreenHeader
+        eyebrow="JEM Catalog"
+        title="Materials Catalog"
+        subtitle={`${products.length} construction & hardware supplies`}
       >
-        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textMuted }}>
-          Showing {filteredCatalog.length} {filteredCatalog.length === 1 ? 'item' : 'items'}
-        </Text>
+        <SearchBar
+          value={catalogSearch}
+          onChangeText={setCatalogSearch}
+          placeholder="Search Holcim, Boysen, 12mm..."
+        />
+      </ScreenHeader>
 
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {SORT_OPTIONS.slice(0, 3).map((opt) => (
-            <TouchableOpacity
-              key={opt.id}
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: sortOption === opt.id ? COLORS.primaryLight : '#ffffff',
-                borderWidth: 1,
-                borderColor: sortOption === opt.id ? COLORS.primary : COLORS.border,
-              }}
-              onPress={() => setSortOption(opt.id)}
-            >
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: sortOption === opt.id ? COLORS.primaryDark : COLORS.textMuted,
-                }}
-              >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* 2. Category chips (fixed) */}
+      <View style={s.chipBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
+          {renderCatChip('all', `All (${products.length})`, 'view-grid', ['#FB923C', '#EA580C'])}
+          {categories.map((cat) => {
+            const v = getCategoryVisual(cat);
+            return renderCatChip(cat.id, cat.name || cat.title, v.icon, v.colors);
+          })}
+        </ScrollView>
       </View>
 
-      {/* 5. Scrollable Product Grid or Empty State */}
+      {/* 3. Scrollable content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 100 }}
+        contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
       >
-        {filteredCatalog.length === 0 ? (
-          <View style={styles.ordersEmptyContainer}>
-            <View style={styles.ordersEmptyIconCircle}>
-              <Text style={{ fontSize: 48 }}>🔍</Text>
-            </View>
-            <Text style={styles.ordersEmptyTitle}>No materials found</Text>
-            <Text style={styles.ordersEmptySubtitle}>
-              We couldn't find any products matching your active filters.
-            </Text>
-            <TouchableOpacity
-              style={styles.startShoppingBtn}
-              onPress={() => {
-                setActiveCat('all');
-                setActiveBrand('all');
-                setInStockOnly(false);
-                setCatalogSearch('');
-              }}
-            >
-              <Text style={styles.startShoppingBtnText}>Reset Filters 🔄</Text>
+        {/* Sort segmented control */}
+        <View style={[s.segment, SHADOWS.card]}>
+          {SORT_OPTIONS.map((opt) => {
+            const isActive = sortOption === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                style={[s.segmentItem, isActive && s.segmentItemActive]}
+                onPress={() => setSortOption(opt.id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={opt.icon} size={13} color={isActive ? '#FFFFFF' : PALETTE.textMuted} />
+                <Text style={[s.segmentText, isActive && s.segmentTextActive]} numberOfLines={1}>{opt.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Brand + availability filters */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.brandScroll}>
+          <TouchableOpacity
+            style={[s.toggleChip, inStockOnly && s.toggleChipOn]}
+            onPress={() => setInStockOnly(!inStockOnly)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={inStockOnly ? 'checkmark-circle' : 'ellipse-outline'}
+              size={15}
+              color={inStockOnly ? PALETTE.success : PALETTE.textFaint}
+            />
+            <Text style={[s.brandText, inStockOnly && { color: PALETTE.successDeep }]}>In stock</Text>
+          </TouchableOpacity>
+
+          <View style={s.vDivider} />
+
+          {['all', ...brandsList].map((br) => {
+            const isActive = activeBrand === br;
+            return (
+              <TouchableOpacity
+                key={br}
+                style={[s.brandChip, isActive && s.brandChipActive]}
+                onPress={() => setActiveBrand(isActive && br !== 'all' ? 'all' : br)}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.brandText, isActive && s.brandTextActive]}>{br === 'all' ? 'All brands' : br}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Results summary */}
+        <View style={s.resultsRow}>
+          <Text style={s.resultsText}>
+            <Text style={s.resultsCount}>{filteredCatalog.length}</Text> {filteredCatalog.length === 1 ? 'item' : 'items'} found
+          </Text>
+          {activeFilterCount > 0 || catalogSearch ? (
+            <TouchableOpacity onPress={resetFilters} style={s.clearBtn} activeOpacity={0.7}>
+              <Ionicons name="refresh" size={13} color={PALETTE.orange600} />
+              <Text style={s.clearText}>Clear filters</Text>
             </TouchableOpacity>
-          </View>
+          ) : null}
+        </View>
+
+        {filteredCatalog.length === 0 ? (
+          <EmptyState
+            icon="search-outline"
+            title="No materials found"
+            message="We couldn't find products matching your filters. Try another category or brand."
+            actionLabel="Reset Filters"
+            onAction={resetFilters}
+          />
         ) : (
-          <View style={styles.featuredProductGrid}>
-            {filteredCatalog.map((product) => {
-              const isWish = wishlist.includes(product.id);
-              const isLowStock = Number(product.stock_quantity || 0) <= 30;
-              const isOutOfStock = Number(product.stock_quantity || 0) === 0;
-
-              return (
-                <TouchableOpacity
-                  key={product.id}
-                  style={styles.featuredCard}
-                  onPress={() => onSelectProduct && onSelectProduct(product)}
-                  activeOpacity={0.88}
-                >
-                  <View style={styles.featuredThumbBox}>
-                    {product.discount_pct ? (
-                      <View style={styles.discountTagBadge}>
-                        <Text style={styles.discountTagText}>{product.discount_pct}</Text>
-                      </View>
-                    ) : null}
-
-                    {toggleWishlist && (
-                      <TouchableOpacity
-                        style={styles.heartBtn}
-                        onPress={() => toggleWishlist(product.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 16 }}>{isWish ? '❤️' : '🤍'}</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    <Text style={{ fontSize: 50 }}>{product.emoji || '🧱'}</Text>
-
-                    <View
-                      style={[
-                        styles.stockPillBadge,
-                        isOutOfStock && { backgroundColor: COLORS.danger },
-                        isLowStock && !isOutOfStock && { backgroundColor: '#d97706' },
-                      ]}
-                    >
-                      <Text style={styles.stockPillText}>
-                        {isOutOfStock
-                          ? 'Out of Stock'
-                          : isLowStock
-                          ? `Only ${product.stock_quantity} left`
-                          : `${product.stock_quantity} in stock`}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.featuredCardBody}>
-                    <View style={styles.featuredBrandRow}>
-                      <Text style={styles.featuredBrandName} numberOfLines={1}>
-                        {product.brand}
-                      </Text>
-                      <Text style={{ fontSize: 10, color: COLORS.textMuted }}>
-                        {product.unit || 'unit'}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.featuredProductName} numberOfLines={2}>
-                      {product.name}
-                    </Text>
-
-                    <View style={styles.featuredRatingRow}>
-                      <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: '800' }}>
-                        ★ {product.rating || '4.9'}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: COLORS.textMuted, marginLeft: 4 }}>
-                        ({product.reviews || 128})
-                      </Text>
-                    </View>
-
-                    <View style={styles.featuredPriceRow}>
-                      <Text style={styles.featuredProductPrice}>
-                        ₱{Number(product.base_price || 0).toLocaleString()}
-                      </Text>
-
-                      {addToCart && (
-                        <TouchableOpacity
-                          style={[
-                            styles.featuredAddBtn,
-                            isOutOfStock && { backgroundColor: '#cbd5e1' },
-                          ]}
-                          onPress={() => addToCart(product, 1)}
-                          disabled={isOutOfStock}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.featuredAddBtnText}>+</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={s.grid}>
+            {filteredCatalog.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isWished={wishlist.includes(product.id)}
+                onPress={() => onSelectProduct && onSelectProduct(product)}
+                onToggleWish={toggleWishlist ? () => toggleWishlist(product.id) : null}
+                onAdd={addToCart ? () => addToCart(product, 1) : null}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  chipBar: { backgroundColor: PALETTE.canvas },
+  chipScroll: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingLeft: 6,
+    paddingRight: 14,
+    height: 40,
+    borderRadius: RADIUS.pill,
+    backgroundColor: PALETTE.surface,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+  },
+  chipActive: { borderWidth: 0 },
+  chipIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  chipText: { fontSize: 12.5, fontWeight: '700', color: PALETTE.textBody, maxWidth: 150 },
+  chipTextActive: { color: '#FFFFFF', fontWeight: '900' },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 120 },
+
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: PALETTE.surface,
+    borderRadius: RADIUS.md,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: PALETTE.lineSoft,
+    marginBottom: 12,
+  },
+  segmentItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 11,
+  },
+  segmentItemActive: { backgroundColor: PALETTE.navy800 },
+  segmentText: { fontSize: 11.5, fontWeight: '700', color: PALETTE.textMuted },
+  segmentTextActive: { color: '#FFFFFF', fontWeight: '900' },
+
+  brandScroll: { gap: 6, alignItems: 'center', paddingBottom: 4 },
+  toggleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: RADIUS.pill,
+    backgroundColor: PALETTE.surface,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+  },
+  toggleChipOn: { backgroundColor: PALETTE.successBg, borderColor: '#A7F3D0' },
+  vDivider: { width: 1, height: 18, backgroundColor: PALETTE.line, marginHorizontal: 4 },
+  brandChip: {
+    paddingHorizontal: 13,
+    height: 34,
+    justifyContent: 'center',
+    borderRadius: RADIUS.pill,
+    backgroundColor: PALETTE.surface,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+  },
+  brandChipActive: { backgroundColor: PALETTE.orange50, borderColor: PALETTE.orange400 },
+  brandText: { fontSize: 12, fontWeight: '700', color: PALETTE.textBody },
+  brandTextActive: { color: PALETTE.orange700, fontWeight: '900' },
+
+  resultsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 14 },
+  resultsText: { fontSize: 13, color: PALETTE.textMuted, fontWeight: '600' },
+  resultsCount: { color: PALETTE.text, fontWeight: '900' },
+  clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  clearText: { fontSize: 12, fontWeight: '800', color: PALETTE.orange600 },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+});

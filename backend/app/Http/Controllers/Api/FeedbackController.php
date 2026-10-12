@@ -104,17 +104,37 @@ class FeedbackController extends Controller
 
     public function adminIndex()
     {
-        $items = Feedback::with('customer.user')->orderBy('created_at', 'desc')->paginate(50);
+        $items = Feedback::with(['customer.user', 'responder'])->orderBy('created_at', 'desc')->paginate(50);
         return response()->json(['success' => true, 'data' => $items]);
     }
 
     public function respond(Request $request, $id)
     {
-        $request->validate(['admin_response' => 'required|string', 'status' => 'nullable|string']);
-        $fb = Feedback::findOrFail($id);
-        $fb->admin_response = $request->admin_response;
-        if ($request->filled('status')) $fb->status = $request->status;
+        $validated = $request->validate([
+            'admin_response' => 'required|string|max:3000',
+            'status' => 'nullable|string|in:new,responded,closed',
+        ]);
+
+        $fb = Feedback::find($id);
+        if (!$fb) {
+            return response()->json([
+                'success' => false,
+                'message' => "Feedback record #{$id} was not found.",
+            ], 404);
+        }
+
+        $fb->admin_response = trim($validated['admin_response']);
+        $fb->status = $validated['status'] ?? 'responded';
+        if (Auth::id()) {
+            $fb->responded_by = Auth::id();
+        }
+        $fb->responded_at = now();
         $fb->save();
-        return response()->json(['success' => true, 'data' => $fb]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Feedback response saved successfully.',
+            'data' => $fb->load(['customer.user', 'responder']),
+        ]);
     }
 }
