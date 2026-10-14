@@ -7,6 +7,8 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Http\Requests\ValidateStockRequest;
 use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -129,5 +131,84 @@ class CartController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Cart cleared']);
+    }
+
+    /**
+     * Pre-Checkout Stock Validation for Mobile App
+     * Lightweight read-only query checking physical inventory & backorder thresholds.
+     */
+    public function validateStock(ValidateStockRequest $request): JsonResponse
+    {
+        $items = $request->validated()['items'];
+
+        $productIds = collect($items)->pluck('product_id')->unique()->filter()->values()->all();
+        $variantIds = collect($items)->pluck('product_variant_id')->filter()->unique()->values()->all();
+
+        // Bulk read-only fetch to minimize database overhead (avoids N+1)
+        $products = Product::whereIn('id', $productIds)
+            ->select(['id', 'name', 'stock_quantity', 'low_stock_threshold', 'status'])
+            ->get()
+            ->keyBy('id');
+
+        $variants = !empty($variantIds)
+            ? ProductVariant::whereIn('id', $variantIds)
+                ->select(['id', 'product_id', 'stock_quantity', 'status'])
+                ->get()
+                ->keyBy('id')
+            : collect();
+
+        $responseItems = [];
+        $isValid = true;
+        $hasModifications = false;
+
+        foreach ($items as $item) {
+            $productId = (int) $item['product_id'];
+            $variantId = !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
+            $requestedQty = (int) $item['requested_qty'];
+
+            $product = $products->get($productId);
+            $variant = $variantId ? $variants->get($variantId) : null;
+
+            if (!$product || $product->status !== 'active' || ($variant && $variant->status !== 'active')) {
+                $isValid = false;
+                $hasModifications = true;
+                $responseItems[] = [
+                    'product_id' => $productId,
+                    'is_available' => false,
+                    'current_stock' => 0,
+                    'backorder_needed' => true,
+                ];
+                continue;
+            }
+
+            $currentStock = $variant ? (int) $variant->stock_quantity : (int) $product->stock_quantity;
+            $availableStock = max(0, $currentStock);
+
+            $isAvailable = $availableStock >= $requestedQty;
+            $backorderNeeded = $availableStock < $requestedQty;
+
+            if (!$isAvailable) {
+                $isValid = false;
+                $hasModifications = true;
+            }
+
+            $responseItems[] = [
+                'product_id' => $productId,
+                'is_available' => $isAvailable,
+                'current_stock' => $availableStock,
+                'backorder_needed' => $backorderNeeded,
+            ];
+        }
+
+        $message = $isValid
+            ? 'All items are in stock.'
+            : 'Some items exceed available stock or require backorder.';
+
+        return response()->json([
+            'is_valid' => $isValid,
+            'has_modifications' => $hasModifications,
+            'items' => $responseItems,
+            'message' => $message,
+        ], 200);
     }
 }

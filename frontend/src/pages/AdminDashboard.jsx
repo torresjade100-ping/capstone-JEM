@@ -15,6 +15,7 @@ import {
 } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
+import HeaderDateTime from '../components/HeaderDateTime'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -139,7 +140,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate()
 
   const [user, setUser] = useState(() => getStoredUser())
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024)
   const {
     isCollapsed,
     toggleSidebar,
@@ -684,7 +685,7 @@ export default function AdminDashboard() {
             type="button"
             className="toggle-sidebar"
             onClick={() => {
-              if (window.innerWidth <= 900) {
+              if (window.innerWidth < 1024) {
                 setSidebarOpen((prev) => !prev)
               } else {
                 toggleSidebar()
@@ -817,6 +818,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="header-actions">
+            <HeaderDateTime />
             <ThemeToggle />
             <NotificationDropdown role="admin" iconSize={19} />
             <div className="user-menu">

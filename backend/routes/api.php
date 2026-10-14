@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\OrderController;
 use Illuminate\Support\Facades\Route;
 
 // Handler for standalone / custom OTP generation
@@ -125,7 +126,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 
 Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(function () {
     Route::apiResource('orders', App\Http\Controllers\Api\Admin\OrderController::class)->only(['index', 'show']);
-    Route::put('orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
+    Route::match(['put', 'patch'], 'orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
     Route::get('inventory', [App\Http\Controllers\Api\Admin\InventoryController::class, 'index']);
     Route::get('inventory/low-stock', [App\Http\Controllers\Api\Admin\InventoryController::class, 'lowStock']);
     Route::get('inventory/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
@@ -187,17 +188,25 @@ Route::put('customer/addresses/{id}', [App\Http\Controllers\Api\CustomerAddressC
 Route::delete('customer/addresses/{id}', [App\Http\Controllers\Api\CustomerAddressController::class, 'destroy']);
 Route::patch('customer/addresses/{id}/default', [App\Http\Controllers\Api\CustomerAddressController::class, 'setDefault']);
 
+// Mobile customer authenticated routes
+Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
+    Route::get('/orders', [OrderController::class, 'mobileIndex']);
+});
+
 // Mobile App Customer API routes (direct connectivity from mobile app)
-Route::post('mobile/orders', [App\Http\Controllers\Api\OrderController::class, 'storeMobileOrder']);
-Route::post('mobile/orders/{id}/cancel', [App\Http\Controllers\Api\OrderController::class, 'cancelMobileOrder']);
-Route::get('mobile/orders', [App\Http\Controllers\Api\Admin\OrderController::class, 'index']);
+Route::post('mobile/cart/validate-stock', [App\Http\Controllers\Api\CartController::class, 'validateStock']);
+Route::post('api/mobile/cart/validate-stock', [App\Http\Controllers\Api\CartController::class, 'validateStock']);
+Route::post('mobile/orders', [OrderController::class, 'storeMobileOrder']);
+Route::post('mobile/orders/{id}/cancel', [OrderController::class, 'cancelMobileOrder']);
+// Direct and double-prefix aliases for dev tunnel connectivity and fallback
+Route::get('mobile/orders', [OrderController::class, 'mobileIndex']);
+Route::get('api/mobile/orders', [OrderController::class, 'mobileIndex']);
+Route::post('api/mobile/orders', [OrderController::class, 'storeMobileOrder']);
 Route::post('mobile/feedback', [App\Http\Controllers\Api\FeedbackController::class, 'storeMobileFeedback']);
 Route::get('mobile/notifications', [App\Http\Controllers\Api\NotificationController::class, 'index']);
 Route::post('mobile/notifications/read-all', [App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
-Route::post('mobile/notifications/{id}/read', [App\Http\Controllers\Api\NotificationController::class, 'markRead']);
-
-
-
+Route::post('mobile/notifications/{id}/read', [App\Http\Controllers\Api\NotificationController::class, 'markRead']);// Direct order status update endpoints (accessible via PUT/PATCH)
+Route::match(['put', 'patch'], 'orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
 
 // Staff/Admin routes for orders, backorders, batch processing, delivery
 Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('admin')->group(function () {
@@ -228,6 +237,7 @@ Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->prefix('staff
     Route::put('orders/{order}/ready', fn (Illuminate\Http\Request $request, App\Models\Order $order) => app(App\Http\Controllers\Api\Admin\OrderController::class)->transition($request, $order, 'ready'));
     Route::put('orders/{order}/out-for-delivery', fn (Illuminate\Http\Request $request, App\Models\Order $order) => app(App\Http\Controllers\Api\Admin\OrderController::class)->transition($request, $order, 'out-for-delivery'));
     Route::put('orders/{order}/complete', fn (Illuminate\Http\Request $request, App\Models\Order $order) => app(App\Http\Controllers\Api\Admin\OrderController::class)->transition($request, $order, 'complete'));
+    Route::match(['put', 'patch'], 'orders/{order}/status', [App\Http\Controllers\Api\Admin\OrderController::class, 'updateStatus']);
     Route::get('restock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'index']);
     Route::post('restock-requests', [App\Http\Controllers\Api\RestockRequestController::class, 'store']);
     Route::get('order-adjustments', [App\Http\Controllers\Api\OrderAdjustmentController::class, 'index']);

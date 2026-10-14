@@ -1,0 +1,57 @@
+/* ==========================================================================
+   MINIMALIST REAL-TIME DATE & TIME HEADER DISPLAY
+   ========================================================================== */
+
+.header-datetime-display {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  line-height: 1.15;
+  user-select: none;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Date (Top Line): e.g. Mon, Oct 12, 2026 */
+.header-datetime-date {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .header-datetime-date,
+.dark-theme .header-datetime-date {
+  color: #94a3b8;
+}
+
+/* Time (Bottom Line): e.g. 07:38:36 PM */
+.header-datetime-time {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-primary, #17293a);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+  font-family: inherit;
+}
+
+[data-theme="dark"] .header-datetime-time,
+.dark-theme .header-datetime-time {
+  color: #f8fafc;
+}
+
+/* Responsive adjustment for compact screens */
+@media (max-width: 640px) {
+  .header-datetime-display {
+    display: none;
+  }
+}

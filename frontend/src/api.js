@@ -483,11 +483,16 @@ export async function getAdminOrders(params = {}) {
     const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 3000)
     const backendList = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
     
-    // Merge backend MySQL orders and shared orders by order_number or id
+    // Merge backend MySQL orders and shared orders strictly by unique ID/order_number
     const mergedMap = new Map()
-    shared.forEach((item) => mergedMap.set(String(item.order_number || item.id), item))
+    shared.forEach((item) => {
+      const orderId = item.id || item.order_number
+      mergedMap.set(String(orderId), { ...item, id: orderId })
+    })
+
     backendList.forEach((item) => {
-      mergedMap.set(String(item.order_number || item.id), {
+      const orderId = item.id || item.order_number
+      const formatted = {
         id: item.id,
         order_number: item.order_number,
         customer_name: item.customer?.user?.name || item.customer_name || 'Customer',
@@ -517,20 +522,85 @@ export async function getAdminOrders(params = {}) {
         delivery_date: item.delivery_date || '',
         order_source: 'Mobile App',
         created_at: item.created_at || new Date().toISOString()
-      })
+      }
+
+      // Evict any existing duplicate entries sharing this ID or order_number
+      for (const [key, existing] of mergedMap.entries()) {
+        if (
+          String(existing.id) === String(item.id) ||
+          (existing.order_number && item.order_number && String(existing.order_number) === String(item.order_number))
+        ) {
+          mergedMap.delete(key)
+        }
+      }
+      mergedMap.set(String(orderId), formatted)
     })
     return Array.from(mergedMap.values()).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
   } catch (err) {
-    return shared
+    return shared.map(o => ({ ...o, id: o.id || o.order_number }))
   }
 }
 
 
 export async function updateOrderStatus(id, status) {
+  let backendData = null
+  let lastErr = null
+
+  // 1. Explicit request to /orders/{id}/status via PATCH
   try {
-    await request(`/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
-  } catch (e) {}
-  return updateSharedOrderStatus(id, status)
+    const payload = await request(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+    if (payload && (payload.order || payload.data || payload.success)) {
+      backendData = payload.order || payload.data || payload
+    }
+  } catch (e) {
+    lastErr = e
+  }
+
+  // 2. Explicit request to /orders/{id}/status via PUT
+  if (!backendData) {
+    try {
+      const payload = await request(`/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
+      if (payload && (payload.order || payload.data || payload.success)) {
+        backendData = payload.order || payload.data || payload
+      }
+    } catch (e2) {
+      lastErr = e2
+    }
+  }
+
+  // 3. Fallback request to /admin/orders/{id}/status via PATCH
+  if (!backendData) {
+    try {
+      const payload = await request(`/admin/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+      if (payload && (payload.order || payload.data || payload.success)) {
+        backendData = payload.order || payload.data || payload
+      }
+    } catch (e3) {
+      lastErr = e3
+    }
+  }
+
+  // 4. Fallback request to /admin/orders/{id}/status via PUT
+  if (!backendData) {
+    try {
+      const payload = await request(`/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
+      if (payload && (payload.order || payload.data || payload.success)) {
+        backendData = payload.order || payload.data || payload
+      }
+    } catch (e4) {
+      lastErr = e4
+    }
+  }
+
+  const resolvedId = backendData?.id || id
+  const resolvedStatus = backendData?.status || status
+  updateSharedOrderStatus(resolvedId, resolvedStatus)
+
+  if (!backendData && lastErr) {
+    console.warn(`[Order Update] Could not persist status "${status}" to backend database for order "${id}":`, lastErr)
+  }
+
+  return backendData ? { ...backendData, id: resolvedId, status: resolvedStatus } : { id: resolvedId, status: resolvedStatus }
 }
 
 export async function getStaffOrders(params = {}) {

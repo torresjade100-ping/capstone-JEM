@@ -1,10 +1,24 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  useWindowDimensions,
+  Image,
+  Alert,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader, GradientButton, EmptyState } from '../components/ui/Primitives';
 import PressableScale from '../components/ui/PressableScale';
-import { PALETTE, GRADIENTS, RADIUS, SHADOWS, peso } from '../components/ui/theme';
+import { PALETTE, GRADIENTS, RADIUS, SHADOWS, peso, getProductImageSource } from '../components/ui/theme';
+import { DISPATCH_HUB, isWithinCDO } from '../config/deliveryConfig';
+import { validateMobileCartStock } from '../api/mobileApi';
 
 const PAYMENT_OPTIONS = [
   { id: 'gcash', title: 'GCash E-Wallet', desc: 'Instant mobile checkout', icon: 'phone-portrait-outline', tint: '#0EA5E9', bg: '#F0F9FF' },
@@ -28,24 +42,114 @@ export default function CartTab({
   deliveryFee = 200,
   onCheckout,
   onStartShopping,
-  deliveryAddress = 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
+  deliveryAddress = 'Zone 1, Mabasa, Brgy. Balulang, Cagayan de Oro City',
   onChangeAddress,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [referenceNumber, setReferenceNumber] = useState('');
+  const [isValidatingStock, setIsValidatingStock] = useState(false);
+  const [stockIssues, setStockIssues] = useState({}); // { [productId]: { current_stock, is_available } }
   const totalItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const effectiveFreight = deliveryType === 'pickup' ? 0 : deliveryFee;
   const calculatedTotal = Math.max(cartSubtotal + effectiveFreight - discount, 0);
+  const isAddressValid = deliveryType === 'pickup' || isWithinCDO(deliveryAddress);
 
-  const handlePlaceOrder = () => {
-    if (onCheckout) {
-      onCheckout({
-        deliveryType,
-        paymentMethod,
-        referenceNumber,
-        total: calculatedTotal,
-        shipping_fee: effectiveFreight,
-      });
+  // Auto-adjust cart item quantities to match currently available physical stock
+  const handleAutoAdjustStock = (issuesToFix = stockIssues) => {
+    cart.forEach((item) => {
+      const issue = issuesToFix[item.id];
+      if (issue) {
+        if (issue.current_stock <= 0) {
+          // Out of stock: remove item
+          updateQuantity(item.id, -item.quantity);
+        } else if (issue.current_stock < item.quantity) {
+          // Adjust down to physical available stock
+          const delta = issue.current_stock - item.quantity;
+          updateQuantity(item.id, delta);
+        }
+      }
+    });
+    setStockIssues({});
+  };
+
+  // Pre-Checkout Stock Guard: Validates against live physical stock before completing checkout
+  const handlePlaceOrder = async () => {
+    if (cart.length === 0) return;
+
+    if (deliveryType === 'delivery' && !isWithinCDO(deliveryAddress)) {
+      if (onChangeAddress) onChangeAddress();
+      return;
+    }
+
+    setIsValidatingStock(true);
+    try {
+      const result = await validateMobileCartStock(cart);
+
+      if (!result.is_valid || result.has_modifications) {
+        const issues = {};
+        (result.items || []).forEach((it) => {
+          if (!it.is_available) {
+            issues[it.product_id] = it;
+          }
+        });
+        setStockIssues(issues);
+
+        Alert.alert(
+          'Warehouse Inventory Alert ⚠️',
+          'Live stock levels have changed since these materials were added. We have highlighted the affected materials in your cart.',
+          [
+            {
+              text: 'Auto-Fix Quantities',
+              onPress: () => handleAutoAdjustStock(issues),
+            },
+            {
+              text: 'Review Cart',
+              style: 'cancel',
+            },
+          ]
+        );
+        return;
+      }
+
+      // Stock is completely valid: clear any prior issues and proceed
+      setStockIssues({});
+      if (onCheckout) {
+        onCheckout({
+          deliveryType,
+          paymentMethod,
+          referenceNumber,
+          total: calculatedTotal,
+          shipping_fee: effectiveFreight,
+        });
+      }
+    } catch (err) {
+      // In case of network timeout, give the user the option to proceed with server-side validation
+      Alert.alert(
+        'Stock Verification Notice',
+        `Unable to reach warehouse stock verification (${err.message || 'Network latency'}). Do you wish to proceed to checkout?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Proceed to Checkout',
+            onPress: () => {
+              if (onCheckout) {
+                onCheckout({
+                  deliveryType,
+                  paymentMethod,
+                  referenceNumber,
+                  total: calculatedTotal,
+                  shipping_fee: effectiveFreight,
+                });
+              }
+            },
+          },
+        ]
+      );
+    } finally {
+      setIsValidatingStock(false);
     }
   };
 
@@ -69,14 +173,23 @@ export default function CartTab({
         }
       />
 
-      {/* 2. Scrollable Body */}
-      <ScrollView
+      {/* 2. Scrollable Body inside KeyboardAvoidingView */}
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scroll}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            s.scroll,
+            { flexGrow: 1 },
+            isTablet && { maxWidth: 760, width: '100%', alignSelf: 'center' },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          overScrollMode="never"
+          keyboardShouldPersistTaps="handled"
+        >
         {cart.length === 0 ? (
           <EmptyState
             icon="cart-outline"
@@ -179,12 +292,12 @@ export default function CartTab({
 
               <View style={{ flex: 1, paddingRight: 6 }}>
                 <Text style={s.addressTag}>
-                  {deliveryType === 'delivery' ? 'Job Site Delivery Address' : 'Pickup Store Yard'}
+                  {deliveryType === 'delivery' ? 'Delivery Address' : 'Pickup Store Yard'}
                 </Text>
                 <Text style={s.addressText} numberOfLines={2}>
                   {deliveryType === 'delivery'
                     ? deliveryAddress
-                    : 'JEM Main Yard, National Highway, Santa Rosa, Laguna'}
+                    : `JEM Central Hub: ${DISPATCH_HUB}`}
                 </Text>
               </View>
 
@@ -195,6 +308,62 @@ export default function CartTab({
                 </View>
               )}
             </PressableScale>
+
+            {/* Out-of-boundary Alert Banner */}
+            {!isAddressValid && (
+              <View
+                style={{
+                  backgroundColor: '#fef2f2',
+                  borderColor: '#fca5a5',
+                  borderWidth: 1.5,
+                  borderRadius: 14,
+                  padding: 12,
+                  marginTop: 8,
+                  marginBottom: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Text style={{ fontSize: 18 }}>⚠️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#dc2626' }}>
+                    Delivery Restricted to Cagayan de Oro
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 2, fontWeight: '500' }}>
+                    Delivery is currently restricted to Cagayan de Oro City addresses only.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#dc2626',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 8,
+                  }}
+                  onPress={onChangeAddress}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: '#ffffff', fontSize: 11.5, fontWeight: '800' }}>Fix</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Stock Discrepancy Alert Banner */}
+            {Object.keys(stockIssues).length > 0 && (
+              <View style={s.stockWarningBanner}>
+                <Ionicons name="alert-circle" size={20} color="#DC2626" />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.stockWarningTitle}>Inventory Discrepancy Detected</Text>
+                  <Text style={s.stockWarningText}>
+                    Some quantities exceed current physical warehouse stock.
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => handleAutoAdjustStock()} style={s.autoAdjustBtn} activeOpacity={0.8}>
+                  <Text style={s.autoAdjustBtnText}>Auto-Fix</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Cart Items List */}
             <View style={s.sectionHeaderRow}>
@@ -208,14 +377,23 @@ export default function CartTab({
               const cartKey =
                 item.cart_key ||
                 `${item.id}${item.product_variant_id ? `-${item.product_variant_id}` : ''}`;
+              const stockIssue = stockIssues[item.id];
 
               return (
-                <View key={cartKey} style={[s.itemCard, SHADOWS.card]}>
+                <View key={cartKey} style={[s.itemCard, SHADOWS.card, stockIssue && s.itemCardAlert]}>
                   <LinearGradient colors={GRADIENTS.thumb} style={s.itemThumb}>
-                    <Text style={s.itemEmoji}>{item.emoji || '🧱'}</Text>
+                    {getProductImageSource(item) ? (
+                      <Image
+                        source={getProductImageSource(item)}
+                        style={s.itemImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Text style={s.itemEmoji}>{item.emoji || '🧱'}</Text>
+                    )}
                   </LinearGradient>
 
-                  <View style={{ flex: 1, paddingHorizontal: 10 }}>
+                    <View style={{ flex: 1, paddingHorizontal: 10 }}>
                     <Text style={s.itemName} numberOfLines={2}>
                       {item.name}
                     </Text>
@@ -224,6 +402,19 @@ export default function CartTab({
                         <Text style={s.variantText}>Spec: {item.variant_label}</Text>
                       </View>
                     ) : null}
+
+                    {/* Stock Alert Badge on Item */}
+                    {stockIssue && (
+                      <View style={s.stockIssueBadge}>
+                        <Ionicons name="warning" size={12} color="#DC2626" />
+                        <Text style={s.stockIssueBadgeText}>
+                          {stockIssue.current_stock > 0
+                            ? `Only ${stockIssue.current_stock} in stock (requested: ${item.quantity})`
+                            : 'Out of stock in warehouse'}
+                        </Text>
+                      </View>
+                    )}
+
                     <Text style={s.itemUnitPrice}>
                       {peso(itemPrice)}{' '}
                       <Text style={s.itemUnit}>/ {item.unit || 'unit'}</Text>
@@ -236,9 +427,10 @@ export default function CartTab({
                     <TouchableOpacity
                       style={s.deleteBtn}
                       onPress={() => updateQuantity(item.id, -item.quantity)}
-                      hitSlop={8}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      accessibilityLabel="Remove item"
                     >
-                      <Ionicons name="trash-outline" size={16} color={PALETTE.danger} />
+                      <Ionicons name="trash-outline" size={17} color={PALETTE.danger} />
                     </TouchableOpacity>
 
                     <View style={s.stepper}>
@@ -246,6 +438,8 @@ export default function CartTab({
                         onPress={() => updateQuantity(item.id, -1)}
                         style={s.stepBtn}
                         scaleTo={0.85}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel="Decrease quantity"
                       >
                         <Ionicons name="remove" size={15} color={PALETTE.text} />
                       </PressableScale>
@@ -256,6 +450,8 @@ export default function CartTab({
                         onPress={() => updateQuantity(item.id, 1)}
                         style={[s.stepBtn, s.stepBtnAdd]}
                         scaleTo={0.85}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel="Increase quantity"
                       >
                         <Ionicons name="add" size={15} color="#FFFFFF" />
                       </PressableScale>
@@ -398,14 +594,36 @@ export default function CartTab({
 
             {/* Primary Action Button */}
             <GradientButton
-              label={`Place Order · ${peso(calculatedTotal)}`}
-              icon="checkmark-circle"
+              label={
+                isValidatingStock
+                  ? 'Verifying Warehouse Stock...'
+                  : !isAddressValid
+                  ? 'Fix Address (Cagayan de Oro Only)'
+                  : Object.keys(stockIssues).length > 0
+                  ? `Adjust Stock to Place Order`
+                  : `Place Order · ${peso(calculatedTotal)}`
+              }
+              icon={
+                isValidatingStock
+                  ? 'time-outline'
+                  : !isAddressValid
+                  ? 'alert-circle'
+                  : Object.keys(stockIssues).length > 0
+                  ? 'warning-outline'
+                  : 'checkmark-circle'
+              }
               onPress={handlePlaceOrder}
-              style={{ marginTop: 14, marginBottom: 30 }}
+              disabled={isValidatingStock}
+              style={{
+                marginTop: 14,
+                marginBottom: 30,
+                opacity: !isAddressValid || isValidatingStock ? 0.85 : 1,
+              }}
             />
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -484,7 +702,14 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
   },
   addressText: { fontSize: 13, fontWeight: '700', color: PALETTE.text, marginTop: 2 },
-  changeBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 6 },
+  changeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingLeft: 6,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   changeBtnText: { fontSize: 12, fontWeight: '800', color: PALETTE.orange600 },
 
   sectionHeaderRow: {
@@ -513,6 +738,11 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   itemEmoji: { fontSize: 32 },
+  itemImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+  },
   itemName: { fontSize: 13.5, fontWeight: '800', color: PALETTE.text, lineHeight: 18 },
   variantPill: {
     alignSelf: 'flex-start',
@@ -527,8 +757,14 @@ const s = StyleSheet.create({
   itemUnit: { color: PALETTE.textMuted, fontWeight: '500' },
   itemLineTotal: { fontSize: 11.5, color: PALETTE.textMuted, fontWeight: '600', marginTop: 1 },
 
-  itemRightCol: { alignItems: 'flex-end', justifyContent: 'space-between', height: 64 },
-  deleteBtn: { padding: 4 },
+  itemRightCol: { alignItems: 'flex-end', justifyContent: 'space-between', height: 68 },
+  deleteBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+  },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -540,8 +776,8 @@ const s = StyleSheet.create({
     gap: 4,
   },
   stepBtn: {
-    width: 26,
-    height: 26,
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: PALETTE.surface,
     alignItems: 'center',
@@ -678,4 +914,61 @@ const s = StyleSheet.create({
   totalTitle: { fontSize: 15, fontWeight: '900', color: PALETTE.text },
   totalCaption: { fontSize: 10.5, color: PALETTE.textMuted, marginTop: 1 },
   totalAmount: { fontSize: 22, fontWeight: '900', color: PALETTE.orange600, letterSpacing: -0.4 },
+
+  stockWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#F87171',
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  stockWarningTitle: {
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: '#991B1B',
+  },
+  stockWarningText: {
+    fontSize: 11,
+    color: '#B91C1C',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  autoAdjustBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.sm,
+  },
+  autoAdjustBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  itemCardAlert: {
+    borderColor: '#EF4444',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFBFB',
+  },
+  stockIssueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: RADIUS.xs,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  stockIssueBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
 });

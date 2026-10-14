@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Modal, View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { styles, COLORS } from '../styles/appStyles';
+import { getProductImageSource } from '../components/ui/theme';
 
 export default function ProductDetailsModal({
   product,
@@ -69,7 +70,15 @@ export default function ProductDetailsModal({
           <ScrollView showsVerticalScrollIndicator={false} bounces={false} overScrollMode="never">
             {/* Hero Image Container */}
             <View style={styles.detailThumb}>
-              <Text style={{ fontSize: 76 }}>{product.emoji || '🧱'}</Text>
+              {getProductImageSource(product) ? (
+                <Image
+                  source={getProductImageSource(product)}
+                  style={{ width: '85%', height: '85%', borderRadius: 16 }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={{ fontSize: 76 }}>{product.emoji || '🧱'}</Text>
+              )}
             </View>
 
             {/* Brand & Category Tags */}

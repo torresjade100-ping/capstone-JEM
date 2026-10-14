@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   StatusBar,
   View,
@@ -6,6 +6,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
 
 // Prevent browser window pull/elastic overscroll on web platforms
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -38,6 +39,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 // Initial Seed Data & Styles
 import { HARDWARE_PRODUCTS, CATEGORY_ITEMS } from './src/data/initialData';
 import { styles, getThemeColors } from './src/styles/appStyles';
+import { useProductCatalog } from './src/hooks/useProductCatalog';
 
 // API Service for connecting Mobile App to Laravel Backend
 import {
@@ -62,6 +64,7 @@ import {
   getCustomerAddresses,
   fetchCurrentUser,
   clearMobileStorage,
+  validateMobileCartStock,
 } from './src/api/mobileApi';
 
 // Screens
@@ -92,6 +95,7 @@ import AddressModal from './src/modals/AddressModal';
 import SupportModal from './src/modals/SupportModal';
 import FeedbackModal from './src/modals/FeedbackModal';
 import EditProfileModal from './src/modals/EditProfileModal';
+import { isWithinCDO, DISPATCH_HUB } from './src/config/deliveryConfig';
 
 export default function App() {
   return (
@@ -127,8 +131,37 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState('home'); // home, categories, cart, orders, profile
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [products, setProducts] = useState(HARDWARE_PRODUCTS);
-  const [categories, setCategories] = useState(CATEGORY_ITEMS);
+
+  // Hybrid Pull-Based Inventory Synchronization Hook (AppState foreground sync + Pull-to-Refresh)
+  const {
+    products,
+    setProducts,
+    categories,
+    setCategories,
+    loading: loadingProducts,
+    refreshing: refreshingProducts,
+    isOffline,
+    lastSyncedAt,
+    refreshCatalog,
+  } = useProductCatalog({
+    initialProducts: HARDWARE_PRODUCTS,
+    initialCategories: CATEGORY_ITEMS,
+    onSyncError: (err, isNet) => {
+      if (isNet) {
+        showToast('Offline Mode: Displaying saved materials');
+      }
+    },
+  });
+
+  const handleRefreshCatalog = useCallback(async () => {
+    try {
+      await refreshCatalog(false);
+      showToast('Inventory synchronized with warehouse 🔄');
+    } catch (e) {
+      showToast('Sync failed: Please check network');
+    }
+  }, [refreshCatalog]);
+
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
   const [wishlist, setWishlist] = useState([]);
@@ -136,7 +169,7 @@ function MainApp() {
 
   // Address & Delivery State
   const [deliveryType, setDeliveryType] = useState('delivery'); // 'delivery' | 'pickup'
-  const [deliveryAddress, setDeliveryAddress] = useState('Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna');
+  const [deliveryAddress, setDeliveryAddress] = useState('Zone 1, Mabasa, Brgy. Balulang, Cagayan de Oro City');
   const [selectedAddressObj, setSelectedAddressObj] = useState(null);
 
   // Active Modals State
@@ -213,20 +246,9 @@ function MainApp() {
 
     const loadApiData = async () => {
       try {
-        const [fetchedProducts, fetchedCategories, fetchedOrders] = await Promise.allSettled([
-          getMobileProducts(),
-          getMobileCategories(),
-          getMobileOrders(),
-        ]);
-
-        if (fetchedProducts.status === 'fulfilled' && Array.isArray(fetchedProducts.value) && fetchedProducts.value.length > 0) {
-          setProducts(fetchedProducts.value);
-        }
-        if (fetchedCategories.status === 'fulfilled' && Array.isArray(fetchedCategories.value) && fetchedCategories.value.length > 0) {
-          setCategories(fetchedCategories.value);
-        }
-        if (fetchedOrders.status === 'fulfilled' && Array.isArray(fetchedOrders.value) && fetchedOrders.value.length > 0) {
-          setOrders(fetchedOrders.value);
+        const fetchedOrders = await getMobileOrders();
+        if (Array.isArray(fetchedOrders) && fetchedOrders.length > 0) {
+          setOrders(fetchedOrders);
         }
 
         // Fetch user default address
@@ -260,7 +282,15 @@ function MainApp() {
           setOrders(ord);
           setSelectedOrder((prev) => {
             if (!prev) return null;
-            return ord.find((o) => o.id === prev.id || o.order_number === prev.order_number) || prev;
+            return (
+              ord.find(
+                (o) =>
+                  o.id === prev.id ||
+                  String(o.id) === String(prev.id) ||
+                  (o.order_number && prev.order_number && o.order_number === prev.order_number) ||
+                  (prev.order_number && String(o.id) === String(prev.order_number))
+              ) || prev
+            );
           });
         }
       } catch (err) {
@@ -270,17 +300,12 @@ function MainApp() {
       }
     };
 
-    const pollInterval = setInterval(() => {
-      handleOrderEvent();
-    }, 8000);
-
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('jem_orders_update', handleOrderEvent);
       window.addEventListener('jem_notification_update', handleOrderEvent);
     }
 
     return () => {
-      clearInterval(pollInterval);
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('jem_orders_update', handleOrderEvent);
         window.removeEventListener('jem_notification_update', handleOrderEvent);
@@ -330,7 +355,11 @@ function MainApp() {
     setAuthError('');
     try {
       const res = await loginCustomer(authEmail, authPassword);
-      if (res.user?.role && res.user.role !== 'customer') {
+      const user = res?.user || res?.data?.user;
+      if (!user) {
+        throw new Error(res?.message || 'Login failed: No user account data returned.');
+      }
+      if (user.role && user.role !== 'customer') {
         await clearMobileStorage();
         Alert.alert(
           'Access Denied',
@@ -340,22 +369,24 @@ function MainApp() {
         setAuthError('Access denied. This app is strictly for customer accounts only.');
         return;
       }
-      if (res.user?.name) setAuthName(res.user.name);
-      if (res.user?.email) setAuthEmail(res.user.email);
-      if (res.user?.phone) setAuthPhone(res.user.phone);
+      if (user.name) setAuthName(user.name);
+      if (user.email) setAuthEmail(user.email);
+      if (user.phone) setAuthPhone(user.phone);
 
       // Load addresses for signed-in user
-      getCustomerAddresses(res.user?.email).then((addrs) => {
-        if (Array.isArray(addrs) && addrs.length > 0) {
-          const def = addrs.find((a) => a.is_default) || addrs[0];
-          if (def) {
-            setDeliveryAddress(def.address);
-            setSelectedAddressObj(def);
+      if (user.email) {
+        getCustomerAddresses(user.email).then((addrs) => {
+          if (Array.isArray(addrs) && addrs.length > 0) {
+            const def = addrs.find((a) => a.is_default) || addrs[0];
+            if (def) {
+              setDeliveryAddress(def.address);
+              setSelectedAddressObj(def);
+            }
           }
-        }
-      });
+        }).catch(() => {});
+      }
 
-      showToast(`Welcome back, ${res.user?.name || 'Customer'}! 👋`);
+      showToast(`Welcome back, ${user.name || 'Customer'}! 👋`);
       setCurrentScreen('main');
     } catch (err) {
       if (err?.message?.includes('customer accounts only') || err?.status === 403) {
@@ -431,11 +462,14 @@ function MainApp() {
     setAuthError('');
     try {
       const res = await completeSignup(payload);
-      if (res.user?.name) setAuthName(res.user.name);
-      if (res.user?.email) setAuthEmail(res.user.email);
-      if (res.user?.phone) setAuthPhone(res.user.phone);
+      const user = res?.user || res?.data?.user;
+      if (user) {
+        if (user.name) setAuthName(user.name);
+        if (user.email) setAuthEmail(user.email);
+        if (user.phone) setAuthPhone(user.phone);
+      }
 
-      showToast(`Account Created! Welcome to JEM Hardware, ${res.user?.name || 'Customer'}! 🎉`);
+      showToast(`Account Created! Welcome to JEM Hardware, ${user?.name || 'Customer'}! 🎉`);
       setSignupStep(1);
       setCurrentScreen('main');
     } catch (err) {
@@ -459,23 +493,26 @@ function MainApp() {
       const res = await initiateGoogleAuth(selectedEmail, selectedName);
       setShowGoogleModal(false);
 
-      if (res?.user) {
-        if (res.user.name) setAuthName(res.user.name);
-        if (res.user.email) setAuthEmail(res.user.email);
-        if (res.user.phone) setAuthPhone(res.user.phone);
+      const user = res?.user || res?.data?.user;
+      if (user) {
+        if (user.name) setAuthName(user.name);
+        if (user.email) setAuthEmail(user.email);
+        if (user.phone) setAuthPhone(user.phone);
 
         // Load addresses for signed-in user
-        getCustomerAddresses(res.user.email).then((addrs) => {
-          if (Array.isArray(addrs) && addrs.length > 0) {
-            const def = addrs.find((a) => a.is_default) || addrs[0];
-            if (def) {
-              setDeliveryAddress(def.address);
-              setSelectedAddressObj(def);
+        if (user.email) {
+          getCustomerAddresses(user.email).then((addrs) => {
+            if (Array.isArray(addrs) && addrs.length > 0) {
+              const def = addrs.find((a) => a.is_default) || addrs[0];
+              if (def) {
+                setDeliveryAddress(def.address);
+                setSelectedAddressObj(def);
+              }
             }
-          }
-        });
+          }).catch(() => {});
+        }
 
-        showToast(`Signed in with Google as ${res.user.name}! 👋`);
+        showToast(`Signed in with Google as ${user.name}! 👋`);
         setCurrentScreen('main');
         return;
       }
@@ -504,24 +541,27 @@ function MainApp() {
     setOtpError('');
     try {
       const res = await verifyEmailOtp(pendingVerificationEmail, code);
-      if (res.user?.name) setAuthName(res.user.name);
-      if (res.user?.email) setAuthEmail(res.user.email);
-      if (res.user?.phone) setAuthPhone(res.user.phone);
+      const user = res?.user || res?.data?.user;
+      if (user) {
+        if (user.name) setAuthName(user.name);
+        if (user.email) setAuthEmail(user.email);
+        if (user.phone) setAuthPhone(user.phone);
 
-      // Load user addresses
-      if (res.user?.email) {
-        getCustomerAddresses(res.user.email).then((addrs) => {
-          if (Array.isArray(addrs) && addrs.length > 0) {
-            const def = addrs.find((a) => a.is_default) || addrs[0];
-            if (def) {
-              setDeliveryAddress(def.address);
-              setSelectedAddressObj(def);
+        // Load user addresses
+        if (user.email) {
+          getCustomerAddresses(user.email).then((addrs) => {
+            if (Array.isArray(addrs) && addrs.length > 0) {
+              const def = addrs.find((a) => a.is_default) || addrs[0];
+              if (def) {
+                setDeliveryAddress(def.address);
+                setSelectedAddressObj(def);
+              }
             }
-          }
-        });
+          }).catch(() => {});
+        }
       }
 
-      showToast(`Account Verified! Welcome, ${res.user?.name || 'Customer'}! 🚀`);
+      showToast(`Account Verified! Welcome, ${user?.name || 'Customer'}! 🚀`);
       setCurrentScreen('main');
     } catch (err) {
       setOtpError(err.message || 'Verification failed. Please check the code.');
@@ -685,6 +725,7 @@ function MainApp() {
       if (selectedOrder && (selectedOrder.id === orderToCancel.id || selectedOrder.order_number === orderToCancel.order_number)) {
         setSelectedOrder((prev) => ({ ...prev, status: 'cancelled' }));
       }
+      refreshCatalog(true);
       showToast(`Order #${orderToCancel.order_number || orderToCancel.id} cancelled. Stock restored! 🔄`);
     } catch (err) {
       showToast(err.message || 'Failed to cancel order.');
@@ -695,6 +736,17 @@ function MainApp() {
   const handleCheckout = async (checkoutOptions = {}) => {
     if (cart.length === 0) return;
     const effDeliveryType = checkoutOptions.deliveryType || deliveryType;
+
+    // Strict Delivery Operational Boundary Check (Cagayan de Oro City only)
+    if (effDeliveryType === 'delivery') {
+      const targetAddress = checkoutOptions.deliveryAddress || deliveryAddress || '';
+      if (!isWithinCDO(targetAddress)) {
+        showToast('Delivery is currently restricted to Cagayan de Oro City addresses only.');
+        setShowAddressModal(true);
+        return;
+      }
+    }
+
     const effPaymentMethod = checkoutOptions.paymentMethod || paymentMethod;
     const effShippingFee = effDeliveryType === 'pickup' ? 0 : 200;
     const subtotal = cart.reduce((sum, i) => sum + (i.base_price || i.price || 0) * i.quantity, 0);
@@ -724,7 +776,7 @@ function MainApp() {
       customer_phone: authPhone || '',
       payment_method: effPaymentMethod.toLowerCase(),
       delivery_type: effDeliveryType,
-      delivery_address: effDeliveryType === 'pickup' ? 'JEM Main Yard (Store Pickup)' : (deliveryAddress || 'Santa Rosa, Laguna'),
+      delivery_address: effDeliveryType === 'pickup' ? `JEM Dispatch Hub: ${DISPATCH_HUB}` : (deliveryAddress || 'Zone 1, Mabasa, Brgy. Balulang, Cagayan de Oro City'),
       driver: 'Kuya Mark (Isuzu Elf Plate NCI-8921)',
       reference_number: checkoutOptions.referenceNumber || '',
       created_at: new Date().toISOString(),
@@ -732,12 +784,22 @@ function MainApp() {
     };
 
     try {
+      // Pre-Checkout Stock Guard: Verify stock directly against backend before completing checkout
+      const stockCheck = await validateMobileCartStock(cart);
+      if (!stockCheck.is_valid || stockCheck.has_modifications) {
+        showToast('Stock levels changed! Please review your cart.');
+        setActiveTab('cart');
+        refreshCatalog(true);
+        return;
+      }
+
       // Direct synchronization to Backend MySQL Database orders table & stock deduction
       const result = await submitMobileOrder(newOrder);
       setOrders((prev) => [result || newOrder, ...prev.filter((o) => o.id !== newOrder.id && o.order_number !== orderNumber)]);
       setCart([]);
       setOrdersTabFilter('To Pay');
       setActiveTab('orders');
+      refreshCatalog(true);
       showToast('Order Placed! (Awaiting Store Confirmation)');
     } catch (err) {
       showToast(err.message || 'Error submitting order. Please check stock availability.');
@@ -771,7 +833,12 @@ function MainApp() {
       const q = searchQuery.toLowerCase().trim();
       const matchQuery =
         !q || p.name.toLowerCase().includes(q) || (p.brand && p.brand.toLowerCase().includes(q));
-      const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory;
+      const matchCat =
+        selectedCategory === 'all' ||
+        String(p.category_id || '').toLowerCase() === String(selectedCategory || '').toLowerCase() ||
+        (p.category_slug && p.category_slug.toLowerCase() === String(selectedCategory).toLowerCase()) ||
+        (p.category && p.category.toLowerCase().trim() === String(selectedCategory).toLowerCase().trim()) ||
+        (p.category && p.category.toLowerCase().includes(String(selectedCategory).toLowerCase()));
       return matchQuery && matchCat;
     });
   }, [products, searchQuery, selectedCategory]);
@@ -781,23 +848,95 @@ function MainApp() {
     return (orders || []).filter((o) => {
       const status = (o.status || 'pending').toLowerCase().trim();
       if (ordersTabFilter === 'To Pay') {
-        return status === 'pending' || status === 'unpaid' || status === 'to pay' || status === 'to_pay';
+        return (
+          status === 'pending' ||
+          status === 'pending review' ||
+          status === 'pending_review' ||
+          status === 'awaiting_confirmation' ||
+          status === 'unpaid' ||
+          status === 'to pay' ||
+          status === 'to_pay'
+        );
       }
       if (ordersTabFilter === 'To Process') {
-        return status === 'confirmed' || status === 'received' || status === 'to process' || status === 'to_process';
+        return (
+          status === 'confirmed' ||
+          status === 'processing' ||
+          status === 'in process' ||
+          status === 'in_process' ||
+          status === 'received' ||
+          status === 'ready' ||
+          status === 'packed' ||
+          status === 'backordered' ||
+          status === 'to process' ||
+          status === 'to_process'
+        );
       }
-      if (ordersTabFilter === 'To Ship') {
-        return status === 'processing' || status === 'ready' || status === 'packed' || status === 'to ship' || status === 'to_ship';
-      }
-      if (ordersTabFilter === 'To Receive') {
-        return status === 'out_for_delivery' || status === 'in_transit' || status === 'shipped' || status === 'to receive' || status === 'to_receive';
+      if (
+        ordersTabFilter === 'To Ship / To Receive' ||
+        ordersTabFilter === 'To Ship' ||
+        ordersTabFilter === 'To Receive'
+      ) {
+        return (
+          status === 'out_for_delivery' ||
+          status === 'out for delivery' ||
+          status === 'dispatched' ||
+          status === 'in_transit' ||
+          status === 'shipped' ||
+          status === 'to ship' ||
+          status === 'to_ship' ||
+          status === 'to receive' ||
+          status === 'to_receive'
+        );
       }
       if (ordersTabFilter === 'Completed') {
         return status === 'completed' || status === 'delivered';
       }
-      return true;
+      if (ordersTabFilter === 'All') {
+        return true;
+      }
+      return false;
     });
   }, [orders, ordersTabFilter]);
+
+  const handleRefreshOrders = useCallback(async () => {
+    try {
+      const ord = await getMobileOrders();
+      if (Array.isArray(ord)) {
+        setOrders(ord);
+        setSelectedOrder((prevSelected) => {
+          if (!prevSelected) return null;
+          return (
+            ord.find(
+              (o) =>
+                o.id === prevSelected.id ||
+                String(o.id) === String(prevSelected.id) ||
+                (o.order_number && prevSelected.order_number && o.order_number === prevSelected.order_number) ||
+                (prevSelected.order_number && String(o.id) === String(prevSelected.order_number))
+            ) || prevSelected
+          );
+        });
+        return ord;
+      }
+    } catch (e) {
+      console.warn('Failed to refresh orders from /mobile/orders:', e);
+      throw e;
+    }
+  }, []);
+
+  const handleSelectOrder = useCallback((ord) => {
+    setSelectedOrder(ord);
+    setShowOrderTrackingModal(true);
+  }, []);
+
+  const handleLeaveFeedback = useCallback((ord) => {
+    setFeedbackOrder(ord);
+    setShowFeedbackModal(true);
+  }, []);
+
+  const handleStartShopping = useCallback(() => {
+    setActiveTab('home');
+  }, []);
 
   const cartSubtotal = cart.reduce((sum, i) => sum + (i.base_price || i.price || 0) * i.quantity, 0);
   const cartTotal = Math.max(cartSubtotal + (deliveryType === 'pickup' ? 0 : 200) - discount, 0);
@@ -939,7 +1078,8 @@ function MainApp() {
   // 5. SCREEN: SIGNED-IN MAIN APP (5 TABS)
   // =========================================================================
   return (
-    <SafeAreaView edges={['left', 'right']} style={[styles.container, isDarkMode && { backgroundColor: themeColors.bgPage }]}>
+    <NavigationContainer>
+      <SafeAreaView edges={['left', 'right']} style={[styles.container, isDarkMode && { backgroundColor: themeColors.bgPage }]}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
 
       {/* Floating Toast Notification */}
@@ -964,6 +1104,11 @@ function MainApp() {
             onOpenNotifications={() => setShowNotificationsModal(true)}
             onNavigateToCategories={() => setActiveTab('categories')}
             userName={authName}
+            refreshing={refreshingProducts}
+            onRefresh={handleRefreshCatalog}
+            isOffline={isOffline}
+            loading={loadingProducts}
+            lastSyncedAt={lastSyncedAt}
           />
         )}
 
@@ -980,6 +1125,9 @@ function MainApp() {
             addToCart={addToCart}
             wishlist={wishlist}
             toggleWishlist={toggleWishlist}
+            refreshing={refreshingProducts}
+            onRefresh={handleRefreshCatalog}
+            isOffline={isOffline}
           />
         )}
 
@@ -1008,14 +1156,16 @@ function MainApp() {
         {activeTab === 'orders' && (
           <OrdersTab
             orders={orders}
+            setOrders={setOrders}
             filteredOrders={filteredOrders}
             ordersTabFilter={ordersTabFilter}
             setOrdersTabFilter={setOrdersTabFilter}
-            onSelectOrder={(ord) => setSelectedOrder(ord)}
-            onLeaveFeedback={(ord) => setFeedbackOrder(ord)}
-            onStartShopping={() => setActiveTab('home')}
+            onSelectOrder={handleSelectOrder}
+            onLeaveFeedback={handleLeaveFeedback}
+            onStartShopping={handleStartShopping}
             onReorder={handleReorder}
             onCancelOrder={handleCancelOrder}
+            onRefreshOrders={handleRefreshOrders}
           />
         )}
 
@@ -1139,6 +1289,7 @@ function MainApp() {
         onSaveProfile={handleSaveProfile}
       />
     </SafeAreaView>
+  </NavigationContainer>
   );
 }
 

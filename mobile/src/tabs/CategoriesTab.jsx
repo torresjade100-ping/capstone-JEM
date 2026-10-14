@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader, SearchBar, EmptyState } from '../components/ui/Primitives';
@@ -22,6 +22,9 @@ export default function CategoriesTab({
   addToCart,
   wishlist = [],
   toggleWishlist,
+  refreshing = false,
+  onRefresh = null,
+  isOffline = false,
 }) {
   const [activeCat, setActiveCat] = useState(selectedCategory || 'all');
   const [activeBrand, setActiveBrand] = useState('all');
@@ -51,7 +54,9 @@ export default function CategoriesTab({
       const matchCat =
         activeCat === 'all' ||
         String(p.category_id || '').toLowerCase().trim() === String(activeCat || '').toLowerCase().trim() ||
-        (p.category && p.category.toLowerCase().trim() === String(activeCat).toLowerCase().trim());
+        (p.category_slug && p.category_slug.toLowerCase() === String(activeCat).toLowerCase()) ||
+        (p.category && p.category.toLowerCase().trim() === String(activeCat).toLowerCase().trim()) ||
+        (p.category && p.category.toLowerCase().includes(String(activeCat).toLowerCase()));
 
       const matchBrand =
         activeBrand === 'all' ||
@@ -91,7 +96,7 @@ export default function CategoriesTab({
   const activeFilterCount =
     (activeCat !== 'all' ? 1 : 0) + (activeBrand !== 'all' ? 1 : 0) + (inStockOnly ? 1 : 0);
 
-  const renderCatChip = (id, label, icon, colors) => {
+  const renderCatChip = (id, label, icon, colors, keyIndex) => {
     const isActive = activeCat === id;
     const content = (
       <>
@@ -102,7 +107,11 @@ export default function CategoriesTab({
       </>
     );
     return (
-      <TouchableOpacity key={id} onPress={() => handleSelectCategory(id, label)} activeOpacity={0.8}>
+      <TouchableOpacity
+        key={`cat-chip-${id}-${keyIndex ?? id}`}
+        onPress={() => handleSelectCategory(id, label)}
+        activeOpacity={0.8}
+      >
         {isActive ? (
           <LinearGradient colors={GRADIENTS.orange} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.chip, s.chipActive, SHADOWS.orange]}>
             {content}
@@ -132,10 +141,10 @@ export default function CategoriesTab({
       {/* 2. Category chips (fixed) */}
       <View style={s.chipBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
-          {renderCatChip('all', `All (${products.length})`, 'view-grid', ['#FB923C', '#EA580C'])}
-          {categories.map((cat) => {
+          {renderCatChip('all', `All (${products.length})`, 'view-grid', ['#FB923C', '#EA580C'], 'all')}
+          {categories.map((cat, idx) => {
             const v = getCategoryVisual(cat);
-            return renderCatChip(cat.id, cat.name || cat.title, v.icon, v.colors);
+            return renderCatChip(cat.id, cat.name || cat.title, v.icon, v.colors, idx);
           })}
         </ScrollView>
       </View>
@@ -145,9 +154,32 @@ export default function CategoriesTab({
         style={{ flex: 1 }}
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={!!refreshing}
+              onRefresh={onRefresh}
+              colors={[PALETTE.orange500, '#EA580C']}
+              tintColor={PALETTE.orange500}
+              title="Syncing live inventory..."
+              titleColor={PALETTE.textMuted}
+            />
+          ) : undefined
+        }
       >
+        {/* Offline Warning Banner */}
+        {isOffline && (
+          <View style={s.offlineBanner}>
+            <Ionicons name="cloud-offline-outline" size={16} color="#DC2626" />
+            <Text style={s.offlineBannerText}>Offline Mode · Showing local catalog</Text>
+            {onRefresh && (
+              <TouchableOpacity onPress={onRefresh} style={s.offlineRetryBtn} activeOpacity={0.8}>
+                <Text style={s.offlineRetryText}>Sync</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Sort segmented control */}
         <View style={[s.segment, SHADOWS.card]}>
           {SORT_OPTIONS.map((opt) => {
@@ -316,4 +348,33 @@ const s = StyleSheet.create({
   clearText: { fontSize: 12, fontWeight: '800', color: PALETTE.orange600 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 12,
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  offlineRetryBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  offlineRetryText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });

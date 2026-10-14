@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, Animated, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Animated, Platform, useWindowDimensions, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader, GlassIconButton, SearchBar, SectionHeader } from '../components/ui/Primitives';
@@ -19,7 +19,7 @@ const PROMO_SLIDES = [
   {
     badge: 'CUSTOMER SPECIAL',
     badgeIcon: 'car',
-    headline: 'Fast Truck Delivery\nAcross Laguna & Cavite',
+    headline: 'Fast Truck Delivery\nAcross Cagayan de Oro City',
     subheadline: 'Free standard freight on qualifying orders ₱8,000+',
     colors: ['#1E2F52', '#14213A', '#0B1220'],
     art: 'truck-fast',
@@ -62,7 +62,15 @@ export default function HomeTab({
   onOpenNotifications,
   onNavigateToCategories,
   userName = '',
+  refreshing = false,
+  onRefresh = null,
+  isOffline = false,
+  loading = false,
+  lastSyncedAt = null,
 }) {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [promoIndex, setPromoIndex] = useState(0);
   const fade = useRef(new Animated.Value(1)).current;
 
@@ -100,7 +108,7 @@ export default function HomeTab({
 
         <View style={s.locationRow}>
           <Ionicons name="location" size={13} color={PALETTE.orange400} />
-          <Text style={s.locationText}>Delivering across Laguna & Cavite</Text>
+          <Text style={s.locationText}>Delivering across Cagayan de Oro City only</Text>
         </View>
 
         <SearchBar
@@ -113,11 +121,34 @@ export default function HomeTab({
       {/* 2. Body */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scroll}
+        contentContainerStyle={[s.scroll, isTablet && { maxWidth: 1100, alignSelf: 'center', width: '100%', paddingHorizontal: 28 }]}
         showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={!!refreshing}
+              onRefresh={onRefresh}
+              colors={[PALETTE.orange500, '#EA580C']}
+              tintColor={PALETTE.orange500}
+              title="Syncing live inventory..."
+              titleColor={PALETTE.textMuted}
+            />
+          ) : undefined
+        }
       >
+        {/* Offline Warning Banner */}
+        {isOffline && (
+          <View style={s.offlineBanner}>
+            <Ionicons name="cloud-offline-outline" size={16} color="#DC2626" />
+            <Text style={s.offlineBannerText}>Offline Mode · Displaying local inventory snapshot</Text>
+            {onRefresh && (
+              <TouchableOpacity onPress={onRefresh} style={s.offlineRetryBtn} activeOpacity={0.8}>
+                <Text style={s.offlineRetryText}>Sync</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {!searchQuery ? (
           <>
             {/* Hero promo */}
@@ -175,7 +206,7 @@ export default function HomeTab({
                 const v = getCategoryVisual(cat);
                 return (
                   <PressableScale
-                    key={cat.id || idx}
+                    key={`home-cat-${cat.id ?? idx}-${idx}`}
                     onPress={() => onSelectCategory(cat.id, cat.name || cat.title)}
                     style={s.catItem}
                     containerStyle={s.catCell}
@@ -204,7 +235,13 @@ export default function HomeTab({
           onAction={onNavigateToCategories}
         />
 
-        {products.length === 0 ? (
+        {loading && products.length === 0 ? (
+          <View style={[s.noResults, SHADOWS.card, { paddingVertical: 40 }]}>
+            <ActivityIndicator size="large" color={PALETTE.orange500} />
+            <Text style={s.noResultsTitle}>Connecting to live warehouse...</Text>
+            <Text style={s.noResultsText}>Fetching real-time inventory and pricing</Text>
+          </View>
+        ) : products.length === 0 ? (
           <View style={[s.noResults, SHADOWS.card]}>
             <Ionicons name="search-outline" size={28} color={PALETTE.textFaint} />
             <Text style={s.noResultsTitle}>No materials found</Text>
@@ -325,4 +362,34 @@ const s = StyleSheet.create({
   },
   noResultsTitle: { fontSize: 15, fontWeight: '900', color: PALETTE.text, marginTop: 10 },
   noResultsText: { fontSize: 12.5, color: PALETTE.textMuted, marginTop: 4 },
+
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 14,
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  offlineRetryBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  offlineRetryText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });

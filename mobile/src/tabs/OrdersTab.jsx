@@ -1,14 +1,51 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader, EmptyState } from '../components/ui/Primitives';
 import PressableScale from '../components/ui/PressableScale';
 import { PALETTE, RADIUS, SHADOWS, peso, getOrderStatusVisual } from '../components/ui/theme';
+import { getMobileOrders } from '../api/mobileApi';
 
-const STATUS_FILTERS = ['To Pay', 'To Process', 'To Ship', 'To Receive', 'Completed', 'All'];
+const STATUS_FILTERS = ['To Pay', 'To Process', 'To Ship / To Receive', 'Completed', 'All'];
+
+const TRACKING_STEPS = [
+  { label: 'Placed', step: 1 },
+  { label: 'Confirmed', step: 2 },
+  { label: 'Warehouse', step: 3 },
+  { label: 'Delivered', step: 4 },
+];
+
+export const getOrderStepperActiveCount = (status = '') => {
+  const s = String(status || '').toLowerCase().trim();
+  if (s === 'completed' || s === 'delivered') {
+    return 4; // All 4 steps active (Delivered)
+  }
+  if (
+    s === 'processing' ||
+    s === 'in_process' ||
+    s === 'in process' ||
+    s === 'out_for_delivery' ||
+    s === 'out for delivery' ||
+    s === 'ready' ||
+    s === 'packed' ||
+    s === 'shipped' ||
+    s === 'in_transit' ||
+    s === 'dispatched' ||
+    s === 'backordered'
+  ) {
+    return 3; // Step 1, 2, & 3 active (Warehouse)
+  }
+  if (s === 'confirmed' || s === 'received') {
+    return 2; // Step 1 & 2 active (Placed, Confirmed)
+  }
+  // Pending / Pending Review / Unpaid
+  return 1; // Step 1 active (Placed)
+};
 
 export default function OrdersTab({
   orders = [],
+  setOrders,
   filteredOrders = [],
   ordersTabFilter = 'To Pay',
   setOrdersTabFilter,
@@ -17,7 +54,114 @@ export default function OrdersTab({
   onStartShopping,
   onReorder,
   onCancelOrder,
+  onRefreshOrders,
 }) {
+  const [initialLoading, setInitialLoading] = useState(orders.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+
+  const isMountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+  const onRefreshOrdersRef = useRef(onRefreshOrders);
+  onRefreshOrdersRef.current = onRefreshOrders;
+  const setOrdersRef = useRef(setOrders);
+  setOrdersRef.current = setOrders;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Core order fetch execution (strictly isolated with zero external state dependencies)
+  const executeOrderFetch = useCallback(async (isInitial = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (isInitial && (!ordersRef.current || ordersRef.current.length === 0)) {
+      setInitialLoading(true);
+    }
+    setFetchError(null);
+
+    try {
+      if (onRefreshOrdersRef.current) {
+        await onRefreshOrdersRef.current();
+      } else {
+        const latest = await getMobileOrders();
+        if (isMountedRef.current && setOrdersRef.current && Array.isArray(latest)) {
+          setOrdersRef.current(latest);
+        }
+      }
+      if (isMountedRef.current) {
+        setFetchError(null);
+      }
+    } catch (err) {
+      console.warn('[OrdersTab] Orders fetch failed:', err?.message || err);
+      if (isMountedRef.current) {
+        setFetchError(err?.message || 'Unable to connect to orders service');
+      }
+    } finally {
+      isFetchingRef.current = false;
+      if (isMountedRef.current) {
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  // Dedicated pull-to-refresh handler (only user gesture triggers refreshing = true)
+  const handlePullRefresh = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setRefreshing(true);
+    setFetchError(null);
+
+    try {
+      if (onRefreshOrdersRef.current) {
+        await onRefreshOrdersRef.current();
+      } else {
+        const latest = await getMobileOrders();
+        if (isMountedRef.current && setOrdersRef.current && Array.isArray(latest)) {
+          setOrdersRef.current(latest);
+        }
+      }
+      if (isMountedRef.current) {
+        setFetchError(null);
+      }
+    } catch (err) {
+      console.warn('[OrdersTab] Pull-to-refresh failed:', err?.message || err);
+      if (isMountedRef.current) {
+        setFetchError(err?.message || 'Unable to refresh orders. Check network connection.');
+      }
+    } finally {
+      isFetchingRef.current = false;
+      if (isMountedRef.current) {
+        setRefreshing(false);
+        setInitialLoading(false);
+      }
+    }
+  }, []);
+
+  // 1. Strictly run once on component mount (empty dependency array [])
+  useEffect(() => {
+    executeOrderFetch(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2. Strictly run when user switches active order tabs / memoized status filter
+  const activeTabRef = useRef(ordersTabFilter);
+  useEffect(() => {
+    if (activeTabRef.current !== ordersTabFilter) {
+      activeTabRef.current = ordersTabFilter;
+      setFetchError(null);
+      executeOrderFetch(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersTabFilter]);
+
   return (
     <View style={{ flex: 1 }}>
       {/* 1. Header */}
@@ -60,15 +204,55 @@ export default function OrdersTab({
         </ScrollView>
       </View>
 
-      {/* 3. Orders Scrollable List */}
+      {/* 3. Orders Scrollable List with Pull-to-Refresh */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scroll}
+        contentContainerStyle={[
+          s.scroll,
+          (initialLoading || (fetchError && orders.length === 0) || (!initialLoading && filteredOrders.length === 0)) && s.centerScrollContent,
+        ]}
         showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            colors={[PALETTE.primary || '#f97316']}
+            tintColor={PALETTE.primary || '#f97316'}
+          />
+        }
       >
-        {filteredOrders.length === 0 ? (
+        {initialLoading && orders.length === 0 ? (
+          /* Dedicated Centered Initial Loading Indicator */
+          <View style={s.loadingContainer}>
+            <View style={s.loadingSpinnerWrapper}>
+              <ActivityIndicator size="large" color={PALETTE.primary || '#f97316'} />
+            </View>
+            <Text style={s.loadingTitle}>Loading your orders...</Text>
+            <Text style={s.loadingSubtitle}>
+              Checking live delivery & stage tracking status
+            </Text>
+          </View>
+        ) : fetchError && orders.length === 0 ? (
+          /* Dedicated Error & Network Retry UI */
+          <View style={s.errorContainer}>
+            <View style={s.errorIconCircle}>
+              <Ionicons name="cloud-offline-outline" size={42} color="#EF4444" />
+            </View>
+            <Text style={s.errorTitle}>Unable to Load Orders</Text>
+            <Text style={s.errorMessage}>
+              {fetchError || 'Could not connect to the orders service. Please verify your connection.'}
+            </Text>
+            <TouchableOpacity
+              style={s.retryBtn}
+              onPress={() => executeOrderFetch(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="reload-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={s.retryBtnText}>Retry Connection</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredOrders.length === 0 ? (
+          /* Empty State: ONLY renders after data fetching is completely finished and orders list is verified empty */
           <EmptyState
             icon="receipt-outline"
             title="No orders in this stage"
@@ -78,15 +262,34 @@ export default function OrdersTab({
           />
         ) : (
           <View style={{ gap: 12 }}>
+            {/* If pull-to-refresh had an error while existing orders are shown, render a subtle warning banner */}
+            {fetchError ? (
+              <View style={s.errorBanner}>
+                <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+                <Text style={s.errorBannerText} numberOfLines={1}>{fetchError}</Text>
+                <TouchableOpacity onPress={handlePullRefresh}>
+                  <Text style={s.errorBannerRetry}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             {filteredOrders.map((ord) => {
-              const rawStatus = (ord.status || 'pending').toLowerCase();
+              const rawStatus = (ord.status || 'pending').toLowerCase().trim();
               const isCompleted = rawStatus === 'completed' || rawStatus === 'delivered';
               const isPending =
                 rawStatus === 'pending' ||
+                rawStatus === 'pending review' ||
+                rawStatus === 'pending_review' ||
+                rawStatus === 'awaiting_confirmation' ||
                 rawStatus === 'unpaid' ||
                 rawStatus === 'to pay' ||
                 rawStatus === 'to_pay';
               const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
+
+              // Hide Cancel button when order has already progressed past confirmation (Confirmed, Processing, Out for Delivery, Completed)
+              const canCancel =
+                isPending &&
+                !['confirmed', 'received', 'processing', 'in process', 'in_process', 'ready', 'packed', 'out_for_delivery', 'out for delivery', 'dispatched', 'shipped', 'in_transit', 'delivered', 'completed'].includes(rawStatus);
+
               const visual = getOrderStatusVisual(ord.status);
               const items = ord.items || [];
               const orderId = ord.order_number || ord.id;
@@ -117,16 +320,12 @@ export default function OrdersTab({
                     </View>
                   </View>
 
-                  {/* Visual Progress Bar (4 steps) */}
-                  {!isCancelled && visual.step >= 0 && (
+                  {/* Dynamic Status Stepper Progression (Placed, Confirmed, Warehouse, Delivered) */}
+                  {!isCancelled && (
                     <View style={s.stepperRow}>
-                      {[
-                        { label: 'Placed', idx: 0 },
-                        { label: 'Confirmed', idx: 1 },
-                        { label: 'Warehouse', idx: 2 },
-                        { label: 'Delivered', idx: 3 },
-                      ].map((st) => {
-                        const isDone = visual.step >= st.idx;
+                      {TRACKING_STEPS.map((st) => {
+                        const activeCount = getOrderStepperActiveCount(ord.status);
+                        const isDone = activeCount >= st.step;
                         return (
                           <View key={st.label} style={s.stepperCol}>
                             <View
@@ -208,8 +407,8 @@ export default function OrdersTab({
                     </View>
 
                     <View style={s.actionsRow}>
-                      {/* Cancel button if pending */}
-                      {(isPending || rawStatus === 'backordered') && onCancelOrder && (
+                      {/* Cancel button: strictly hidden once order progressed past confirmation */}
+                      {canCancel && onCancelOrder && (
                         <PressableScale
                           style={s.cancelBtn}
                           onPress={() => onCancelOrder(ord)}
@@ -317,6 +516,118 @@ const s = StyleSheet.create({
   },
 
   scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
+  centerScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 56,
+    paddingHorizontal: 24,
+  },
+  loadingSpinnerWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  loadingTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: PALETTE.text,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    color: PALETTE.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 28,
+  },
+  errorIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#991B1B',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 13,
+    color: PALETTE.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 20,
+    maxWidth: 300,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PALETTE.primary || '#f97316',
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    borderRadius: RADIUS.md,
+    shadowColor: PALETTE.primary || '#f97316',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  retryBtnText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 8,
+    gap: 8,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  errorBannerRetry: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: PALETTE.primary || '#f97316',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
 
   orderCard: {
     backgroundColor: PALETTE.surface,

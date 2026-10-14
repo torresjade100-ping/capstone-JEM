@@ -81,10 +81,11 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     setLoading(true)
     try {
       const data = await getAdminOrders()
-      setOrders(Array.isArray(data) ? data : [])
+      setOrders(Array.isArray(data) ? data.map(o => ({ ...o, id: o.id || o.order_number })) : [])
     } catch (error) {
       console.warn('Failed to fetch remote orders, using shared local store:', error)
-      setOrders(getSharedOrders())
+      const shared = getSharedOrders()
+      setOrders(Array.isArray(shared) ? shared.map(o => ({ ...o, id: o.id || o.order_number })) : [])
     } finally {
       setLoading(false)
     }
@@ -117,10 +118,11 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     try {
       const data = await getAdminOrders()
       if (Array.isArray(data)) {
-        setOrders(data)
+        setOrders(data.map(o => ({ ...o, id: o.id || o.order_number })))
       }
     } catch (e) {
-      setOrders(getSharedOrders())
+      const shared = getSharedOrders()
+      setOrders(Array.isArray(shared) ? shared.map(o => ({ ...o, id: o.id || o.order_number })) : [])
     }
   }
 
@@ -164,27 +166,48 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
       setUpdatingId(orderId)
-      const updated = await updateOrderStatus(orderId, newStatus)
-      setOrders(updated)
-      if (selectedOrder && (selectedOrder.id === orderId || selectedOrder.order_number === orderId)) {
-        setSelectedOrder(prev => ({ ...prev, status: newStatus }))
+      const res = await updateOrderStatus(orderId, newStatus)
+      const updatedOrder = res && (res.id ? res : { id: orderId, status: newStatus })
+
+      // Enforce in-place status update in frontend state (no record duplication)
+      setOrders(prevOrders =>
+        prevOrders.map(order => {
+          const isMatch =
+            order.id === updatedOrder.id ||
+            String(order.id) === String(updatedOrder.id) ||
+            (order.order_number && updatedOrder.order_number && String(order.order_number) === String(updatedOrder.order_number)) ||
+            (order.order_number && String(order.order_number) === String(updatedOrder.id)) ||
+            (updatedOrder.order_number && String(order.id) === String(updatedOrder.order_number))
+          return isMatch ? { ...order, status: updatedOrder.status } : order
+        })
+      )
+
+      if (selectedOrder) {
+        const isSelectedMatch =
+          selectedOrder.id === updatedOrder.id ||
+          String(selectedOrder.id) === String(updatedOrder.id) ||
+          (selectedOrder.order_number && updatedOrder.order_number && String(selectedOrder.order_number) === String(updatedOrder.order_number)) ||
+          (selectedOrder.order_number && String(selectedOrder.order_number) === String(updatedOrder.id))
+        if (isSelectedMatch) {
+          setSelectedOrder(prev => ({ ...prev, status: updatedOrder.status }))
+        }
       }
 
       const statusNames = {
         pending: 'Pending Review',
         confirmed: 'Confirmed',
         backordered: 'Backordered (Waiting for Stock)',
-        processing: 'Processing in Warehouse',
+        processing: 'In Process',
         ready: 'Ready for Pickup / Staging',
         out_for_delivery: 'Out for Delivery',
-        completed: 'Completed & Delivered',
+        completed: 'Completed',
         cancelled: 'Cancelled'
       }
 
       Swal.fire({
         icon: 'success',
         title: 'Order Status Updated! 📦',
-        text: `Order #${orderId} has been updated to "${statusNames[newStatus] || newStatus}". Customer app is updated in real-time.`,
+        text: `Order #${updatedOrder.order_number || updatedOrder.id} has been updated to "${statusNames[updatedOrder.status] || updatedOrder.status}". Customer app is updated in real-time.`,
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -285,17 +308,22 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
   }
 
   const getStatusBadge = (status) => {
+    const raw = (status || '').toLowerCase().trim()
     const map = {
       pending: { label: 'Pending Review', bg: '#fff7ed', color: '#c2410c', border: '#ffedd5', icon: Clock },
+      'pending review': { label: 'Pending Review', bg: '#fff7ed', color: '#c2410c', border: '#ffedd5', icon: Clock },
       confirmed: { label: 'Confirmed', bg: '#eff6ff', color: '#1d4ed8', border: '#dbeafe', icon: CheckCircle2 },
       backordered: { label: 'Backordered', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa', icon: AlertTriangle },
-      processing: { label: 'Processing (Warehouse)', bg: '#fdf4ff', color: '#86198f', border: '#fae8ff', icon: Package },
+      processing: { label: 'In Process', bg: '#fdf4ff', color: '#86198f', border: '#fae8ff', icon: Package },
+      'in process': { label: 'In Process', bg: '#fdf4ff', color: '#86198f', border: '#fae8ff', icon: Package },
+      in_process: { label: 'In Process', bg: '#fdf4ff', color: '#86198f', border: '#fae8ff', icon: Package },
       ready: { label: 'Ready for Pickup', bg: '#ecfdf5', color: '#047857', border: '#d1fae5', icon: Store },
       out_for_delivery: { label: 'Out for Delivery', bg: '#eff6ff', color: '#0284c7', border: '#bae6fd', icon: Truck },
+      'out for delivery': { label: 'Out for Delivery', bg: '#eff6ff', color: '#0284c7', border: '#bae6fd', icon: Truck },
       completed: { label: 'Completed', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', icon: CheckCircle2 },
       cancelled: { label: 'Cancelled', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', icon: X }
     }
-    const cfg = map[status] || { label: status, bg: '#f8fafc', color: '#475569', border: '#e2e8f0', icon: Clock }
+    const cfg = map[raw] || { label: status, bg: '#f8fafc', color: '#475569', border: '#e2e8f0', icon: Clock }
     const Icon = cfg.icon
     return (
       <span style={{
@@ -638,199 +666,210 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                   </thead>
 
                   <tbody>
-                    {filteredOrders.map((order) => {
-                      const isMobile = (order.order_source || '').toLowerCase().includes('mobile')
-                      const itemCount = (order.items || []).reduce((sum, it) => sum + Number(it.quantity || 1), 0)
-                      const custName = order.customer_name || order.customer?.user?.name || 'Customer'
-                      const dateStr = order.created_at ? new Date(order.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Today'
-                      const hasBackorders = order.status === 'backordered' || (order.items || []).some(i => Number(i.backordered_quantity || 0) > 0)
+                    {(() => {
+                      const uniqueOrders = Array.from(new Map((filteredOrders || []).map(o => [o.id, o])).values());
+                      return uniqueOrders.map((order) => {
+                        const isMobile = (order.order_source || '').toLowerCase().includes('mobile')
+                        const itemCount = (order.items || []).reduce((sum, it) => sum + Number(it.quantity || 1), 0)
+                        const custName = order.customer_name || order.customer?.user?.name || 'Customer'
+                        const dateStr = order.created_at ? new Date(order.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Today'
+                        const hasBackorders = order.status === 'backordered' || (order.items || []).some(i => Number(i.backordered_quantity || 0) > 0)
+                        const st = (order.status || '').toLowerCase().trim()
 
-                      return (
-                        <tr key={order.id || order.order_number}>
-                          {/* Order Number & Source */}
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>
-                                  {order.order_number || `#${order.id}`}
-                                </strong>
-                                {hasBackorders && (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '2px',
-                                    background: '#fff7ed',
-                                    color: '#c2410c',
-                                    border: '1px solid #fed7aa',
-                                    borderRadius: '4px',
-                                    fontSize: '10px',
-                                    fontWeight: '800',
-                                    padding: '1px 5px'
-                                  }}>
-                                    ⏳ Backordered
-                                  </span>
-                                )}
+                        return (
+                          <tr key={order.id}>
+                            {/* Order Number & Source */}
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>
+                                    {order.order_number || `#${order.id}`}
+                                  </strong>
+                                  {hasBackorders && (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '2px',
+                                      background: '#fff7ed',
+                                      color: '#c2410c',
+                                      border: '1px solid #fed7aa',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '800',
+                                      padding: '1px 5px'
+                                    }}>
+                                      ⏳ Backordered
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {isMobile ? (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      background: '#eff6ff',
+                                      color: '#1d4ed8',
+                                      border: '1px solid #bfdbfe',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '800',
+                                      padding: '1px 5px'
+                                    }}>
+                                      <Smartphone size={10} /> Mobile App
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      background: 'var(--bg-hover)',
+                                      color: 'var(--text-secondary)',
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '800',
+                                      padding: '1px 5px'
+                                    }}>
+                                      <Building size={10} /> Walk-in POS
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{dateStr}</span>
+                                </div>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                {isMobile ? (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    background: '#eff6ff',
-                                    color: '#1d4ed8',
-                                    border: '1px solid #bfdbfe',
-                                    borderRadius: '4px',
-                                    fontSize: '10px',
-                                    fontWeight: '800',
-                                    padding: '1px 5px'
-                                  }}>
-                                    <Smartphone size={10} /> Mobile App
-                                  </span>
+                            </td>
+
+                            {/* Customer Name */}
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>{custName}</strong>
+                                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                                  {order.customer_phone || order.customer?.user?.phone || '📞 0917-555-1234'}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Items */}
+                            <td>
+                              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                                {order.items && order.items.length === 1 ? (
+                                  <strong>{formatQuantityWithUnit(order.items[0].quantity || order.items[0].qty || 1, order.items[0].product?.unit || order.items[0].unit)}</strong>
                                 ) : (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    background: 'var(--bg-hover)',
-                                    color: 'var(--text-secondary)',
-                                    border: '1px solid var(--border-color)',
-                                    borderRadius: '4px',
-                                    fontSize: '10px',
-                                    fontWeight: '800',
-                                    padding: '1px 5px'
-                                  }}>
-                                    <Building size={10} /> Walk-in POS
-                                  </span>
+                                  <strong>{itemCount} total units</strong>
                                 )}
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{dateStr}</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>
+                                  ({order.items?.length || 1} product lines)
+                                </span>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Customer Name */}
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <strong style={{ color: 'var(--text-primary)', fontSize: '13.5px' }}>{custName}</strong>
-                              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                                {order.customer_phone || order.customer?.user?.phone || '📞 0917-555-1234'}
+                            {/* Total Amount */}
+                            <td>
+                              <strong style={{ color: '#ea580c', fontSize: '14.5px' }}>
+                                ₱{Number(order.total || 0).toLocaleString()}
+                              </strong>
+                              <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {order.delivery_type === 'pickup' ? 'Store Pickup' : 'Delivery Included'}
                               </span>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Items */}
-                          <td>
-                            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                              {order.items && order.items.length === 1 ? (
-                                <strong>{formatQuantityWithUnit(order.items[0].quantity || order.items[0].qty || 1, order.items[0].product?.unit || order.items[0].unit)}</strong>
-                              ) : (
-                                <strong>{itemCount} total units</strong>
-                              )}
-                              <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>
-                                ({order.items?.length || 1} product lines)
-                              </span>
-                            </div>
-                          </td>
+                            {/* Payment Method */}
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
+                                  {order.payment_method === 'cod' ? 'Cash on Delivery' : (order.payment_method === 'gcash' ? 'GCash' : (order.payment_method === 'maya' ? 'Maya' : (order.payment_method || 'Cash')))}
+                                </span>
+                                <span style={{ fontSize: '10.5px', color: order.payment_method === 'cod' ? '#d97706' : '#059669', fontWeight: '600' }}>
+                                  {order.payment_method === 'cod' ? 'Pending Collection' : '✓ Verified Paid'}
+                                </span>
+                              </div>
+                            </td>
 
-                          {/* Total Amount */}
-                          <td>
-                            <strong style={{ color: '#ea580c', fontSize: '14.5px' }}>
-                              ₱{Number(order.total || 0).toLocaleString()}
-                            </strong>
-                            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)' }}>
-                              {order.delivery_type === 'pickup' ? 'Store Pickup' : 'Delivery Included'}
-                            </span>
-                          </td>
+                            {/* Status Badge */}
+                            <td>
+                              {getStatusBadge(order.status)}
+                            </td>
 
-                          {/* Payment Method */}
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
-                                {order.payment_method === 'cod' ? 'Cash on Delivery' : (order.payment_method === 'gcash' ? 'GCash' : (order.payment_method === 'maya' ? 'Maya' : (order.payment_method || 'Cash')))}
-                              </span>
-                              <span style={{ fontSize: '10.5px', color: order.payment_method === 'cod' ? '#d97706' : '#059669', fontWeight: '600' }}>
-                                {order.payment_method === 'cod' ? 'Pending Collection' : '✓ Verified Paid'}
-                              </span>
-                            </div>
-                          </td>
+                            {/* Actions */}
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                {/* Linear Action Button Workflow */}
+                                {(st === 'pending' || st === 'pending review') && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    style={{ background: '#16a34a', color: '#fff', padding: '5px 12px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleUpdateStatus(order.id, 'confirmed')}
+                                    disabled={updatingId === order.id}
+                                    title="Confirm Order"
+                                  >
+                                    <CheckCircle2 size={12} /> Confirm
+                                  </button>
+                                )}
+                                {st === 'confirmed' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    style={{ background: '#9333ea', color: '#fff', padding: '5px 12px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleUpdateStatus(order.id, 'processing')}
+                                    disabled={updatingId === order.id}
+                                    title="Process Order"
+                                  >
+                                    <Package size={12} /> Process
+                                  </button>
+                                )}
+                                {(st === 'processing' || st === 'in_process' || st === 'in process' || st === 'received') && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    style={{ background: '#0284c7', color: '#fff', padding: '5px 12px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleUpdateStatus(order.id, 'out_for_delivery')}
+                                    disabled={updatingId === order.id}
+                                    title="Out for Delivery"
+                                  >
+                                    <Truck size={12} /> Out for Delivery
+                                  </button>
+                                )}
+                                {(st === 'out_for_delivery' || st === 'out for delivery') && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    style={{ background: '#059669', color: '#fff', padding: '5px 12px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => handleUpdateStatus(order.id, 'completed')}
+                                    disabled={updatingId === order.id}
+                                    title="Mark as Completed"
+                                  >
+                                    <Check size={12} /> Deliver
+                                  </button>
+                                )}
+                                {st === 'backordered' && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    style={{ background: '#ea580c', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => { setSelectedOrder(order); setShowDetails(true); }}
+                                    title="View Shortages and Allocation Details"
+                                  >
+                                    <AlertTriangle size={12} /> View Backorder
+                                  </button>
+                                )}
 
-                          {/* Status Badge */}
-                          <td>
-                            {getStatusBadge(order.status)}
-                          </td>
-
-                          {/* Actions */}
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                              {role !== 'admin' && order.status === 'pending' && (
+                                {/* Details Button - Only button shown when Completed */}
                                 <button
                                   type="button"
-                                  className="btn btn-sm"
-                                  style={{ background: '#16a34a', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
-                                  onClick={() => handleUpdateStatus(order.id || order.order_number, 'confirmed')}
-                                  title="Accept and Confirm Customer Order"
+                                  className={`btn btn-sm ${role === 'admin' ? 'btn-secondary' : 'btn-primary'}`}
+                                  onClick={() => { setSelectedOrder(order); setShowDetails(true) }}
+                                  style={{ padding: '5px 10px', fontSize: '11.5px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  title="Open Full Order Details"
                                 >
-                                  <CheckCircle2 size={12} /> Confirm
+                                  <Eye size={12} /> Details
                                 </button>
-                              )}
-                              {role !== 'admin' && order.status === 'confirmed' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  style={{ background: '#9333ea', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
-                                  onClick={() => handleUpdateStatus(order.id || order.order_number, 'processing')}
-                                  title="Process Materials in Warehouse"
-                                >
-                                  <Package size={12} /> Process
-                                </button>
-                              )}
-                              {role !== 'admin' && order.status === 'backordered' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  style={{ background: '#ea580c', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
-                                  onClick={() => { setSelectedOrder(order); setShowDetails(true); }}
-                                  title="View Shortages and Allocation Details"
-                                >
-                                  <AlertTriangle size={12} /> View Backorder
-                                </button>
-                              )}
-                              {role !== 'admin' && order.status === 'processing' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  style={{ background: '#0284c7', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
-                                  onClick={() => handleUpdateStatus(order.id || order.order_number, 'out_for_delivery')}
-                                  title="Dispatch Delivery Truck"
-                                >
-                                  <Truck size={12} /> Dispatch
-                                </button>
-                              )}
-                              {role !== 'admin' && order.status === 'out_for_delivery' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  style={{ background: '#059669', color: '#fff', padding: '5px 10px', fontSize: '11.5px', fontWeight: '700', borderRadius: '6px' }}
-                                  onClick={() => handleUpdateStatus(order.id || order.order_number, 'completed')}
-                                  title="Mark as Completed & Settle"
-                                >
-                                  <Check size={12} /> Complete
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className={`btn btn-sm ${role === 'admin' ? 'btn-secondary' : 'btn-primary'}`}
-                                onClick={() => { setSelectedOrder(order); setShowDetails(true) }}
-                                style={{ padding: '5px 10px', fontSize: '11.5px', borderRadius: '6px' }}
-                                title={role === 'admin' ? 'View Order Details (Audit)' : 'Open Full Order Details'}
-                              >
-                                <Eye size={12} /> {role === 'admin' ? 'View' : 'Details'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    })()}
                   </tbody>
                 </table>
               </div>

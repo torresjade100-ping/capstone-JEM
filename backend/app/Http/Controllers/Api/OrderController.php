@@ -12,6 +12,7 @@ use App\Services\BackorderService;
 use App\Services\InventoryService;
 use App\Http\Requests\CheckoutRequest as CheckoutRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -40,6 +41,42 @@ class OrderController extends Controller
             ->paginate(20);
 
         return response()->json(['success' => true, 'data' => $orders]);
+    }
+
+    public function mobileIndex(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (! $user && $request->bearerToken()) {
+            $token = \Laravel\Sanctum\PersonalAccessToken::findToken($request->bearerToken());
+            if ($token && $token->tokenable) {
+                $user = $token->tokenable;
+            }
+        }
+
+        $customer = null;
+        if ($user && $user->customer) {
+            $customer = $user->customer;
+        } elseif ($request->filled('customer_email') || $request->filled('email')) {
+            $email = $request->input('customer_email') ?: $request->input('email');
+            $userByEmail = \App\Models\User::where('email', $email)->first();
+            if ($userByEmail && $userByEmail->customer) {
+                $customer = $userByEmail->customer;
+            }
+        }
+
+        $query = Order::with(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user'])
+            ->orderBy('created_at', 'desc');
+
+        if ($customer) {
+            $query->where('customer_id', $customer->id);
+        }
+
+        $orders = $query->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $orders,
+        ]);
     }
 
     public function show($id): JsonResponse
@@ -398,6 +435,50 @@ class OrderController extends Controller
             ], 500);
         }
     }
+
+    public function updateStatus(\Illuminate\Http\Request $request, $id): JsonResponse
+    {
+        $order = ($id instanceof Order)
+            ? $id
+            : Order::where('id', $id)->orWhere('order_number', $id)->firstOrFail();
+
+        $rawStatus = strtolower(trim((string) $request->input('status')));
+        $statusAliases = [
+            'in_process' => 'processing',
+            'in process' => 'processing',
+            'process' => 'processing',
+            'deliver' => 'out_for_delivery',
+            'delivery' => 'out_for_delivery',
+            'out for delivery' => 'out_for_delivery',
+            'pending review' => 'pending',
+            'pending_review' => 'pending',
+            'to_pay' => 'pending',
+            'to pay' => 'pending',
+            'to_process' => 'processing',
+            'to process' => 'processing',
+            'to_ship' => 'out_for_delivery',
+            'to ship' => 'out_for_delivery',
+            'to receive' => 'out_for_delivery',
+            'to_receive' => 'out_for_delivery',
+            'complete' => 'completed',
+        ];
+        if (isset($statusAliases[$rawStatus])) {
+            $rawStatus = $statusAliases[$rawStatus];
+        }
+
+        $order->status = strtolower($rawStatus);
+        $order->save();
+
+        $fresh = $order->fresh(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user']);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Order status updated to {$order->status}.",
+            'order' => $fresh,
+            'data' => $fresh,
+        ]);
+    }
 }
+
 
 

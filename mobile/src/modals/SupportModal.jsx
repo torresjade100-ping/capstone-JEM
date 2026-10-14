@@ -274,7 +274,7 @@ export default function SupportModal({
                       📍 Physical Store &amp; Main Yard
                     </Text>
                     <Text style={{ fontSize: 12.5, color: COLORS.textBody, marginTop: 3, fontWeight: '600' }}>
-                      National Highway, Santa Rosa, Laguna, Philippines
+                      Mabasa, Balulang, Cagayan de Oro City, Philippines
                     </Text>
                   </View>
                 </View>

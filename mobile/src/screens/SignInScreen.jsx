@@ -11,6 +11,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -38,6 +39,9 @@ export default function SignInScreen({
   onNavigateToSignUp,
   onGoBack,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [showHelpTip, setShowHelpTip] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
 
@@ -59,11 +63,15 @@ export default function SignInScreen({
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { flexGrow: 1 },
+            isTablet && { maxWidth: 540, width: '100%', alignSelf: 'center' },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           bounces={false}
@@ -142,7 +150,7 @@ export default function SignInScreen({
               <TouchableOpacity
                 style={styles.eyeBtn}
                 onPress={() => setShowPassword && setShowPassword(!showPassword)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
@@ -157,7 +165,9 @@ export default function SignInScreen({
               <TouchableOpacity
                 onPress={onForgotPassword}
                 activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+                accessibilityLabel="Forgot password"
               >
                 <Text style={styles.forgotText}>Forgot?</Text>
               </TouchableOpacity>
@@ -281,14 +291,16 @@ const styles = StyleSheet.create({
     minHeight: 38,
   },
   backBtn: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
   backBtnPlaceholder: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
   },
   brandBadgeBox: {
     justifyContent: 'center',
@@ -341,7 +353,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   eyeBtn: {
-    padding: 4,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -380,15 +393,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
+    minHeight: 44,
   },
   staySignedInRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 44,
+    paddingVertical: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 4,
     borderWidth: 1.5,
     borderColor: '#334155',
     backgroundColor: '#0F1A2E',
@@ -412,9 +428,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   helpCircle: {
-    width: 17,
-    height: 17,
-    borderRadius: 8.5,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#334155',
     justifyContent: 'center',
@@ -422,10 +438,10 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   helpText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#64748B',
-    lineHeight: 12,
+    color: '#94A3B8',
+    lineHeight: 14,
   },
   helpTooltip: {
     backgroundColor: '#0F1A2E',

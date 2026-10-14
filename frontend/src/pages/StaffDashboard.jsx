@@ -19,6 +19,7 @@ import {
 import { getStoredUser, logout, getSharedOrders, getTransactions } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
+import HeaderDateTime from '../components/HeaderDateTime'
 import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -910,7 +911,7 @@ export default function StaffDashboard() {
           color: #94A3B8;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1023.98px) {
           .jem-pos-header-tools .notification-dropdown {
             right: 0;
           }
@@ -1044,6 +1045,7 @@ export default function StaffDashboard() {
 
 
             <div className="jem-header-tools">
+              <HeaderDateTime />
               <ThemeToggle />
               <NotificationDropdown role="staff" iconSize={16} />
               <div className="jem-user-avatar" aria-label="Current user">{user?.name ? user.name.charAt(0).toUpperCase() : 'O'}</div>

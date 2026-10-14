@@ -11,6 +11,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -44,6 +45,9 @@ export default function SignUpScreen({
   onNavigateToSignIn,
   onGoBack,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [internalStep, setInternalStep] = useState(step || 1);
   const currentStep = step !== undefined ? step : internalStep;
   const changeStep = setStep || setInternalStep;
@@ -160,11 +164,15 @@ export default function SignUpScreen({
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { flexGrow: 1 },
+            isTablet && { maxWidth: 540, width: '100%', alignSelf: 'center' },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           bounces={false}
@@ -363,26 +371,53 @@ export default function SignUpScreen({
                 <Text style={styles.verifiedEmailAddress}>{email}</Text>
               </View>
 
-              {/* Input: Full Name */}
-              <View
-                style={[
-                  styles.inputContainer,
-                  focusedField === 'name' && styles.inputContainerFocused,
-                ]}
-              >
-                <TextInput
-                  style={styles.input}
-                  placeholder="Full Name"
-                  placeholderTextColor="#64748B"
-                  value={name}
-                  onChangeText={(val) => {
-                    setName && setName(val);
-                    if (localError) setLocalError('');
-                  }}
-                  autoCapitalize="words"
-                  onFocus={() => setFocusedField('name')}
-                  onBlur={() => setFocusedField(null)}
-                />
+              {/* Fields Container - Responsive 2-Col on Tablet */}
+              <View style={isTablet ? { flexDirection: 'row', gap: 12 } : null}>
+                {/* Input: Full Name */}
+                <View
+                  style={[
+                    styles.inputContainer,
+                    isTablet && { flex: 1 },
+                    focusedField === 'name' && styles.inputContainerFocused,
+                  ]}
+                >
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Full Name"
+                    placeholderTextColor="#64748B"
+                    value={name}
+                    onChangeText={(val) => {
+                      setName && setName(val);
+                      if (localError) setLocalError('');
+                    }}
+                    autoCapitalize="words"
+                    onFocus={() => setFocusedField('name')}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                </View>
+
+                {/* Input: Optional Phone Number */}
+                <View
+                  style={[
+                    styles.inputContainer,
+                    isTablet && { flex: 1 },
+                    focusedField === 'phone' && styles.inputContainerFocused,
+                  ]}
+                >
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Phone Number (Optional, e.g. 09171234567)"
+                    placeholderTextColor="#64748B"
+                    value={phone}
+                    onChangeText={(val) => {
+                      setPhone && setPhone(val);
+                      if (localError) setLocalError('');
+                    }}
+                    keyboardType="phone-pad"
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                </View>
               </View>
 
               {/* Input: Password */}
@@ -418,28 +453,6 @@ export default function SignUpScreen({
                     <EyeIcon size={20} color="#94A3B8" />
                   )}
                 </TouchableOpacity>
-              </View>
-
-              {/* Input: Optional Phone Number */}
-              <View
-                style={[
-                  styles.inputContainer,
-                  focusedField === 'phone' && styles.inputContainerFocused,
-                ]}
-              >
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone Number (Optional, e.g. 09171234567)"
-                  placeholderTextColor="#64748B"
-                  value={phone}
-                  onChangeText={(val) => {
-                    setPhone && setPhone(val);
-                    if (localError) setLocalError('');
-                  }}
-                  keyboardType="phone-pad"
-                  onFocus={() => setFocusedField('phone')}
-                  onBlur={() => setFocusedField(null)}
-                />
               </View>
 
               {/* Primary Action Button: CREATE ACCOUNT */}
@@ -521,14 +534,16 @@ const styles = StyleSheet.create({
     minHeight: 38,
   },
   backBtn: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
   backBtnPlaceholder: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
   },
   brandBadgeBox: {
     justifyContent: 'center',
@@ -583,7 +598,8 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   eyeBtn: {
-    padding: 6,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -611,15 +627,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
+    minHeight: 44,
   },
   staySignedInRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 44,
+    paddingVertical: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 4,
     borderWidth: 1.5,
     borderColor: '#334155',
     backgroundColor: '#0F1A2E',
@@ -642,18 +661,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   helpCircle: {
-    width: 17,
-    height: 17,
-    borderRadius: 9,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#1E2C42',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 7,
   },
   helpText: {
-    fontSize: 10.5,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#64748B',
+    color: '#94A3B8',
   },
   helpTooltip: {
     backgroundColor: '#162338',

@@ -78,15 +78,19 @@ const fallbackCatalog = [
   { id: 4, name: 'Hardiflex Board 3.5mm', category: 'Lumber', price: 280, unit: 'sheet', stock: 65, emoji: '🧱' },
   { id: 5, name: 'Smart Board 3.5mm', category: 'Lumber', price: 290, unit: 'sheet', stock: 55, emoji: '🧱' },
   { id: 6, name: 'Welded Screen 1/2" × 4ft × 25M', category: 'Roofing', price: 140, unit: 'meter', stock: 120, emoji: '🏠' },
-  { id: 7, name: 'Aluminum Screen 3ft', category: 'Roofing', price: 180, unit: 'meter', stock: 80, emoji: '🏠' },
+  { id: 7, name: 'Aluminum Screen 3ft', category: 'Roofing', price: 180, unit: 'meter', stock: 80, emoji: '🏠', image: '/images/products/aluminum-screen.png' },
   { id: 8, name: 'PE Pipe 1/2"', category: 'Pipes', price: 45, unit: 'meter', stock: 200, emoji: '🚿' },
-  { id: 9, name: 'Blue Elbow Plain 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧' },
+  { id: 9, name: 'Blue Elbow Plain 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧', image: '/images/products/blue-elbow-plain-1-2.png' },
   { id: 10, name: 'GI Nipple 1/2" × 2" S-20', category: 'Plumbing', price: 18, unit: 'piece', stock: 100, emoji: '🔩' },
   { id: 11, name: 'Hose Clamp 1/2"', category: 'Hardware', price: 15, unit: 'piece', stock: 150, emoji: '🔩' },
   { id: 12, name: 'Poly Rope 6mm', category: 'Hardware', price: 14, unit: 'meter', stock: 250, emoji: '🪢' },
   { id: 13, name: 'PVC Sanitary P-Trap 2"', category: 'Plumbing', price: 65, unit: 'piece', stock: 80, emoji: '🔧' },
   { id: 14, name: 'Tile Trim Aluminum 8ft', category: 'Paint', price: 175, unit: 'length', stock: 80, emoji: '🎨' },
   { id: 15, name: 'Trapal Baga Heavy Duty', category: 'Roofing', price: 85, unit: 'meter', stock: 150, emoji: '⛺' },
+  { id: 16, name: 'Aluminum Screen 4ft', category: 'Roofing', price: 220, unit: 'meter', stock: 80, emoji: '🏠', image: '/images/products/aluminum-screen.png' },
+  { id: 19, name: 'Ayagan / Hardware Cloth 3ft', category: 'Roofing', price: 95, unit: 'meter', stock: 100, emoji: '🏠', image: '/images/products/hardware-cloth-3ft.png' },
+  { id: 49, name: 'Blue Coupling 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧', image: '/images/products/blue-coupling-1-2.png' },
+  { id: 52, name: 'Blue Coupling Reducer 1/2" × 3/4"', category: 'Plumbing', price: 22, unit: 'piece', stock: 100, emoji: '🔧', image: '/images/products/blue-coupling-reducer.png' },
 ]
 
 function getProductEmoji(product) {
@@ -348,6 +352,14 @@ export default function POSPage({ onTransactionComplete }) {
               price: Number(p.selling_price ?? p.base_price ?? 0),
               unit: p.unit || 'piece',
               stock: Number(p.stock_quantity ?? p.stock ?? 0),
+              image: p.image || (
+                p.name?.toLowerCase().includes('aluminum screen') ? '/images/products/aluminum-screen.png' :
+                (p.name?.toLowerCase().includes('hardware cloth') || p.name?.toLowerCase().includes('ayagan')) ? '/images/products/hardware-cloth-3ft.png' :
+                (p.name?.toLowerCase().includes('coupling reducer') || p.name?.toLowerCase().includes('reducer')) ? '/images/products/blue-coupling-reducer.png' :
+                p.name?.toLowerCase().includes('blue coupling') ? '/images/products/blue-coupling-1-2.png' :
+                p.name?.toLowerCase().includes('blue elbow') ? '/images/products/blue-elbow-plain-1-2.png' :
+                null
+              ),
               emoji: getProductEmoji({ name: p.name, category: cleanedCat }),
             }
           })
@@ -816,6 +828,19 @@ export default function POSPage({ onTransactionComplete }) {
           margin-bottom: 12px;
           position: relative;
           overflow: hidden;
+        }
+
+        .pos-card-art img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          border-radius: 7px;
+          transition: transform 0.2s ease;
+        }
+
+        .pos-card:hover .pos-card-art img {
+          transform: scale(1.05);
         }
 
         .pos-card.out-of-stock .pos-card-art {
@@ -2150,7 +2175,11 @@ export default function POSPage({ onTransactionComplete }) {
                     title={isOutOfStock ? 'This product is currently out of stock' : `Add ${product.name} to cart`}
                   >
                     <div className="pos-card-art">
-                      {product.emoji}
+                      {product.image ? (
+                        <img src={product.image} alt={product.name} loading="lazy" />
+                      ) : (
+                        product.emoji
+                      )}
                     </div>
 
                     <h3 className="pos-card-title">{product.name}</h3>

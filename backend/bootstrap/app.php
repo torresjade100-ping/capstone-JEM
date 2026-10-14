@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Trust all upstream proxies (Dev Tunnels, ngrok, reverse proxies)
+        // Ensures X-Forwarded-Proto (https) and X-Forwarded-Host are recognized
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'role' => App\Http\Middleware\RoleMiddleware::class,
             'active' => App\Http\Middleware\EnsureUserIsActive::class,

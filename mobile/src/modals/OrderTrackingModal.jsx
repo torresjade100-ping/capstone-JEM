@@ -5,17 +5,54 @@ import { styles, COLORS } from '../styles/appStyles';
 export default function OrderTrackingModal({ order, onClose, onLeaveFeedback, onReorder, onCancelOrder }) {
   if (!order) return null;
 
-  const rawStatus = (order.status || 'pending').toLowerCase();
+  const rawStatus = (order.status || 'pending').toLowerCase().trim();
   const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
-  const isPending = rawStatus === 'pending' || rawStatus === 'unpaid' || rawStatus === 'to pay' || rawStatus === 'to_pay';
+  const isPending =
+    rawStatus === 'pending' ||
+    rawStatus === 'pending review' ||
+    rawStatus === 'pending_review' ||
+    rawStatus === 'awaiting_confirmation' ||
+    rawStatus === 'unpaid' ||
+    rawStatus === 'to pay' ||
+    rawStatus === 'to_pay';
   const isBackordered = rawStatus === 'backordered' || (order.items || []).some(it => Number(it.backordered_quantity || 0) > 0);
 
-  // Determine active stage index:
-  // 0 = pending, 1 = confirmed/backordered, 2 = processing/ready, 3 = out_for_delivery, 4 = completed
+  // Strictly hide cancel button if order has already progressed past confirmation (Confirmed, Processing, Out for Delivery, Completed)
+  const canCancel =
+    isPending &&
+    !['confirmed', 'received', 'processing', 'in process', 'in_process', 'ready', 'packed', 'out_for_delivery', 'out for delivery', 'dispatched', 'shipped', 'in_transit', 'delivered', 'completed'].includes(rawStatus);
+
+  // Dynamic 4-Step Stepper Progression:
+  // Step 1: Placed (Pending / Pending Review)
+  // Step 2: Confirmed (Confirmed)
+  // Step 3: Warehouse (Processing / Out for Delivery)
+  // Step 4: Delivered (Completed / Delivered)
+  let activeStep = 1;
+  if (rawStatus === 'completed' || rawStatus === 'delivered') {
+    activeStep = 4;
+  } else if (
+    rawStatus === 'processing' ||
+    rawStatus === 'in_process' ||
+    rawStatus === 'in process' ||
+    rawStatus === 'out_for_delivery' ||
+    rawStatus === 'out for delivery' ||
+    rawStatus === 'ready' ||
+    rawStatus === 'packed' ||
+    rawStatus === 'shipped' ||
+    rawStatus === 'in_transit' ||
+    rawStatus === 'dispatched' ||
+    rawStatus === 'backordered'
+  ) {
+    activeStep = 3;
+  } else if (rawStatus === 'confirmed' || rawStatus === 'received') {
+    activeStep = 2;
+  }
+
+  // Determine active stage index (0..4)
   let currentStageIndex = 0;
-  if (rawStatus === 'confirmed' || rawStatus === 'received' || rawStatus === 'backordered') currentStageIndex = 1;
-  else if (rawStatus === 'processing' || rawStatus === 'ready' || rawStatus === 'packed') currentStageIndex = 2;
-  else if (rawStatus === 'out_for_delivery' || rawStatus === 'in_transit' || rawStatus === 'shipped') currentStageIndex = 3;
+  if (rawStatus === 'confirmed' || rawStatus === 'received') currentStageIndex = 1;
+  else if (rawStatus === 'processing' || rawStatus === 'ready' || rawStatus === 'packed' || rawStatus === 'in_process' || rawStatus === 'in process' || rawStatus === 'backordered') currentStageIndex = 2;
+  else if (rawStatus === 'out_for_delivery' || rawStatus === 'in_transit' || rawStatus === 'shipped' || rawStatus === 'dispatched') currentStageIndex = 3;
   else if (rawStatus === 'completed' || rawStatus === 'delivered') currentStageIndex = 4;
 
   const stages = [
@@ -118,10 +155,10 @@ export default function OrderTrackingModal({ order, onClose, onLeaveFeedback, on
                     {order.driver || 'Kuya Mark (Isuzu Elf Plate NCI-8921)'}
                   </Text>
                   <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                    JEM Logistics Fleet • Dispatch Station Laguna
+                    JEM Logistics Fleet • Dispatch Hub Balulang, Cagayan de Oro
                   </Text>
                   <Text style={{ fontSize: 11.5, color: '#38bdf8', marginTop: 4, fontWeight: '700' }}>
-                    📍 Destination: {order.delivery_address || 'Job Site, Santa Rosa, Laguna'}
+                    📍 Destination: {order.delivery_address || 'Balulang, Cagayan de Oro City'}
                   </Text>
                 </View>
               </View>
@@ -153,11 +190,81 @@ export default function OrderTrackingModal({ order, onClose, onLeaveFeedback, on
               </View>
             )}
 
+            {/* 4-Step Milestone Stepper (Placed, Confirmed, Warehouse, Delivered) */}
+            {!isCancelled && (
+              <View
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: 16,
+                  padding: 14,
+                  marginVertical: 10,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.textMain, marginBottom: 12 }}>
+                  Tracking Milestones:
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {[
+                    { label: 'Placed', step: 1 },
+                    { label: 'Confirmed', step: 2 },
+                    { label: 'Warehouse', step: 3 },
+                    { label: 'Delivered', step: 4 },
+                  ].map((st, i, arr) => {
+                    const isDone = activeStep >= st.step;
+                    return (
+                      <React.Fragment key={st.label}>
+                        <View style={{ alignItems: 'center', width: 64 }}>
+                          <View
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              backgroundColor: isDone ? COLORS.primary : '#e2e8f0',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              marginBottom: 4,
+                            }}
+                          >
+                            <Text style={{ color: isDone ? '#ffffff' : '#64748b', fontSize: 12, fontWeight: '900' }}>
+                              {isDone ? '✓' : st.step}
+                            </Text>
+                          </View>
+                          <Text
+                            style={{
+                              fontSize: 10.5,
+                              fontWeight: isDone ? '800' : '600',
+                              color: isDone ? COLORS.primaryDark : COLORS.textMuted,
+                              textAlign: 'center',
+                            }}
+                          >
+                            {st.label}
+                          </Text>
+                        </View>
+                        {i < arr.length - 1 && (
+                          <View
+                            style={{
+                              flex: 1,
+                              height: 3,
+                              backgroundColor: activeStep > st.step ? COLORS.primary : '#e2e8f0',
+                              marginBottom: 16,
+                              borderRadius: 2,
+                            }}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             {/* Vertical Progress Stepper (if not cancelled) */}
             {!isCancelled && (
               <View
                 style={{
-                  marginVertical: 16,
+                  marginVertical: 12,
                   backgroundColor: '#ffffff',
                   padding: 16,
                   borderRadius: 18,
@@ -320,8 +427,8 @@ export default function OrderTrackingModal({ order, onClose, onLeaveFeedback, on
               </TouchableOpacity>
             )}
 
-            {/* Cancel Order Action if Pending or Backordered */}
-            {(isPending || isBackordered) && onCancelOrder && (
+            {/* Cancel Order Action: Strictly hidden when order has already progressed past confirmation */}
+            {canCancel && onCancelOrder && (
               <TouchableOpacity
                 style={[styles.secondaryAuthBtn, { backgroundColor: '#fee2e2', borderColor: '#fca5a5', marginBottom: 10 }]}
                 onPress={() => {

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Modal, View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { styles, COLORS } from '../styles/appStyles';
+import { getProductImageSource } from '../components/ui/theme';
 
 export default function WishlistModal({
   visible,
@@ -71,7 +72,15 @@ export default function WishlistModal({
                       borderColor: COLORS.borderLight,
                     }}
                   >
-                    <Text style={{ fontSize: 28 }}>{p.emoji || '🧱'}</Text>
+                    {getProductImageSource(p) ? (
+                      <Image
+                        source={getProductImageSource(p)}
+                        style={{ width: 40, height: 40, borderRadius: 8 }}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 28 }}>{p.emoji || '🧱'}</Text>
+                    )}
                   </View>
 
                   <View style={{ flex: 1 }}>

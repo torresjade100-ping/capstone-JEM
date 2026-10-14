@@ -3,39 +3,50 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CustomerAddressRequest;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CustomerAddressController extends Controller
 {
-    protected function resolveCustomer(Request $request): ?Customer
+    /**
+     * Resolve the active User and Customer records for the request.
+     */
+    protected function resolveAccount(Request $request): array
     {
-        if (Auth::check() && Auth::user()->customer) {
-            return Auth::user()->customer;
+        $user = Auth::check() ? Auth::user() : null;
+        $customer = $user?->customer;
+
+        if (!$user && $request->filled('customer_email')) {
+            $user = User::where('email', $request->customer_email)->first();
+            $customer = $user?->customer;
         }
 
-        if ($request->filled('customer_email')) {
-            $user = User::where('email', $request->customer_email)->first();
-            if ($user && $user->customer) {
-                return $user->customer;
+        if (!$customer && $request->filled('customer_id')) {
+            $customer = Customer::find($request->customer_id);
+            if ($customer && !$user && $customer->user_id) {
+                $user = User::find($customer->user_id);
             }
         }
 
-        if ($request->filled('customer_id')) {
-            return Customer::find($request->customer_id);
+        if (!$customer && !$user) {
+            $customer = Customer::first();
+            if ($customer && $customer->user_id) {
+                $user = User::find($customer->user_id);
+            }
         }
 
-        $customer = Customer::first();
-        if (!$customer) {
+        if (!$user && !$customer) {
             $user = User::firstOrCreate(
                 ['email' => 'customer@jemlumber.com'],
                 [
                     'name' => 'Juan Dela Cruz',
-                    'phone' => '+639191234567',
+                    'phone' => '0917-123-4567',
                     'password' => \Illuminate\Support\Facades\Hash::make('Password123!'),
                     'role' => 'customer',
                     'status' => 'active',
@@ -44,38 +55,79 @@ class CustomerAddressController extends Controller
             $customer = Customer::firstOrCreate(['user_id' => $user->id]);
         }
 
-        return $customer;
+        return [$user, $customer];
     }
 
+    /**
+     * Display a listing of standard customer delivery addresses.
+     */
     public function index(Request $request): JsonResponse
     {
-        $customer = $this->resolveCustomer($request);
-        if (!$customer) {
+        [$user, $customer] = $this->resolveAccount($request);
+        $userId = $user?->id;
+        $customerId = $customer?->id;
+
+        if (!$userId && !$customerId) {
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $addresses = CustomerAddress::where('customer_id', $customer->id)->orderBy('is_default', 'desc')->latest()->get();
+        $query = CustomerAddress::query();
+        $query->where(function ($q) use ($userId, $customerId) {
+            if ($userId) {
+                $q->where('user_id', $userId);
+            }
+            if ($customerId) {
+                $q->orWhere('customer_id', $customerId);
+            }
+        });
 
-        // Seed default addresses if none exist yet
-        if ($addresses->isEmpty()) {
+        $addresses = $query->orderByDesc('is_default')->latest('id')->get();
+
+        // Seed initial standard B2C retail delivery addresses if customer has none
+        if ($addresses->isEmpty() && ($userId || $customerId)) {
+            $primaryName = $user?->name ?: 'Juan Dela Cruz';
+            $primaryPhone = $user?->phone ?: '0917-123-4567';
+
             $addr1 = CustomerAddress::create([
-                'customer_id' => $customer->id,
-                'tag' => 'Primary Job Site',
-                'address' => $customer->address_line1 ? "{$customer->address_line1}, {$customer->city}, {$customer->province}" : 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
-                'contact_name' => $customer->user?->name ?: 'Kuya Juan / Site Foreman',
-                'contact_phone' => $customer->user?->phone ?: '0917-123-4567',
-                'notes' => 'Access via Gate 2 for heavy delivery trucks',
+                'user_id' => $userId,
+                'customer_id' => $customerId,
+                'label' => 'Home',
+                'recipient_name' => $primaryName,
+                'phone_number' => $primaryPhone,
+                'address_line1' => 'Zone 1, Mabasa',
+                'barangay' => 'Balulang',
+                'city' => 'Cagayan de Oro City',
+                'province' => 'Misamis Oriental',
+                'postal_code' => '9000',
+                'delivery_instructions' => 'Near Mabasa chapel, call upon arrival',
                 'is_default' => true,
+                // Legacy compatibility fields
+                'tag' => 'Home',
+                'address' => 'Zone 1, Mabasa, Balulang, Cagayan de Oro City',
+                'contact_name' => $primaryName,
+                'contact_phone' => $primaryPhone,
+                'notes' => 'Near Mabasa chapel, call upon arrival',
             ]);
 
             $addr2 = CustomerAddress::create([
-                'customer_id' => $customer->id,
-                'tag' => 'Secondary Project Site',
-                'address' => 'Lot 4 Phase 3, Greenbreeze Subdivision, Biñan, Laguna',
-                'contact_name' => 'Engr. Ramos',
-                'contact_phone' => '0918-555-6789',
-                'notes' => 'Unloading area ready near structural framing',
+                'user_id' => $userId,
+                'customer_id' => $customerId,
+                'label' => 'Work',
+                'recipient_name' => $primaryName,
+                'phone_number' => $primaryPhone,
+                'address_line1' => 'Door 3, Commercial Center, Vamenta Blvd',
+                'barangay' => 'Carmen',
+                'city' => 'Cagayan de Oro City',
+                'province' => 'Misamis Oriental',
+                'postal_code' => '9000',
+                'delivery_instructions' => 'Front desk office, ground floor',
                 'is_default' => false,
+                // Legacy compatibility fields
+                'tag' => 'Work',
+                'address' => 'Door 3, Commercial Center, Vamenta Blvd, Carmen, Cagayan de Oro City',
+                'contact_name' => $primaryName,
+                'contact_phone' => $primaryPhone,
+                'notes' => 'Front desk office, ground floor',
             ]);
 
             $addresses = collect([$addr1, $addr2]);
@@ -84,35 +136,73 @@ class CustomerAddressController extends Controller
         return response()->json(['success' => true, 'data' => $addresses]);
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Store a newly created delivery address in storage with single-default guarantee.
+     */
+    public function store(CustomerAddressRequest $request): JsonResponse
     {
-        $customer = $this->resolveCustomer($request);
-        if (!$customer) {
-            return response()->json(['success' => false, 'message' => 'Customer profile not found.'], 404);
+        [$user, $customer] = $this->resolveAccount($request);
+        $userId = $user?->id;
+        $customerId = $customer?->id;
+
+        if (!$userId && !$customerId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Customer profile could not be resolved.',
+            ], 404);
         }
 
-        $data = $request->validate([
-            'tag' => 'required|string|max:100',
-            'address' => 'required|string|max:500',
-            'contact_name' => 'nullable|string|max:255',
-            'contact_phone' => 'nullable|string|max:50',
-            'notes' => 'nullable|string|max:500',
-            'is_default' => 'nullable|boolean',
-        ]);
+        $validated = $request->validated();
+        $isDefault = $request->boolean('is_default');
 
-        if (!empty($data['is_default'])) {
-            CustomerAddress::where('customer_id', $customer->id)->update(['is_default' => false]);
-        }
+        $address = DB::transaction(function () use ($userId, $customerId, $validated, $isDefault) {
+            // Uncheck any existing default addresses for this user inside transaction
+            if ($isDefault) {
+                CustomerAddress::where(function ($q) use ($userId, $customerId) {
+                    if ($userId) {
+                        $q->where('user_id', $userId);
+                    }
+                    if ($customerId) {
+                        $q->orWhere('customer_id', $customerId);
+                    }
+                })->update(['is_default' => false]);
+            }
 
-        $address = CustomerAddress::create([
-            'customer_id' => $customer->id,
-            'tag' => $data['tag'],
-            'address' => $data['address'],
-            'contact_name' => $data['contact_name'] ?? null,
-            'contact_phone' => $data['contact_phone'] ?? null,
-            'notes' => $data['notes'] ?? null,
-            'is_default' => !empty($data['is_default']),
-        ]);
+            // If user has zero existing addresses, force first address to be default
+            $existingCount = CustomerAddress::where(function ($q) use ($userId, $customerId) {
+                if ($userId) {
+                    $q->where('user_id', $userId);
+                }
+                if ($customerId) {
+                    $q->orWhere('customer_id', $customerId);
+                }
+            })->count();
+
+            if ($existingCount === 0) {
+                $isDefault = true;
+            }
+
+            return CustomerAddress::create([
+                'user_id' => $userId,
+                'customer_id' => $customerId,
+                'label' => $validated['label'] ?? 'Home',
+                'recipient_name' => $validated['recipient_name'],
+                'phone_number' => $validated['phone_number'],
+                'address_line1' => $validated['address_line1'],
+                'barangay' => $validated['barangay'] ?? null,
+                'city' => $validated['city'] ?? 'Cagayan de Oro City',
+                'province' => $validated['province'] ?? 'Misamis Oriental',
+                'postal_code' => $validated['postal_code'] ?? '9000',
+                'delivery_instructions' => $validated['delivery_instructions'] ?? null,
+                'is_default' => $isDefault,
+                // Legacy fields for backward compatibility
+                'tag' => $validated['label'] ?? 'Home',
+                'address' => $validated['address_line1'],
+                'contact_name' => $validated['recipient_name'],
+                'contact_phone' => $validated['phone_number'],
+                'notes' => $validated['delivery_instructions'] ?? null,
+            ]);
+        });
 
         return response()->json([
             'success' => true,
@@ -121,53 +211,129 @@ class CustomerAddressController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, $id): JsonResponse
+    /**
+     * Update an existing delivery address in storage.
+     */
+    public function update(CustomerAddressRequest $request, $id): JsonResponse
     {
         $address = CustomerAddress::findOrFail($id);
+        $validated = $request->validated();
+        $isDefault = $request->has('is_default') ? $request->boolean('is_default') : (bool) $address->is_default;
 
-        $data = $request->validate([
-            'tag' => 'sometimes|string|max:100',
-            'address' => 'sometimes|string|max:500',
-            'contact_name' => 'nullable|string|max:255',
-            'contact_phone' => 'nullable|string|max:50',
-            'notes' => 'nullable|string|max:500',
-            'is_default' => 'nullable|boolean',
-        ]);
+        $userId = $address->user_id;
+        $customerId = $address->customer_id;
 
-        if (!empty($data['is_default'])) {
-            CustomerAddress::where('customer_id', $address->customer_id)->where('id', '!=', $id)->update(['is_default' => false]);
-        }
+        $updated = DB::transaction(function () use ($address, $userId, $customerId, $validated, $isDefault) {
+            if ($isDefault) {
+                CustomerAddress::where(function ($q) use ($userId, $customerId) {
+                    if ($userId) {
+                        $q->where('user_id', $userId);
+                    }
+                    if ($customerId) {
+                        $q->orWhere('customer_id', $customerId);
+                    }
+                })->where('id', '!=', $address->id)->update(['is_default' => false]);
+            }
 
-        $address->update($data);
+            $updateData = [];
+            foreach (['label', 'recipient_name', 'phone_number', 'address_line1', 'barangay', 'city', 'province', 'postal_code', 'delivery_instructions'] as $field) {
+                if (array_key_exists($field, $validated)) {
+                    $updateData[$field] = $validated[$field];
+                }
+            }
+
+            $updateData['is_default'] = $isDefault;
+
+            // Mirror legacy columns if relevant fields changed
+            if (isset($updateData['label'])) {
+                $updateData['tag'] = $updateData['label'];
+            }
+            if (isset($updateData['recipient_name'])) {
+                $updateData['contact_name'] = $updateData['recipient_name'];
+            }
+            if (isset($updateData['phone_number'])) {
+                $updateData['contact_phone'] = $updateData['phone_number'];
+            }
+            if (isset($updateData['address_line1'])) {
+                $updateData['address'] = $updateData['address_line1'];
+            }
+            if (array_key_exists('delivery_instructions', $updateData)) {
+                $updateData['notes'] = $updateData['delivery_instructions'];
+            }
+
+            $address->update($updateData);
+            return $address->fresh();
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Address updated successfully.',
-            'data' => $address->fresh(),
+            'message' => 'Delivery address updated successfully.',
+            'data' => $updated,
         ]);
     }
 
+    /**
+     * Set the specified address as the default delivery address.
+     */
     public function setDefault(Request $request, $id): JsonResponse
     {
         $address = CustomerAddress::findOrFail($id);
-        CustomerAddress::where('customer_id', $address->customer_id)->update(['is_default' => false]);
-        $address->update(['is_default' => true]);
+        $userId = $address->user_id;
+        $customerId = $address->customer_id;
+
+        DB::transaction(function () use ($address, $userId, $customerId) {
+            CustomerAddress::where(function ($q) use ($userId, $customerId) {
+                if ($userId) {
+                    $q->where('user_id', $userId);
+                }
+                if ($customerId) {
+                    $q->orWhere('customer_id', $customerId);
+                }
+            })->update(['is_default' => false]);
+
+            $address->update(['is_default' => true]);
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Default address set.',
+            'message' => 'Default delivery address updated successfully.',
             'data' => $address->fresh(),
         ]);
     }
 
+    /**
+     * Remove the specified address from storage.
+     */
     public function destroy($id): JsonResponse
     {
         $address = CustomerAddress::findOrFail($id);
-        $address->delete();
+        $userId = $address->user_id;
+        $customerId = $address->customer_id;
+        $wasDefault = $address->is_default;
+
+        DB::transaction(function () use ($address, $userId, $customerId, $wasDefault) {
+            $address->delete();
+
+            // If the deleted address was the default, make the most recent remaining address default
+            if ($wasDefault) {
+                $next = CustomerAddress::where(function ($q) use ($userId, $customerId) {
+                    if ($userId) {
+                        $q->where('user_id', $userId);
+                    }
+                    if ($customerId) {
+                        $q->orWhere('customer_id', $customerId);
+                    }
+                })->latest('id')->first();
+
+                if ($next) {
+                    $next->update(['is_default' => true]);
+                }
+            }
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Address removed successfully.',
+            'message' => 'Delivery address removed successfully.',
         ]);
     }
 }

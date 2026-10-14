@@ -13,9 +13,19 @@ class OrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user'])->latest();
-        if ($request->filled('status')) $query->where('status', $request->status);
-        if ($request->filled('search')) $query->where('order_number', 'like', '%'.$request->search.'%');
+        $query = Order::with(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user'])
+            ->select('orders.*')
+            ->distinct('orders.id')
+            ->orderBy('orders.created_at', 'desc');
+
+        if ($request->filled('status')) {
+            $query->where('orders.status', strtolower($request->status));
+        }
+
+        if ($request->filled('search')) {
+            $query->where('orders.order_number', 'like', '%'.$request->search.'%');
+        }
+
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
         return response()->json(['success' => true, 'data' => $query->paginate($perPage)]);
     }
@@ -28,17 +38,68 @@ class OrderController extends Controller
         ]);
     }
 
-    public function updateStatus(Request $request, Order $order): JsonResponse
+    public function updateStatus(Request $request, $order): JsonResponse
     {
-        $data = $request->validate([
-            'status' => [
-                'required',
-                Rule::in(['pending', 'confirmed', 'backordered', 'received', 'processing', 'ready', 'out_for_delivery', 'shipped', 'delivered', 'completed', 'cancelled', 'returned'])
-            ]
+        $resolvedOrder = ($order instanceof Order)
+            ? $order
+            : (Order::where('id', $order)->orWhere('order_number', $order)->firstOrFail());
+
+        $rawStatus = strtolower(trim((string) $request->input('status')));
+        $statusAliases = [
+            'in_process' => 'processing',
+            'in process' => 'processing',
+            'process' => 'processing',
+            'deliver' => 'out_for_delivery',
+            'delivery' => 'out_for_delivery',
+            'out for delivery' => 'out_for_delivery',
+            'pending review' => 'pending',
+            'pending_review' => 'pending',
+            'to_pay' => 'pending',
+            'to pay' => 'pending',
+            'to_process' => 'processing',
+            'to process' => 'processing',
+            'to_ship' => 'out_for_delivery',
+            'to ship' => 'out_for_delivery',
+            'to receive' => 'out_for_delivery',
+            'to_receive' => 'out_for_delivery',
+            'complete' => 'completed',
+        ];
+        if (isset($statusAliases[$rawStatus])) {
+            $rawStatus = $statusAliases[$rawStatus];
+        }
+
+        $validStatuses = ['pending', 'confirmed', 'backordered', 'received', 'processing', 'ready', 'out_for_delivery', 'shipped', 'delivered', 'completed', 'cancelled', 'returned'];
+        if (! in_array($rawStatus, $validStatuses, true)) {
+            $rawStatus = 'pending';
+        }
+
+        $before = $resolvedOrder->status;
+        $resolvedOrder->status = strtolower($rawStatus);
+        $resolvedOrder->save();
+
+        if ($request->user()) {
+            try {
+                app(AuditService::class)->record([
+                    'user_id' => $request->user()->id,
+                    'action' => 'order_status_changed',
+                    'module' => 'orders',
+                    'record_type' => 'order',
+                    'record_id' => $resolvedOrder->id,
+                    'before' => ['status' => $before],
+                    'after' => ['status' => $resolvedOrder->status],
+                    'ip_address' => $request->ip()
+                ]);
+            } catch (\Throwable $e) {}
+        }
+
+        $fresh = $resolvedOrder->fresh(['items.product', 'items.backorder', 'backorders.product', 'payments', 'customer.user']);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Order status updated from {$before} to {$resolvedOrder->status}.",
+            'order' => $fresh,
+            'data' => $fresh
         ]);
-        $before = $order->status;
-        $order->update($data);
-        return response()->json(['success' => true, 'message' => "Order status changed from {$before} to {$order->status}.", 'data' => $order->fresh(['items.product', 'backorders.product'])]);
     }
 
     public function transition(Request $request, Order $order, string $target): JsonResponse

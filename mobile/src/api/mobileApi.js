@@ -1,80 +1,121 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { HARDWARE_PRODUCTS, CATEGORY_ITEMS } from '../data/initialData';
+import { resolveApiBaseUrls, API_MODE } from '../config/apiConfig';
 
 let cachedWorkingBaseUrl = null;
 
 // Dynamic API Base URL resolution for Expo Go, Emulators, Physical Phones, Dev Tunnels, and Web
 const getBaseUrls = () => {
-  const hostUri =
-    Constants?.expoConfig?.hostUri ||
-    Constants?.manifest2?.extra?.expoClient?.hostUri ||
-    Constants?.manifest?.debuggerHost ||
-    '';
-  const detectedHost = hostUri ? hostUri.split(':')[0] : null;
+  try {
+    const urls = [];
 
-  const urls = [];
+    // 1. If we already found a working URL in this session, try it first
+    if (cachedWorkingBaseUrl) {
+      urls.push(cachedWorkingBaseUrl);
+    }
 
-  // 1. If we already found a working URL in this session, try it first
-  if (cachedWorkingBaseUrl) {
-    urls.push(cachedWorkingBaseUrl);
-  }
+    // 2. Explicit Environment Fallback Variable (e.g. process.env.EXPO_PUBLIC_API_URL)
+    const envApiUrl =
+      (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_URL) ||
+      (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) ||
+      Constants?.expoConfig?.extra?.apiUrl ||
+      '';
+    if (envApiUrl && typeof envApiUrl === 'string' && envApiUrl.trim().startsWith('http')) {
+      const cleanEnv = envApiUrl.trim().replace(/\/+$/, '');
+      urls.push(cleanEnv.endsWith('/api') ? cleanEnv : `${cleanEnv}/api`);
+    }
 
-  const isHttpsBrowser = typeof window !== 'undefined' && window.location?.protocol === 'https:';
-  const isDevTunnelHost = typeof window !== 'undefined' && window.location?.hostname?.includes('.devtunnels.ms');
+    // 3. Safe cross-platform host extraction
+    // Web / Browser View: Use typeof window !== 'undefined' && window.location?.hostname ? window.location.hostname : ''
+    const webHost = typeof window !== 'undefined' && window.location?.hostname ? window.location.hostname : '';
 
-  // 2. Microsoft Dev Tunnels auto-detection (when web app is opened on devtunnels.ms)
-  if (isDevTunnelHost) {
-    const webHost = window.location.hostname;
-    const tunnelBackend = webHost.replace(/-\d+\./, '-8000.');
-    urls.push(`https://${tunnelBackend}/api`);
-  }
+    // Native / Expo Go: Extract hostUri via Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost || '', stripping port numbers
+    const rawHostUri =
+      Constants?.expoConfig?.hostUri ||
+      Constants?.manifest2?.extra?.expoClient?.hostUri ||
+      Constants?.manifest?.debuggerHost ||
+      '';
+    const nativeHost = rawHostUri ? rawHostUri.split(':')[0] : '';
 
-  // 3. Expo Go on Physical Device using Dev Tunnel hostUri
-  if (detectedHost && detectedHost.includes('.devtunnels.ms')) {
-    const tunnelBackend = detectedHost.replace(/-\d+\./, '-8000.');
-    urls.push(`https://${tunnelBackend}/api`);
-  }
+    // Unified detected host (prioritizing active web host or native debugger host)
+    const detectedHost = webHost || nativeHost || '';
 
-  // 4. In Web Browser Preview (localhost or 127.0.0.1) - prioritize local server directly!
-  if (typeof window !== 'undefined' && window.location?.hostname) {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
+    // 4. Dev Tunnel Auto-Mapping (Frontend Port 8081 to Backend Port 8000)
+    // If detectedHost contains .devtunnels.ms: dynamically swap the port segment (-8081. to -8000.) and validate resulting URL
+    if (detectedHost && detectedHost.includes('.devtunnels.ms')) {
+      const tunnelBackend = detectedHost.replace(/-\d+\./, '-8000.');
+      const fullTunnelUrl = `https://${tunnelBackend}/api`;
+      try {
+        const parsed = new URL(fullTunnelUrl);
+        if (parsed.protocol === 'https:' && parsed.hostname.includes('.devtunnels.ms')) {
+          urls.push(fullTunnelUrl);
+        }
+      } catch (urlErr) {
+        // Skip malformed tunnel URL
+      }
+    }
+
+    // 5. Add configured URLs from apiConfig (explicit manual toggle / env vars)
+    try {
+      const configured = resolveApiBaseUrls();
+      if (Array.isArray(configured)) {
+        urls.push(...configured);
+      }
+    } catch (cfgErr) {
+      // Non-blocking fallback
+    }
+
+    const isWeb = Platform.OS === 'web' || !!webHost;
+    const isHttpsBrowser = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+
+    // 5. Native / Mobile Devices (Expo Go on physical devices / emulators):
+    // Prioritize the developer PC LAN IP (192.168.254.106) and Expo Go's hostUri.
+    // NEVER prioritize localhost / 127.0.0.1 on physical phones as it points to the mobile device itself!
+    if (!isWeb) {
+      if (nativeHost && !nativeHost.includes('exp.direct') && !nativeHost.includes('ngrok') && !nativeHost.includes('.devtunnels.ms') && nativeHost !== 'localhost' && nativeHost !== '127.0.0.1') {
+        urls.push(`http://${nativeHost}:8000/api`);
+      }
+      // Local machine LAN IP (PC IP from ipconfig)
+      urls.push('http://192.168.254.106:8000/api');
+
+      // Android emulator loopback
+      if (Platform.OS === 'android') {
+        urls.push('http://10.0.2.2:8000/api');
+      }
+
+      // Trailing localhost loopback fallback only as absolute last resort
       urls.push('http://127.0.0.1:8000/api');
       urls.push('http://localhost:8000/api');
-    } else if (!isDevTunnelHost && !isHttpsBrowser) {
-      urls.push(`http://${host}:8000/api`);
+    } else {
+      // 6. Web Browser Preview (localhost or 127.0.0.1)
+      if (webHost === 'localhost' || webHost === '127.0.0.1') {
+        urls.push('http://127.0.0.1:8000/api');
+        urls.push('http://localhost:8000/api');
+        urls.push('http://192.168.254.106:8000/api');
+      } else if (!webHost.includes('.devtunnels.ms') && !isHttpsBrowser) {
+        urls.push(`http://${webHost}:8000/api`);
+        urls.push('http://192.168.254.106:8000/api');
+      }
     }
+
+    const sanitized = Array.from(new Set(urls.filter(Boolean)));
+    return sanitized.length > 0 ? sanitized : ['http://192.168.254.106:8000/api'];
+  } catch (err) {
+    // Ultra-defensive fallback: default to LAN IP for Expo physical devices
+    return ['http://192.168.254.106:8000/api'];
   }
-
-  // 5. Standard Localhost Loopback for non-https browser / local node
-  if (!isHttpsBrowser) {
-    urls.push('http://127.0.0.1:8000/api');
-    urls.push('http://localhost:8000/api');
-  }
-
-  // 6. Current Machine Wi-Fi LAN IP (active IPv4 from ipconfig)
-  if (!isHttpsBrowser) {
-    urls.push('http://192.168.254.106:8000/api');
-  }
-
-  // 7. Detected host from Expo Go on Physical Device / LAN
-  if (detectedHost && !detectedHost.includes('exp.direct') && !detectedHost.includes('ngrok') && !detectedHost.includes('.devtunnels.ms') && !isHttpsBrowser) {
-    urls.push(`http://${detectedHost}:8000/api`);
-  }
-
-  // 8. Android Emulator Loopback
-  if (Platform.OS === 'android') {
-    urls.push('http://10.0.2.2:8000/api');
-  }
-
-  // 9. Known active Dev Tunnel backend fallback
-  urls.push('https://hkwb6wps-8000.asse.devtunnels.ms/api');
-
-  return Array.from(new Set(urls.filter(Boolean)));
 };
 
-export const API_BASE_URL = getBaseUrls()[0];
+export const API_BASE_URL = (() => {
+  try {
+    return getBaseUrls()[0] || 'http://192.168.254.106:8000/api';
+  } catch (e) {
+    return 'http://192.168.254.106:8000/api';
+  }
+})();
+
+export const BASE_URL = API_BASE_URL;
 
 let cachedAuthToken = null;
 
@@ -166,9 +207,97 @@ export async function clearMobileStorage() {
 }
 
 /**
- * Universal safe request helper with timeout and fallback
+ * Normalizes and resolves base URL and endpoint concatenation.
+ * Prevents duplicate `/api` prefixes (e.g. baseURL ending in /api + endpoint starting with /api/mobile/orders -> /api/mobile/orders)
+ * and safely ensures correct leading/trailing slash formatting.
  */
-async function safeFetch(path, options = {}) {
+export function buildResolvedApiUrl(baseUrl, endpoint) {
+  const cleanBase = String(baseUrl || '').trim().replace(/\/+$/, '');
+  let cleanEndpoint = String(endpoint || '').trim();
+
+  if (!cleanEndpoint.startsWith('/')) {
+    cleanEndpoint = `/${cleanEndpoint}`;
+  }
+
+  // Prevent duplicate /api concatenation
+  if (cleanBase.endsWith('/api')) {
+    if (cleanEndpoint === '/api') {
+      cleanEndpoint = '';
+    } else if (cleanEndpoint.startsWith('/api/')) {
+      cleanEndpoint = cleanEndpoint.substring(4);
+    }
+  } else {
+    // If baseUrl doesn't end with /api, ensure endpoint includes /api
+    if (!cleanEndpoint.startsWith('/api/') && cleanEndpoint !== '/api') {
+      cleanEndpoint = `/api${cleanEndpoint}`;
+    }
+  }
+
+  return `${cleanBase}${cleanEndpoint}`;
+}
+
+/**
+ * Universal safe request helper with at least 15,000ms timeout
+ */
+async function executeFetchOnce(url, options, timeoutMs) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  // Print the full resolved request URL right before the network call
+  console.log(`[MobileAPI Request] ${options.method || 'GET'} ${url}`);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller ? controller.signal : undefined,
+    });
+
+    let data = null;
+    let rawText = '';
+    try {
+      const textPromise = response.text();
+      const bodyTimeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Body timeout')), 8000)
+      );
+      rawText = (await Promise.race([textPromise, bodyTimeoutPromise])) || '';
+      if (rawText) {
+        if (rawText.includes('<!DOCTYPE html>') || rawText.includes('<html')) {
+          const htmlErr = new Error(
+            response.status === 404
+              ? `HTTP 404: Endpoint not found (${url})`
+              : `HTTP ${response.status}: Server returned an HTML response instead of JSON.`
+          );
+          htmlErr.status = response.status;
+          htmlErr.url = url;
+          throw htmlErr;
+        }
+        data = JSON.parse(rawText);
+      }
+    } catch (readErr) {
+      if (readErr?.status) throw readErr;
+      if (readErr?.message?.includes('HTML response') || readErr?.message?.includes('HTTP')) {
+        readErr.status = response.status;
+        throw readErr;
+      }
+      if (response.ok) data = { success: true };
+    }
+
+    if (response.ok) {
+      return data || { success: true };
+    } else {
+      const errorMsg = data?.message || `HTTP ${response.status}: Request failed`;
+      const serverError = new Error(errorMsg);
+      serverError.status = response.status;
+      serverError.data = data;
+      serverError.url = url;
+      throw serverError;
+    }
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function safeFetch(path, options = {}, maxRetries = 1) {
   const token = getMobileAuthToken();
   const headers = {
     'Accept': 'application/json',
@@ -178,73 +307,40 @@ async function safeFetch(path, options = {}) {
     ...(options.headers || {}),
   };
 
+  const reqOptions = { ...options, headers };
+  // Configure request timeout with at least 15,000ms (15 seconds) to accommodate dev tunnel latency
+  const timeoutMs = Math.max(Number(options.timeout || 0), 15000);
   const urlsToTry = getBaseUrls();
+
+  let attempt = 0;
   let lastError = null;
 
-  for (const base of urlsToTry) {
-    let timeoutId = null;
-    try {
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutMs = (path.includes('/signup') || path.includes('/otp') || path.includes('/auth') || path.includes('/verify') || path.includes('/request-code')) ? 15000 : 10000;
-      timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-
-      const response = await fetch(`${base}${path}`, {
-        ...options,
-        headers,
-        signal: controller ? controller.signal : undefined,
-      });
-
-      // Safely read response text with a bounded timeout so chunked streams never freeze the UI
-      let data = null;
+  while (attempt <= maxRetries) {
+    for (const base of urlsToTry) {
+      const fullUrl = buildResolvedApiUrl(base, path);
       try {
-        const textPromise = response.text();
-        const bodyTimeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Body timeout')), 4000)
-        );
-        const text = await Promise.race([textPromise, bodyTimeoutPromise]);
-        if (text) {
-          data = JSON.parse(text);
-        }
-      } catch (readErr) {
-        // If HTTP status is already 2xx OK, treat as success even if body stream stalled
-        if (response.ok) {
-          data = { success: true };
-        }
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-
-      if (response.ok) {
+        const result = await executeFetchOnce(fullUrl, reqOptions, timeoutMs);
         cachedWorkingBaseUrl = base;
-        return data || { success: true };
-      } else {
-        const errorMsg = data?.message || `HTTP ${response.status}: Request failed`;
-        const serverError = new Error(errorMsg);
-        
-        // If server responded with an HTTP status (4xx/5xx), surface the server error directly
-        if (response.status >= 400) {
-          throw serverError;
-        }
-        lastError = serverError;
-      }
-    } catch (e) {
-      if (timeoutId) clearTimeout(timeoutId);
-      const errMsg = (e?.message || '').toLowerCase();
-      const errName = e?.name || '';
-      const isAbortOrCancel =
-        errName.includes('Abort') ||
-        errMsg.includes('abort') ||
-        errMsg.includes('cancel') ||
-        errMsg.includes('timeout');
-      const isNetworkErr =
-        errMsg.includes('failed to fetch') ||
-        errMsg.includes('network request failed') ||
-        errMsg.includes('fetch failed');
+        return result;
+      } catch (e) {
+        lastError = e;
+        // Hard-stop: when a request fails with an HTTP error (404/500/401/403/422),
+        // stop all subsequent automatic retries immediately. Reset and throw.
+        const isHttpError =
+          (typeof e.status === 'number' && e.status >= 400) ||
+          (e.message && (e.message.includes('HTTP 404') || e.message.includes('HTTP 500') || e.message.includes('HTTP ')));
 
-      if (!isAbortOrCancel && !isNetworkErr) {
-        throw e;
+        if (isHttpError) {
+          console.warn(`[MobileAPI] HTTP ${e.status || 'error'} received from ${fullUrl}. Stopping all retries immediately.`);
+          throw e;
+        }
       }
-      lastError = e;
+    }
+
+    attempt++;
+    if (attempt <= maxRetries) {
+      // Automatic retry backoff only for non-HTTP socket/network drops
+      await new Promise((resolve) => setTimeout(resolve, attempt * 600));
     }
   }
 
@@ -252,10 +348,10 @@ async function safeFetch(path, options = {}) {
     const msg = (lastError.message || '').toLowerCase();
     const name = lastError.name || '';
     if (name.includes('Abort') || msg.includes('abort') || msg.includes('cancel') || msg.includes('timeout')) {
-      throw new Error('Connection timed out. Please ensure backend server is reachable.');
+      throw new Error('Connection timed out. Dev tunnel or backend latency exceeded 15 seconds.');
     }
     if (msg.includes('failed to fetch') || msg.includes('network request failed') || msg.includes('fetch failed')) {
-      throw new Error('Unable to reach backend server. Please check connection.');
+      throw new Error('Unable to reach backend server. Please verify dev tunnel port 8000 is running.');
     }
     throw lastError;
   }
@@ -338,23 +434,24 @@ export async function loginCustomer(emailOrPhone, password) {
     }
   }
 
-  if (backendResponse?.data?.user) {
-    const user = backendResponse.data.user;
-    if (user.role && user.role !== 'customer') {
+  const backendUser = backendResponse?.data?.user || backendResponse?.user;
+  if (backendUser) {
+    if (backendUser.role && backendUser.role !== 'customer') {
       await clearMobileStorage();
       const err = new Error('Access denied. This app is strictly for customer accounts only.');
       err.status = 403;
       throw err;
     }
-    if (backendResponse?.data?.token) {
-      setMobileAuthToken(backendResponse.data.token);
+    const token = backendResponse?.data?.token || backendResponse?.token || '';
+    if (token) {
+      setMobileAuthToken(token);
     }
-    saveStoredUser(user);
+    saveStoredUser(backendUser);
     return {
       success: true,
-      user: user,
-      token: backendResponse.data.token || '',
-      message: backendResponse.message || 'Login successful',
+      user: backendUser,
+      token: token,
+      message: backendResponse?.message || 'Login successful',
     };
   }
 
@@ -558,16 +655,31 @@ export async function completeSignup({ email, name, password, phone = '' }) {
     }),
   });
 
-  if (backendResponse?.data?.token) {
-    setMobileAuthToken(backendResponse.data.token);
+  const registeredUser = backendResponse?.data?.user || backendResponse?.user;
+  const registeredToken = backendResponse?.data?.token || backendResponse?.token;
+
+  if (registeredToken) {
+    setMobileAuthToken(registeredToken);
   }
-  if (backendResponse?.data?.user) {
-    saveStoredUser(backendResponse.data.user);
-    saveLocalRegisteredUser(backendResponse.data.user, password);
+  if (registeredUser) {
+    saveStoredUser(registeredUser);
+    saveLocalRegisteredUser(registeredUser, password);
   }
 
-  if (backendResponse?.success) {
-    return backendResponse.data;
+  if (backendResponse?.success || registeredUser) {
+    return {
+      success: true,
+      user: registeredUser || {
+        id: Date.now(),
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone?.trim() || '0917-888-9999',
+        role: 'customer',
+        status: 'active',
+      },
+      token: registeredToken || 'local-token-' + Date.now(),
+      message: backendResponse?.message || 'Account created successfully',
+    };
   }
 
   throw new Error(backendResponse?.message || 'Failed to complete registration.');
@@ -659,9 +771,20 @@ export async function getMobileProducts() {
           name: p.name,
           brand: p.brand?.name || p.brand || 'JEM Hardware',
           category: p.category?.name || p.category || 'Cement & Materials',
-          category_id: p.category?.name
-            ? p.category.name.toLowerCase().split(' ')[0]
-            : 'cement',
+          category_id: p.category_id != null
+            ? String(p.category_id)
+            : (p.category?.id != null
+                ? String(p.category.id)
+                : ((p.category?.name || p.category || '')
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-|-$/g, '') || 'cement')),
+          category_slug: (p.category?.name || p.category || '')
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, ''),
           base_price: Number(p.base_price || 0),
           unit: p.unit || 'piece',
           stock_quantity: Number(p.stock_quantity ?? 100),
@@ -669,6 +792,14 @@ export async function getMobileProducts() {
           reviews: Number(p.reviews_count || 128),
           discount_pct: '-10%',
           variants: variants,
+          image: p.image || (
+            p.name?.toLowerCase().includes('aluminum screen') ? '/images/products/aluminum-screen.png' :
+            (p.name?.toLowerCase().includes('hardware cloth') || p.name?.toLowerCase().includes('ayagan')) ? '/images/products/hardware-cloth-3ft.png' :
+            (p.name?.toLowerCase().includes('coupling reducer') || p.name?.toLowerCase().includes('reducer')) ? '/images/products/blue-coupling-reducer.png' :
+            p.name?.toLowerCase().includes('blue coupling') ? '/images/products/blue-coupling-1-2.png' :
+            p.name?.toLowerCase().includes('blue elbow') ? '/images/products/blue-elbow-plain-1-2.png' :
+            null
+          ),
           emoji:
             p.emoji ||
             (p.category?.name?.toLowerCase().includes('cement')
@@ -688,29 +819,81 @@ export async function getMobileProducts() {
         };
       });
     }
+    return [];
   } catch (err) {
-    // Gracefully fallback to seed products without console noise
+    if (allowSeedFallback) {
+      console.warn('[MobileAPI] Backend unreachable; fallback to initial products.');
+      return HARDWARE_PRODUCTS;
+    }
+    // Propagate error to let UI display proper offline/error state without silent data masquerade
+    throw err;
   }
-
-  return HARDWARE_PRODUCTS;
 }
 
 /**
- * Fetch categories from backend
+ * Validate mobile cart stock against real-time physical inventory & backorders.
+ * Hits dedicated lightweight endpoint: POST /api/mobile/cart/validate-stock
+ *
+ * @param {Array<{ id?: number, product_id?: number, quantity?: number, qty?: number, requested_qty?: number, product_variant_id?: number }>} items
+ * @returns {Promise<{ is_valid: boolean, has_modifications: boolean, items: Array, message: string }>}
+ */
+export async function validateMobileCartStock(items = []) {
+  if (!items || items.length === 0) {
+    return {
+      is_valid: true,
+      has_modifications: false,
+      items: [],
+      message: 'Cart is empty.',
+    };
+  }
+
+  const payload = {
+    items: items.map((it) => ({
+      product_id: Number(it.product_id || it.id),
+      requested_qty: Math.max(Number(it.requested_qty || it.quantity || it.qty || 1), 1),
+      ...(it.product_variant_id ? { product_variant_id: Number(it.product_variant_id) } : {}),
+    })),
+  };
+
+  return await safeFetch('/mobile/cart/validate-stock', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Fetch categories from backend with strictly unique identifiers
  */
 export async function getMobileCategories() {
   try {
     const data = await safeFetch('/categories');
     const list = Array.isArray(data) ? data : (data?.data?.data || data?.data || []);
     if (list.length > 0) {
-      return list.map((c, idx) => ({
-        id: c.name ? c.name.toLowerCase().split(' ')[0] : `cat-${idx}`,
-        name: c.name,
-        title: c.name,
-        count: c.products_count || 45,
-        icon: CATEGORY_ITEMS[idx % CATEGORY_ITEMS.length]?.icon || '🧱',
-        bg: CATEGORY_ITEMS[idx % CATEGORY_ITEMS.length]?.bg || '#f1f5f9',
-      }));
+      const seenIds = new Set();
+      return list.map((c, idx) => {
+        const nameSlug = c.name
+          ? c.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          : `cat-${idx}`;
+
+        // Ensure key is strictly unique across all category items
+        let uniqueId = c.id != null ? String(c.id) : nameSlug;
+        if (seenIds.has(uniqueId)) {
+          uniqueId = `${nameSlug}-${c.id ?? idx}`;
+        }
+        seenIds.add(uniqueId);
+
+        return {
+          id: uniqueId,
+          raw_id: c.id,
+          category_id: c.id,
+          slug: nameSlug,
+          name: c.name,
+          title: c.name,
+          count: c.products_count || 45,
+          icon: CATEGORY_ITEMS[idx % CATEGORY_ITEMS.length]?.icon || '🧱',
+          bg: CATEGORY_ITEMS[idx % CATEGORY_ITEMS.length]?.bg || '#f1f5f9',
+        };
+      });
     }
   } catch (e) {}
 
@@ -722,25 +905,26 @@ export async function getMobileCategories() {
  */
 export async function getMobileOrders() {
   try {
-    const data = await safeFetch('/mobile/orders');
+    // Add cache-busting timestamp query parameter to bypass intermediate proxies/dev tunnels
+    const data = await safeFetch(`/mobile/orders?_t=${Date.now()}`);
     const rawList = Array.isArray(data)
       ? data
       : (Array.isArray(data?.data)
           ? data.data
           : (Array.isArray(data?.data?.data)
               ? data.data.data
-              : []));
+              : null));
 
-    if (rawList.length > 0) {
+    if (Array.isArray(rawList)) {
       const formatted = rawList.map((item) => ({
         id: item.id,
         order_number: item.order_number || `JEM-2026-${item.id}`,
-        status: item.status || 'pending',
+        status: String(item.status || 'pending').toLowerCase().trim(),
         total: Number(item.total || 0),
         subtotal: Number(item.subtotal || 0),
         shipping_fee: Number(item.shipping_fee || 200),
         payment_method: (item.payment_method || 'gcash').toLowerCase(),
-        delivery_address: item.delivery_address || 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
+        delivery_address: item.delivery_address || 'Zone 1, Mabasa, Brgy. Balulang, Cagayan de Oro City',
         delivery_type: item.delivery_type || 'delivery',
         driver: 'Kuya Mark (Isuzu Elf Plate NCI-8921)',
         created_at: item.created_at || new Date().toISOString(),
@@ -771,17 +955,18 @@ export async function getMobileOrders() {
       return formatted;
     }
   } catch (e) {
-    // Gracefully fallback to cached local orders without console noise
-  }
-
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem('jem_shared_orders');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
+    // If cached orders exist, fallback to them gracefully
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('jem_shared_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (cacheErr) {}
+    }
+    // Re-throw so caller (OrdersTab) can catch and display dedicated Error/Retry UI
+    throw e;
   }
 
   return [];
@@ -804,7 +989,7 @@ export async function submitMobileOrder(orderData) {
       name: it.name,
     })),
     payment_method: (orderData.payment_method || 'cod').toLowerCase(),
-    delivery_address: orderData.delivery_address || 'Block 12 Lot 8, Villa San Isidro, Santa Rosa, Laguna',
+    delivery_address: orderData.delivery_address || 'Zone 1, Mabasa, Brgy. Balulang, Cagayan de Oro City',
     delivery_type: orderData.delivery_type || 'delivery',
     delivery_date: new Date().toISOString().split('T')[0],
     subtotal: Number(orderData.subtotal || 0),

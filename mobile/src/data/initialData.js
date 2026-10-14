@@ -255,6 +255,7 @@ export const HARDWARE_PRODUCTS = [
     rating: 4.9,
     reviews: 82,
     discount_pct: '-5%',
+    image: '/images/products/aluminum-screen.png',
     emoji: '🏠',
     description: '3-foot width rust-proof aluminum insect screen wire mesh for residential windows and screen doors.'
   },
@@ -271,6 +272,7 @@ export const HARDWARE_PRODUCTS = [
     rating: 4.9,
     reviews: 79,
     discount_pct: '-5%',
+    image: '/images/products/aluminum-screen.png',
     emoji: '🏠',
     description: '4-foot width rust-proof aluminum insect screen wire mesh for wide windows and screen doors.'
   },
@@ -303,6 +305,7 @@ export const HARDWARE_PRODUCTS = [
     rating: 4.8,
     reviews: 64,
     discount_pct: '-5%',
+    image: '/images/products/hardware-cloth-3ft.png',
     emoji: '🏠',
     description: '3-foot wire cloth sifter mesh (ayagan) for gravel, sand sieving, and chicken wire enclosures.'
   },
@@ -481,6 +484,7 @@ export const HARDWARE_PRODUCTS = [
     rating: 4.8,
     reviews: 130,
     discount_pct: '-5%',
+    image: '/images/products/blue-elbow-plain-1-2.png',
     emoji: '🔧',
     description: '1/2" PVC blue plain 90-degree socket elbow for potable pressure water piping.'
   },
@@ -529,8 +533,26 @@ export const HARDWARE_PRODUCTS = [
     rating: 4.8,
     reviews: 112,
     discount_pct: '-5%',
+    image: '/images/products/blue-coupling-1-2.png',
     emoji: '🔧',
     description: '1/2" PVC blue straight slip socket coupling for potable water lines.'
+  },
+  {
+    id: 58,
+    name: 'Blue Coupling Reducer 1/2" × 3/4"',
+    brand: 'Neltex',
+    category: 'Plumbing',
+    category_id: 'plumbing',
+    base_price: 22,
+    cost_price: 15,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews: 95,
+    discount_pct: '-5%',
+    image: '/images/products/blue-coupling-reducer.png',
+    emoji: '🔧',
+    description: '1/2" × 3/4" PVC blue reducing socket coupling for transitioning pipeline diameters.'
   },
   {
     id: 34,

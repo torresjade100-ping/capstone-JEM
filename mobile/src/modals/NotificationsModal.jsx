@@ -7,7 +7,7 @@ const INITIAL_NOTIFICATIONS = [
   {
     id: 1,
     title: '🚚 Order Out for Delivery',
-    desc: 'Your Isuzu freight truck is en route to site (Block 12 Lot 8, Santa Rosa, Laguna).',
+    desc: 'Your delivery truck is en route to site (Zone 1, Mabasa, Balulang, Cagayan de Oro City).',
     time: '15m ago',
     type: 'order',
     isUnread: true,
@@ -23,7 +23,7 @@ const INITIAL_NOTIFICATIONS = [
   {
     id: 3,
     title: '🧱 Restock Alert: 12mm Steel Rebar',
-    desc: 'SteelAsia Grade 40 12mm reinforcement bars restocked in Laguna warehouse.',
+    desc: 'SteelAsia Grade 40 12mm reinforcement bars restocked in CDO Central Hub.',
     time: '1d ago',
     type: 'promo',
     isUnread: false,

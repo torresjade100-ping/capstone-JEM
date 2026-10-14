@@ -351,3 +351,99 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   }
 }
 
+/* ==========================================================================
+   4. RESPONSIVE DESIGN UTILITIES & COMPONENT CONSTRAINTS
+   ========================================================================== */
+
+/* Responsive Grid Breakpoints (grid-cols-1 sm:grid-cols-2 lg:grid-cols-4) */
+.grid-cols-1 {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .sm\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Data Table Wrappers & Minimal Styled Scrollbars */
+.overflow-x-auto,
+.table-wrap,
+.table-responsive {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  border-radius: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(249, 115, 22, 0.45) transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar,
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track,
+.table-responsive::-webkit-scrollbar-track {
+  background: var(--bg-hover, rgba(15, 23, 42, 0.05));
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb,
+.table-responsive::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover,
+.table-wrap::-webkit-scrollbar-thumb:hover,
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: var(--primary, #f97316);
+}
+
+/* Dynamic Modal & Dropdown Utilities */
+.max-w-lg {
+  max-width: 32rem !important;
+}
+
+.w-full {
+  width: 100% !important;
+}
+
+.mx-4 {
+  margin-left: 1rem !important;
+  margin-right: 1rem !important;
+}
+
+/* Touch Target Minimum Standard (44x44px) */
+.touch-target,
+.btn-touch,
+button,
+select,
+.toggle-sidebar,
+.modal-close-btn,
+.pagination-btn {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.touch-target,
+.toggle-sidebar,
+.modal-close-btn {
+  min-width: 44px;
+}
+
+

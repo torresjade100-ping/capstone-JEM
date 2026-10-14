@@ -263,13 +263,37 @@ const HARDWARE_CATALOG = [
     reviews_count: 82,
     badge: 'Rust Proof',
     badgeClass: 'jem-choice',
+    image: '/images/products/aluminum-screen.png',
     emoji: '🏠',
     description: '3-foot width rust-proof aluminum insect screen wire mesh for residential windows and screen doors.',
     specs: {
       Material: 'Aluminum Wire',
       Width: '3 feet'
     },
-    images: ['🏠', '🛠️', '✨']
+    images: ['/images/products/aluminum-screen.png', '🏠', '🛠️', '✨']
+  },
+  {
+    id: 16,
+    name: 'Aluminum Screen 4ft',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 220,
+    cost_price: 165,
+    unit: 'meter',
+    stock_quantity: 80,
+    rating: 4.9,
+    reviews_count: 79,
+    badge: 'Rust Proof',
+    badgeClass: 'jem-choice',
+    image: '/images/products/aluminum-screen.png',
+    emoji: '🏠',
+    description: '4-foot width rust-proof aluminum insect screen wire mesh for wide windows and screen doors.',
+    specs: {
+      Material: 'Aluminum Wire',
+      Width: '4 feet'
+    },
+    images: ['/images/products/aluminum-screen.png', '🏠', '🛠️', '✨']
   },
   {
     id: 12,
@@ -292,6 +316,29 @@ const HARDWARE_CATALOG = [
       Width: '3 feet'
     },
     images: ['🏠', '🛠️', '✨']
+  },
+  {
+    id: 19,
+    name: 'Ayagan / Hardware Cloth 3ft',
+    brand: 'Generic',
+    category: 'Screens & Netting',
+    category_id: 'screens',
+    base_price: 95,
+    cost_price: 60,
+    unit: 'meter',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 64,
+    badge: 'Hardware Cloth',
+    badgeClass: 'jem-choice',
+    image: '/images/products/hardware-cloth-3ft.png',
+    emoji: '🏠',
+    description: '3-foot wire cloth sifter mesh (ayagan) for gravel, sand sieving, and chicken wire enclosures.',
+    specs: {
+      Material: 'Galvanized Wire Cloth',
+      Width: '3 feet'
+    },
+    images: ['/images/products/hardware-cloth-3ft.png', '🏠', '🛠️', '✨']
   },
   {
     id: 13,
@@ -397,13 +444,60 @@ const HARDWARE_CATALOG = [
     reviews_count: 130,
     badge: 'Neltex Blue',
     badgeClass: 'best-seller',
+    image: '/images/products/blue-elbow-plain-1-2.png',
     emoji: '🔧',
     description: '1/2" PVC blue plain 90-degree socket elbow for potable pressure water piping.',
     specs: {
       Size: '1/2"',
       Connection: 'Slip / Solvent Weld'
     },
-    images: ['🔧', '🚿', '📦']
+    images: ['/images/products/blue-elbow-plain-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 49,
+    name: 'Blue Coupling 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 15,
+    cost_price: 10,
+    unit: 'piece',
+    stock_quantity: 150,
+    rating: 4.8,
+    reviews_count: 112,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    image: '/images/products/blue-coupling-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue straight slip socket coupling for potable water lines.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Slip / Solvent Weld'
+    },
+    images: ['/images/products/blue-coupling-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 52,
+    name: 'Blue Coupling Reducer 1/2" × 3/4"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 22,
+    cost_price: 15,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 95,
+    badge: 'Reducer',
+    badgeClass: 'jem-choice',
+    image: '/images/products/blue-coupling-reducer.png',
+    emoji: '🔧',
+    description: '1/2" × 3/4" PVC blue reducing socket coupling for transitioning pipeline diameters.',
+    specs: {
+      Size: '1/2" × 3/4"',
+      Connection: 'Slip / Reducing Socket'
+    },
+    images: ['/images/products/blue-coupling-reducer.png', '🔧', '🚿', '📦']
   },
   {
     id: 18,
@@ -1662,7 +1756,11 @@ export default function CustomerApp() {
                       }}
                     >
                       <div className="product-card-thumb-wrap">
-                        <span>{product.emoji}</span>
+                        {product.image ? (
+                          <img src={product.image} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <span>{product.emoji}</span>
+                        )}
                         <span className={`product-card-badge ${product.badgeClass}`}>
                           {product.badge}
                         </span>
@@ -1795,7 +1893,11 @@ export default function CustomerApp() {
                       }}
                     >
                       <div className={viewMode === 'grid' ? 'product-card-thumb-wrap' : 'product-list-thumb'}>
-                        <span>{product.emoji}</span>
+                        {product.image ? (
+                          <img src={product.image} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <span>{product.emoji}</span>
+                        )}
                       </div>
                       <div className={viewMode === 'grid' ? 'product-card-body' : 'product-list-content'}>
                         <div>
@@ -1914,7 +2016,11 @@ export default function CustomerApp() {
                       }}
                     >
                       <div className={viewMode === 'grid' ? 'product-card-thumb-wrap' : 'product-list-thumb'}>
-                        <span>{product.emoji}</span>
+                        {product.image ? (
+                          <img src={product.image} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <span>{product.emoji}</span>
+                        )}
                         <span className={`product-card-badge ${product.badgeClass}`}>
                           {product.badge}
                         </span>
@@ -1982,7 +2088,11 @@ export default function CustomerApp() {
 
               {/* Swipe Gallery */}
               <div className="product-detail-gallery">
-                <span>{selectedProduct.images[activeImageIndex] || selectedProduct.emoji}</span>
+                {String(selectedProduct.images[activeImageIndex] || selectedProduct.image || '').startsWith('/') || String(selectedProduct.images[activeImageIndex] || selectedProduct.image || '').startsWith('http') ? (
+                  <img src={selectedProduct.images[activeImageIndex] || selectedProduct.image} alt={selectedProduct.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <span>{selectedProduct.images[activeImageIndex] || selectedProduct.emoji}</span>
+                )}
                 <span className="gallery-counter-badge">
                   {activeImageIndex + 1} / {selectedProduct.images.length} Photos
                 </span>
@@ -2003,10 +2113,16 @@ export default function CustomerApp() {
                       fontSize: '20px',
                       display: 'grid',
                       placeItems: 'center',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      padding: 0
                     }}
                   >
-                    {img}
+                    {String(img).startsWith('/') || String(img).startsWith('http') ? (
+                      <img src={img} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      img
+                    )}
                   </button>
                 ))}
               </div>

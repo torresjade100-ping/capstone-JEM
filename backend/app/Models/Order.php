@@ -45,4 +45,14 @@ class Order extends Model
     {
         return $this->hasMany(Backorder::class);
     }
+
+    /**
+     * Retrieve the model for a bound value (resolving by ID or order_number).
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->where('id', $value)
+            ->orWhere('order_number', $value)
+            ->first() ?? abort(404, "No order found matching identifier '{$value}'");
+    }
 }
