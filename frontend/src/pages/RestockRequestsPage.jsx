@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import {
   Package,
   Plus,
@@ -34,6 +34,7 @@ import {
   getQuantityInputLabel,
   getQuantityPlaceholder,
 } from '../utils/uom'
+import Pagination from '../components/Pagination'
 import '../styles/management.css'
 
 export default function RestockRequestsPage({ role: propRole }) {
@@ -47,6 +48,8 @@ export default function RestockRequestsPage({ role: propRole }) {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
 
   // Review / View Modal State
   const [selectedRequest, setSelectedRequest] = useState(null)
@@ -131,19 +134,30 @@ export default function RestockRequestsPage({ role: propRole }) {
   }
 
   useEffect(() => {
+    let isSubscribed = true
+    let isPolling = false
+
     setLoading(true)
     fetchRequestsData()
     fetchProductsList()
     fetchDemand()
 
-    // 2-second background sync for cross-dashboard real-time updates
-    const pollInterval = setInterval(() => {
-      fetchRequestsData()
-    }, 2500)
+    // 1.8-second smooth background sync with in-flight lock
+    const pollInterval = setInterval(async () => {
+      if (!isSubscribed || isPolling) return
+      isPolling = true
+      try {
+        await fetchRequestsData()
+      } finally {
+        isPolling = false
+      }
+    }, 1800)
 
     // Listen to real-time custom events
     const handleSync = () => {
-      fetchRequestsData()
+      if (!isPolling) {
+        fetchRequestsData()
+      }
     }
 
     window.addEventListener('jem_stock_request_created', handleSync)
@@ -152,6 +166,7 @@ export default function RestockRequestsPage({ role: propRole }) {
     window.addEventListener('storage', handleSync)
 
     return () => {
+      isSubscribed = false
       clearInterval(pollInterval)
       window.removeEventListener('jem_stock_request_created', handleSync)
       window.removeEventListener('jem_notification_update', handleSync)
@@ -181,6 +196,17 @@ export default function RestockRequestsPage({ role: propRole }) {
     const sku = String(request.sku || request.product?.sku || '').toLowerCase()
     return product.includes(q) || by.includes(q) || id.includes(q) || sku.includes(q)
   })
+
+  // Auto-reset page to 1 whenever search query or filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, filter])
+
+  // Paginated slice for current page
+  const paginatedRequests = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage
+    return (filteredRequests || []).slice(start, start + rowsPerPage)
+  }, [filteredRequests, currentPage, rowsPerPage])
 
   // Selected product helper for staff create modal
   const selectedProductObj = products.find((p) => String(p.id) === String(formProductId))
@@ -713,6 +739,7 @@ export default function RestockRequestsPage({ role: propRole }) {
           )}
         </div>
       ) : (
+        <>
         <div className="table-responsive" style={{ background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
           <table className="management-table">
             <thead>
@@ -729,7 +756,7 @@ export default function RestockRequestsPage({ role: propRole }) {
               </tr>
             </thead>
             <tbody>
-              {filteredRequests.map((request) => {
+              {paginatedRequests.map((request) => {
                 const productName = request.product_name || request.product?.name || 'Product'
                 const sku = request.sku || request.product?.sku || '-'
                 const requestedBy = formatRequestedBy(request)
@@ -860,6 +887,18 @@ export default function RestockRequestsPage({ role: propRole }) {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredRequests.length}
+          rowsPerPage={rowsPerPage}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setRowsPerPage(newSize)
+            setCurrentPage(1)
+          }}
+          itemName="requests"
+        />
+        </>
       )}
 
       {/* MODAL 1: Staff Create Stock Request Modal */}

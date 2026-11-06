@@ -40,6 +40,18 @@ export function getSharedOrders() {
   return []
 }
 
+export function clearSharedOrders() {
+  try {
+    localStorage.removeItem('jem_shared_orders')
+    localStorage.removeItem('jem_shared_notifications')
+    localStorage.removeItem('jem_pos_cart')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jem_orders_update', { detail: [] }))
+      window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: [] }))
+    }
+  } catch (e) {}
+}
+
 export function saveSharedOrders(orders) {
   try {
     localStorage.setItem('jem_shared_orders', JSON.stringify(orders || []))
@@ -322,8 +334,104 @@ export function deactivateCategory(id) {
   })
 }
 export function getBrands() { return request('/brands', {}, 30000).then((payload) => payload.data) }
-export function getInventory() { clearApiCache('/admin/inventory'); return request('/admin/inventory', {}, 5000).then((payload) => payload.data) }
-export function getLowStock() { return request('/admin/inventory/low-stock', {}, 5000).then((payload) => payload.data) }
+export async function getInventory(params = {}) {
+  clearApiCache('/admin/inventory')
+  clearApiCache('/inventory')
+  clearApiCache('/staff/inventory')
+
+  const queryParts = []
+  if (params.search) queryParts.push(`search=${encodeURIComponent(params.search)}`)
+  if (params.category_id && params.category_id !== 'all') queryParts.push(`category_id=${encodeURIComponent(params.category_id)}`)
+  if (params.stock_status && params.stock_status !== 'all') queryParts.push(`stock_status=${encodeURIComponent(params.stock_status)}`)
+  if (params.status && params.status !== 'all') queryParts.push(`status=${encodeURIComponent(params.status)}`)
+  const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+  const user = getStoredUser()
+  const isStaff = user?.role === 'staff'
+  const primaryPath = isStaff ? `/staff/inventory${queryString}` : `/admin/inventory${queryString}`
+  const fallbackPaths = isStaff 
+    ? [`/admin/inventory${queryString}`, `/inventory${queryString}`]
+    : [`/inventory${queryString}`, `/staff/inventory${queryString}`]
+
+  // Helper to extract items array
+  const extractItems = (payload) => {
+    if (!payload) return null
+    if (Array.isArray(payload)) return payload
+    if (Array.isArray(payload.data)) return payload.data
+    if (payload.data && Array.isArray(payload.data.data)) return payload.data.data
+    return null
+  }
+
+  // 1. Try primary path
+  try {
+    const payload = await request(primaryPath, {}, 0)
+    const items = extractItems(payload)
+    if (items) return items
+  } catch (err) {
+    // try fallback paths
+  }
+
+  // 2. Try fallback paths
+  for (const path of fallbackPaths) {
+    try {
+      const payload = await request(path, {}, 5000)
+      const items = extractItems(payload)
+      if (items) return items
+    } catch (err) {}
+  }
+
+  // 3. Resilient fallback: map from getProducts
+  try {
+    const prodRes = await getProducts()
+    const prods = Array.isArray(prodRes) ? prodRes : (prodRes?.data || [])
+    if (Array.isArray(prods) && prods.length > 0) {
+      return prods.map(p => {
+        const qty = Number(p.stock_quantity ?? p.quantity ?? 0)
+        const threshold = Number(p.low_stock_threshold ?? 10)
+        const prodStatus = p.status || 'active'
+        const stockStatus = qty <= 0 ? 'out_of_stock' : (qty <= threshold ? 'low_stock' : 'in_stock')
+        const selling = Number(p.selling_price ?? p.base_price ?? p.price ?? 0)
+        const cost = Number(p.cost_price ?? (selling * 0.7) ?? 0)
+
+        return {
+          id: p.id,
+          product_id: p.id,
+          name: p.name,
+          product_name: p.name,
+          category: p.category?.name || p.category || 'General Construction',
+          category_id: p.category_id,
+          brand: p.brand?.name || p.brand || '—',
+          supplier: p.supplier?.name || p.brand?.name || '—',
+          unit: p.unit || 'piece',
+          cost_price: cost,
+          selling_price: selling,
+          unit_price: selling,
+          price: selling,
+          quantity: qty,
+          current_quantity: qty,
+          stock_quantity: qty,
+          low_stock_threshold: threshold,
+          threshold: threshold,
+          stock_status: stockStatus,
+          status: prodStatus,
+          is_active: prodStatus === 'active',
+          batches_count: p.batches_count || (p.batches ? p.batches.length : 1),
+          product: p,
+        }
+      })
+    }
+  } catch (e) {}
+
+  return []
+}
+
+export function getLowStock() { 
+  clearApiCache('/admin/inventory/low-stock')
+  return request('/admin/inventory/low-stock', {}, 5000)
+    .then((payload) => (Array.isArray(payload) ? payload : (payload?.data || [])))
+    .catch(() => request('/staff/inventory/low-stock', {}, 5000).then((p) => p?.data || []))
+    .catch(() => [])
+}
 
 export function getSharedStockAdjustments(productId = null) {
   try {
@@ -349,6 +457,8 @@ export function addSharedStockAdjustment(record) {
 
 export async function adjustStock(payload) {
   clearApiCache('/admin/inventory')
+  clearApiCache('/staff/inventory')
+  clearApiCache('/inventory')
   clearApiCache('/products')
   
   // Record in shared storage
@@ -399,30 +509,77 @@ export async function adjustStock(payload) {
       }),
     })
   } catch (err) {
-    console.warn('Backend stock adjustment failed, saved locally:', err)
+    try {
+      await request('/staff/stock-adjustments', {
+        method: 'POST',
+        body: JSON.stringify({
+          product_id: payload.product_id,
+          product_variant_id: payload.product_variant_id || null,
+          quantity_change: payload.quantity_change,
+          reason: payload.reason,
+          adjustment_type: payload.adjustment_type || 'adjustment',
+          supplier_id: payload.supplier_id || null,
+          reference_number: payload.reference_number || '',
+          notes: payload.notes || '',
+        }),
+      })
+    } catch (e2) {
+      console.warn('Backend stock adjustment failed, saved locally:', err)
+    }
   }
 
   window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: payload }))
   return { success: true }
 }
 
-export async function getStockAdjustments(productId = null) {
+export async function getStockAdjustments(productId = null, options = {}) {
   const localList = getSharedStockAdjustments(productId)
-  try {
-    const url = productId ? `/admin/stock-adjustments/product/${productId}` : '/admin/stock-adjustments'
-    const res = await request(url, {}, 4000)
-    const backendList = Array.isArray(res.data) ? res.data : (res.data?.data || [])
-    
-    // Merge backend + local history
-    const map = new Map()
-    localList.forEach(item => map.set(String(item.id), item))
-    backendList.forEach(item => map.set(String(item.id), item))
-    const merged = Array.from(map.values())
-    merged.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-    return merged
-  } catch (e) {
-    return localList
+  const user = getStoredUser()
+  const isStaff = user?.role === 'staff'
+  const perPage = options.per_page || 50
+
+  const primaryUrl = productId
+    ? (isStaff ? `/staff/stock-adjustments/product/${productId}` : `/admin/stock-adjustments/product/${productId}`)
+    : (isStaff ? `/staff/stock-adjustments?per_page=${perPage}` : `/admin/stock-adjustments?per_page=${perPage}`)
+
+  const fallbackUrls = [
+    productId ? `/admin/stock-adjustments/product/${productId}` : `/admin/stock-adjustments?per_page=${perPage}`,
+    productId ? `/stock-adjustments/product/${productId}` : `/stock-adjustments?per_page=${perPage}`,
+  ]
+
+  let backendList = []
+
+  const extract = (res) => {
+    if (!res) return null
+    if (Array.isArray(res)) return res
+    if (Array.isArray(res.data)) return res.data
+    if (res.data && Array.isArray(res.data.data)) return res.data.data
+    return null
   }
+
+  try {
+    const res = await request(primaryUrl, {}, 4000)
+    backendList = extract(res) || []
+  } catch (e) {
+    for (const fbUrl of fallbackUrls) {
+      try {
+        const res = await request(fbUrl, {}, 4000)
+        const extracted = extract(res)
+        if (extracted) {
+          backendList = extracted
+          break
+        }
+      } catch (err2) {}
+    }
+  }
+
+  // Merge backend + local history
+  const map = new Map()
+  localList.forEach(item => map.set(String(item.id), item))
+  backendList.forEach(item => map.set(String(item.id), item))
+  const merged = Array.from(map.values())
+  merged.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  return merged
 }
 
 export async function toggleProductStatus(productId, currentStatus) {
@@ -480,7 +637,7 @@ export async function getAdminOrders(params = {}) {
   const shared = getSharedOrders()
   try {
     const query = new URLSearchParams(params).toString()
-    const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 3000)
+    const payload = await request(`/admin/orders${query ? `?${query}` : ''}`, {}, 0)
     const backendList = Array.isArray(payload.data) ? payload.data : payload.data?.data || []
     
     // Merge backend MySQL orders and shared orders strictly by unique ID/order_number
@@ -939,6 +1096,10 @@ export async function createPosCheckout(transaction) {
 }
 
 export function createProduct(product) { return request('/admin/products', { method: 'POST', body: JSON.stringify(product) }).then((payload) => payload.data) }
+export function createProductsBatch(batchPayload) {
+  clearApiCache('/products')
+  return request('/admin/products/batch', { method: 'POST', body: JSON.stringify(batchPayload) })
+}
 
 
 export function updateProduct(id, product) { return request(`/admin/products/${id}`, { method: 'PUT', body: JSON.stringify(product) }).then((payload) => payload.data) }
@@ -1183,5 +1344,114 @@ export async function adminGlobalSearch(query) {
 }
 
 export function apiUrl() { return API_BASE_URL }
+
+// ==========================================
+// Loss, Damage, and Theft Records API
+// ==========================================
+
+export async function getLossDamageThefts(params = {}) {
+  const query = new URLSearchParams()
+  Object.keys(params).forEach(key => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+      query.append(key, params[key])
+    }
+  })
+  const qs = query.toString() ? `?${query.toString()}` : ''
+  return request(`/loss-damage-thefts${qs}`)
+}
+
+export async function getLossDamageTheftSummary(params = {}) {
+  const query = new URLSearchParams()
+  Object.keys(params).forEach(key => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+      query.append(key, params[key])
+    }
+  })
+  const qs = query.toString() ? `?${query.toString()}` : ''
+  return request(`/loss-damage-thefts/summary${qs}`)
+}
+
+export async function getLossDamageTheft(id) {
+  return request(`/loss-damage-thefts/${id}`)
+}
+
+export async function createLossDamageTheft(data) {
+  clearApiCache('/loss-damage-thefts')
+  clearApiCache('/loss-damage-thefts/summary')
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+
+  const res = await request('/loss-damage-thefts', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+  // If stock was adjusted, synchronize POS and inventory state
+  if (res?.data?.stock_adjusted || data.confirm_stock_deduction || data.status === 'resolved') {
+    try {
+      const rawPos = localStorage.getItem('jem_pos_catalog')
+      if (rawPos && data.product_id) {
+        const list = JSON.parse(rawPos)
+        const updated = list.map(p => {
+          if (p.id === Number(data.product_id)) {
+            const nextStock = Math.max(0, Number(p.stock_quantity ?? p.stock ?? 0) - Number(data.quantity || 0))
+            return { ...p, stock_quantity: nextStock, stock: nextStock }
+          }
+          return p
+        })
+        localStorage.setItem('jem_pos_catalog', JSON.stringify(updated))
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: res?.data }))
+  }
+
+  return res
+}
+
+export async function updateLossDamageTheft(id, data) {
+  clearApiCache('/loss-damage-thefts')
+  clearApiCache('/loss-damage-thefts/summary')
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+
+  const res = await request(`/loss-damage-thefts/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+
+  window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: res?.data }))
+  return res
+}
+
+export async function updateLossDamageTheftStatus(id, status, extra = {}) {
+  clearApiCache('/loss-damage-thefts')
+  clearApiCache('/loss-damage-thefts/summary')
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+
+  const res = await request(`/loss-damage-thefts/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, ...extra }),
+  })
+
+  window.dispatchEvent(new CustomEvent('jem_inventory_update', { detail: res?.data }))
+  return res
+}
+
+export async function deleteLossDamageTheft(id, revertStock = true) {
+  clearApiCache('/loss-damage-thefts')
+  clearApiCache('/loss-damage-thefts/summary')
+  clearApiCache('/admin/inventory')
+  clearApiCache('/products')
+
+  const res = await request(`/loss-damage-thefts/${id}?revert_stock=${revertStock ? '1' : '0'}`, {
+    method: 'DELETE',
+  })
+
+  window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+  return res
+}
+
 
 

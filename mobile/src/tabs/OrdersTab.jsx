@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader, EmptyState } from '../components/ui/Primitives';
@@ -56,6 +56,9 @@ export default function OrdersTab({
   onCancelOrder,
   onRefreshOrders,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [initialLoading, setInitialLoading] = useState(orders.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -209,6 +212,7 @@ export default function OrdersTab({
         style={{ flex: 1 }}
         contentContainerStyle={[
           s.scroll,
+          isTablet && { maxWidth: 760, width: '100%', alignSelf: 'center' },
           (initialLoading || (fetchError && orders.length === 0) || (!initialLoading && filteredOrders.length === 0)) && s.centerScrollContent,
         ]}
         showsVerticalScrollIndicator={false}

@@ -454,6 +454,29 @@ const HARDWARE_CATALOG = [
     images: ['/images/products/blue-elbow-plain-1-2.png', '🔧', '🚿', '📦']
   },
   {
+    id: 44,
+    name: 'Blue Elbow Threaded 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 20,
+    cost_price: 14,
+    unit: 'piece',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 90,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    image: '/images/products/blue-elbow-threaded-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue 90-degree threaded elbow for standard bibcock and shower connections.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Threaded / FPT'
+    },
+    images: ['/images/products/blue-elbow-threaded-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
     id: 49,
     name: 'Blue Coupling 1/2"',
     brand: 'Neltex',
@@ -498,6 +521,144 @@ const HARDWARE_CATALOG = [
       Connection: 'Slip / Reducing Socket'
     },
     images: ['/images/products/blue-coupling-reducer.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 45,
+    name: 'Blue Tee Plain 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 20,
+    cost_price: 14,
+    unit: 'piece',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 85,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    image: '/images/products/blue-tee-plain-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue slip-fit equal tee for clean water distribution lines.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Slip / Solvent Weld'
+    },
+    images: ['/images/products/blue-tee-plain-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 46,
+    name: 'Blue Tee Threaded 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 25,
+    cost_price: 17,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 80,
+    badge: 'Neltex Blue',
+    badgeClass: 'jem-choice',
+    image: '/images/products/blue-tee-threaded-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue tee with threaded central branch for branch fixtures.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Female Threaded × Socket'
+    },
+    images: ['/images/products/blue-tee-threaded-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 47,
+    name: 'Blue Female Adaptor 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 18,
+    cost_price: 12,
+    unit: 'piece',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 92,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    image: '/images/products/blue-female-adaptor-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue female threaded adapter socket for valve and bib connections.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Female Threaded × Socket'
+    },
+    images: ['/images/products/blue-female-adaptor-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 48,
+    name: 'Blue Male Adaptor 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 18,
+    cost_price: 12,
+    unit: 'piece',
+    stock_quantity: 120,
+    rating: 4.8,
+    reviews_count: 90,
+    badge: 'Neltex Blue',
+    badgeClass: 'best-seller',
+    image: '/images/products/blue-male-adaptor-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue male threaded adapter socket for pumps and gate valves.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Male Threaded × Socket'
+    },
+    images: ['/images/products/blue-male-adaptor-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 50,
+    name: 'Blue Female Plug 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 12,
+    cost_price: 8,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 78,
+    badge: 'Neltex Blue',
+    badgeClass: 'jem-choice',
+    image: '/images/products/blue-female-plug-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue female cap/plug for temporarily or permanently closing pipe outlets.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Female Threaded Cap'
+    },
+    images: ['/images/products/blue-female-plug-1-2.png', '🔧', '🚿', '📦']
+  },
+  {
+    id: 51,
+    name: 'Blue Male Plug 1/2"',
+    brand: 'Neltex',
+    category: 'Plumbing & Fittings',
+    category_id: 'plumbing',
+    base_price: 12,
+    cost_price: 8,
+    unit: 'piece',
+    stock_quantity: 100,
+    rating: 4.8,
+    reviews_count: 75,
+    badge: 'Neltex Blue',
+    badgeClass: 'jem-choice',
+    image: '/images/products/blue-male-plug-1-2.png',
+    emoji: '🔧',
+    description: '1/2" PVC blue threaded male plug for sealing open female ports and rough-ins.',
+    specs: {
+      Size: '1/2"',
+      Connection: 'Male Threaded Plug'
+    },
+    images: ['/images/products/blue-male-plug-1-2.png', '🔧', '🚿', '📦']
   },
   {
     id: 18,
@@ -803,6 +964,7 @@ export default function CustomerApp() {
   const [authPhone, setAuthPhone] = useState('')
   const [authName, setAuthName] = useState('')
   const [authError, setAuthError] = useState('')
+  const [authFormData, setAuthFormData] = useState({ name: '', email: '', password: '', rememberMe: false })
 
   // Onboarding Carousel State
   const [onboardingIndex, setOnboardingIndex] = useState(0)
@@ -824,41 +986,66 @@ export default function CustomerApp() {
 
   useEffect(() => {
     let isMounted = true
-    getProducts({ per_page: 100 })
-      .then(res => {
-        if (!isMounted) return
-        const list = Array.isArray(res) ? res : (res?.data?.data || res?.data || [])
-        if (list.length > 0) {
-          const mapped = list.map(p => ({
-            id: p.id,
-            name: p.name,
-            brand: p.brand?.name || 'JEM Lumber',
-            category: p.category?.name || 'Lumber & Boards',
-            category_id: p.category?.name ? p.category.name.toLowerCase().split(' ')[0] : 'lumber',
-            base_price: Number(p.selling_price || p.base_price || 0),
-            unit: p.unit || 'piece',
-            stock_quantity: p.stock_quantity ?? 50,
-            rating: 4.8,
-            reviews_count: 40 + (p.id * 2),
-            badge: p.stock_quantity < 20 ? 'Low Stock' : (p.id <= 4 ? 'Best Seller' : 'In Stock'),
-            badgeClass: p.stock_quantity < 20 ? 'low-stock' : 'best-seller',
-            emoji: p.category?.name?.toLowerCase().includes('lumber') ? '🪵' : (p.category?.name?.toLowerCase().includes('screen') || p.category?.name?.toLowerCase().includes('roof') ? '🏠' : (p.category?.name?.toLowerCase().includes('pipe') ? '🚿' : (p.category?.name?.toLowerCase().includes('plumb') ? '🔧' : (p.category?.name?.toLowerCase().includes('tarpaulin') ? '⛺' : (p.category?.name?.toLowerCase().includes('paint') ? '🎨' : '🔩'))))),
-            description: p.description || 'Quality hardware supply manufactured strictly to Philippine National Standards.',
-            specs: {
-              Unit: p.unit || 'piece',
-              Size: p.variants?.[0]?.size || 'Standard',
-              Status: p.status || 'Active'
-            },
-            images: ['📦', '✨', '🏷️']
-          }))
-          setProducts(mapped)
-          if (mapped.length > 0) {
-            setSelectedProduct(mapped[0])
+    const loadProducts = () => {
+      getProducts({ per_page: 300 })
+        .then(res => {
+          if (!isMounted) return
+          const list = Array.isArray(res) ? res : (res?.data?.data || res?.data || [])
+          if (list.length > 0) {
+            const mapped = list.map(p => {
+              const catName = p.category?.name || 'General Hardware'
+              const lowerCat = catName.toLowerCase()
+              let catKey = 'hardware'
+              if (lowerCat.includes('lumber') || lowerCat.includes('board')) catKey = 'lumber'
+              else if (lowerCat.includes('screen') || lowerCat.includes('roof') || lowerCat.includes('steel')) catKey = 'screens'
+              else if (lowerCat.includes('pipe')) catKey = 'pipes'
+              else if (lowerCat.includes('plumb') || lowerCat.includes('fitting')) catKey = 'plumbing'
+              else if (lowerCat.includes('fasten') || lowerCat.includes('screw')) catKey = 'hardware'
+              else if (lowerCat.includes('rope') || lowerCat.includes('access')) catKey = 'accessories'
+              else if (lowerCat.includes('finish') || lowerCat.includes('paint') || lowerCat.includes('trim')) catKey = 'finishing'
+              else if (lowerCat.includes('tarpaulin') || lowerCat.includes('cover') || lowerCat.includes('trapal')) catKey = 'tarpaulin'
+
+              return {
+                id: p.id,
+                name: p.name,
+                brand: p.brand?.name || 'JEM Lumber',
+                category: catName,
+                category_id: catKey,
+                raw_category_id: p.category_id || p.category?.id,
+                base_price: Number(p.selling_price || p.base_price || 0),
+                unit: p.unit || 'piece',
+                stock_quantity: p.stock_quantity ?? 50,
+                rating: 4.8,
+                reviews_count: 40 + (p.id * 2),
+                badge: p.stock_quantity < 20 ? 'Low Stock' : (p.id <= 4 ? 'Best Seller' : 'In Stock'),
+                badgeClass: p.stock_quantity < 20 ? 'low-stock' : 'best-seller',
+                emoji: lowerCat.includes('lumber') ? '🪵' : (lowerCat.includes('screen') || lowerCat.includes('roof') ? '🏠' : (lowerCat.includes('pipe') ? '🚿' : (lowerCat.includes('plumb') ? '🔧' : (lowerCat.includes('tarpaulin') ? '⛺' : (lowerCat.includes('paint') || lowerCat.includes('trim') ? '🎨' : '🔩'))))),
+                description: p.description || 'Quality hardware supply manufactured strictly to Philippine National Standards.',
+                specs: {
+                  Unit: p.unit || 'piece',
+                  Size: p.variants?.[0]?.size || 'Standard',
+                  Status: p.status || 'Active'
+                },
+                images: ['📦', '✨', '🏷️']
+              }
+            })
+            setProducts(mapped)
+            if (mapped.length > 0) {
+              setSelectedProduct(prev => prev ? mapped.find(m => m.id === prev.id) || mapped[0] : mapped[0])
+            }
           }
-        }
-      })
-      .catch(() => {})
-    return () => { isMounted = false }
+        })
+        .catch(() => {})
+    }
+
+    loadProducts()
+    const handleInv = () => loadProducts()
+    window.addEventListener('jem_inventory_update', handleInv)
+
+    return () => {
+      isMounted = false
+      window.removeEventListener('jem_inventory_update', handleInv)
+    }
   }, [])
   const [detailQuantity, setDetailQuantity] = useState(1)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
@@ -1059,7 +1246,9 @@ export default function CustomerApp() {
     return products.filter(p => {
       const matchCat = selectedCategory === 'all' || 
         p.category_id === selectedCategory || 
-        (p.category || '').toLowerCase().trim() === selectedCategory.toLowerCase().trim()
+        String(p.raw_category_id) === String(selectedCategory) ||
+        (p.category || '').toLowerCase().trim() === selectedCategory.toLowerCase().trim() ||
+        (p.category || '').toLowerCase().includes(selectedCategory.toLowerCase().trim())
       const q = searchQuery.toLowerCase().trim()
       const matchQuery = !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
       const matchBrand = selectedBrands.length === 0 || selectedBrands.includes(p.brand)

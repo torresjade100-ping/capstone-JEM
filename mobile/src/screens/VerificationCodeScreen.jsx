@@ -373,8 +373,9 @@ const styles = StyleSheet.create({
   },
   otpBox: {
     flex: 1,
-    height: 52,
+    minWidth: 0,
     maxWidth: 48,
+    height: 52,
     backgroundColor: '#0F1A2E',
     borderWidth: 1.2,
     borderColor: '#1E2C42',
@@ -384,6 +385,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   otpBoxFilled: {
     borderColor: '#F97316',

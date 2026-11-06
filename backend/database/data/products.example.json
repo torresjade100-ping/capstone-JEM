@@ -1,0 +1,26 @@
+[
+    {
+        "name": "Marine Plywood 3/4\"",
+        "sku": "JEM-MPLY-34",
+        "category": "Lumber",
+        "brand": "JEM Lumber",
+        "unit": "sheet",
+        "size": "3/4\"",
+        "selling_price": 1080,
+        "cost_price": 830,
+        "stock": 50,
+        "description": "3/4\" Waterproof marine-grade plywood suitable for boat building, exterior ceilings, concrete formworks, and wet-area cabinetry."
+    },
+    {
+        "name": "Marine Plywood 1/2\"",
+        "sku": "JEM-MPLY-12",
+        "category": "Lumber",
+        "brand": "JEM Lumber",
+        "unit": "sheet",
+        "size": "1/2\"",
+        "selling_price": 690,
+        "cost_price": 535,
+        "stock": 60,
+        "description": "1/2\" Marine plywood with water-resistant glue lines, ideal for bathroom partitions, eaves, and outdoor cabinetry."
+    }
+]

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ export default function SignUpScreen({
   setPassword,
   phone,
   setPhone,
-  rememberMe = true,
+  rememberMe = false,
   setRememberMe,
   step = 1,
   setStep,
@@ -56,9 +56,64 @@ export default function SignUpScreen({
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpResendCooldown, setOtpResendCooldown] = useState(60);
   const [localError, setLocalError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showHelpTip, setShowHelpTip] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+
+  // Form field reset handler: clears full name, phone number, password, and error states
+  const resetFormFields = () => {
+    if (setName) setName('');
+    if (setPhone) setPhone('');
+    if (setPassword) setPassword('');
+    setLocalError('');
+    setPhoneError('');
+  };
+
+  // 1. Reset all form inputs upon component mount
+  useEffect(() => {
+    resetFormFields();
+  }, []);
+
+  // 2. When email changes, ensure Step 2 input fields are completely cleared of prior data
+  const lastEmailRef = useRef(email);
+  useEffect(() => {
+    if (lastEmailRef.current !== undefined && lastEmailRef.current !== email) {
+      lastEmailRef.current = email;
+      resetFormFields();
+    }
+  }, [email]);
+
+  // Navigate back to Email Step 1 with a clean state
+  const handleBackToEmail = () => {
+    resetFormFields();
+    changeStep(1);
+  };
+
+  const handlePhoneChange = (val) => {
+    // Strictly numeric: remove all non-digits (letters, symbols, dashes)
+    const numericOnly = (val || '').replace(/[^0-9]/g, '');
+    // Strictly max 11 digits
+    const limited = numericOnly.slice(0, 11);
+
+    if (setPhone) {
+      setPhone(limited);
+    }
+    if (localError) setLocalError('');
+
+    // Real-time validation feedback
+    if (limited.length > 0) {
+      if (!limited.startsWith('09')) {
+        setPhoneError('Must start with 09 (e.g. 09123456789)');
+      } else if (limited.length < 11) {
+        setPhoneError(`${limited.length}/11 digits (e.g. 09123456789)`);
+      } else {
+        setPhoneError('');
+      }
+    } else {
+      setPhoneError('');
+    }
+  };
 
   const handleHelpPress = () => {
     if (Platform.OS === 'web') {
@@ -102,17 +157,37 @@ export default function SignUpScreen({
       setLocalError('Please enter your full name.');
       return;
     }
+
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone) {
+      setLocalError('Please enter your 11-digit mobile phone number.');
+      setPhoneError('Phone number is required');
+      return;
+    }
+    if (cleanPhone.length !== 11) {
+      setLocalError(`Phone number must be exactly 11 digits (${cleanPhone.length}/11 entered).`);
+      setPhoneError(`Must be exactly 11 digits (${cleanPhone.length}/11)`);
+      return;
+    }
+    if (!cleanPhone.startsWith('09')) {
+      setLocalError('Phone number must start with 09 (e.g. 09123456789).');
+      setPhoneError('Must start with 09');
+      return;
+    }
+
     if (!password?.trim() || password.trim().length < 6) {
       setLocalError('Password must be at least 6 characters long.');
       return;
     }
+
     setLocalError('');
+    setPhoneError('');
     if (onCompleteSignUp) {
       onCompleteSignUp({
         email: (email || '').trim().toLowerCase(),
         name: name.trim(),
         password: password.trim(),
-        phone: (phone || '').trim(),
+        phone: cleanPhone,
       });
     }
   };
@@ -129,6 +204,7 @@ export default function SignUpScreen({
           setOtpLoading(true);
           try {
             await verifySignupCode(email, code);
+            resetFormFields();
             changeStep(2);
           } catch (err) {
             setLocalError(err?.message || 'Invalid verification code.');
@@ -143,14 +219,8 @@ export default function SignUpScreen({
           setOtpResendCooldown(cooldown);
           return res;
         }}
-        onChangeEmail={() => {
-          setLocalError('');
-          changeStep(1);
-        }}
-        onCancel={() => {
-          setLocalError('');
-          changeStep(1);
-        }}
+        onChangeEmail={handleBackToEmail}
+        onCancel={handleBackToEmail}
         loading={otpLoading}
         errorMsg={localError}
         resendCooldown={otpResendCooldown}
@@ -182,10 +252,7 @@ export default function SignUpScreen({
             {currentStep === 2 ? (
               <TouchableOpacity
                 style={styles.backBtn}
-                onPress={() => {
-                  setLocalError('');
-                  changeStep(1);
-                }}
+                onPress={handleBackToEmail}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
                 accessibilityLabel="Back to email step"
@@ -359,10 +426,7 @@ export default function SignUpScreen({
                     <Text style={styles.checkPillText}>✓ VERIFIED</Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => {
-                      setLocalError('');
-                      changeStep(1);
-                    }}
+                    onPress={handleBackToEmail}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Text style={styles.changeEmailLink}>Change Email</Text>
@@ -385,38 +449,64 @@ export default function SignUpScreen({
                     style={styles.input}
                     placeholder="Full Name"
                     placeholderTextColor="#64748B"
-                    value={name}
+                    value={name || ''}
                     onChangeText={(val) => {
                       setName && setName(val);
                       if (localError) setLocalError('');
                     }}
                     autoCapitalize="words"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    textContentType="none"
                     onFocus={() => setFocusedField('name')}
                     onBlur={() => setFocusedField(null)}
                   />
                 </View>
 
-                {/* Input: Optional Phone Number */}
-                <View
-                  style={[
-                    styles.inputContainer,
-                    isTablet && { flex: 1 },
-                    focusedField === 'phone' && styles.inputContainerFocused,
-                  ]}
-                >
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Phone Number (Optional, e.g. 09171234567)"
-                    placeholderTextColor="#64748B"
-                    value={phone}
-                    onChangeText={(val) => {
-                      setPhone && setPhone(val);
-                      if (localError) setLocalError('');
-                    }}
-                    keyboardType="phone-pad"
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField(null)}
-                  />
+                {/* Input: Phone Number */}
+                <View style={[isTablet && { flex: 1 }]}>
+                  <View
+                    style={[
+                      styles.inputContainer,
+                      focusedField === 'phone' && styles.inputContainerFocused,
+                      (Boolean(phoneError && (phone || '').length > 0) || Boolean(activeError && activeError.toLowerCase().includes('phone'))) && styles.inputContainerError,
+                    ]}
+                  >
+                    <TextInput
+                      style={[
+                        styles.input,
+                        Platform.OS === 'web' && { outlineStyle: 'none' },
+                      ]}
+                      placeholder="e.g. 09123456789"
+                      placeholderTextColor="#64748B"
+                      value={phone || ''}
+                      onChangeText={handlePhoneChange}
+                      keyboardType="phone-pad"
+                      maxLength={11}
+                      autoComplete="off"
+                      autoCorrect={false}
+                      textContentType="none"
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField(null)}
+                    />
+                    {(phone || '').length > 0 && (
+                      <View style={styles.phoneBadge}>
+                        <Text
+                          style={[
+                            styles.phoneBadgeText,
+                            (phone || '').length === 11 && (phone || '').startsWith('09')
+                              ? styles.phoneBadgeValid
+                              : styles.phoneBadgePending,
+                          ]}
+                        >
+                          {(phone || '').length}/11
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {phoneError ? (
+                    <Text style={styles.fieldErrorText}>{phoneError}</Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -431,12 +521,15 @@ export default function SignUpScreen({
                   style={[styles.input, { flex: 1 }]}
                   placeholder="Create a Password (min. 6 characters)"
                   placeholderTextColor="#64748B"
-                  value={password}
+                  value={password || ''}
                   onChangeText={(val) => {
                     setPassword && setPassword(val);
                     if (localError) setLocalError('');
                   }}
                   secureTextEntry={!showPassword}
+                  autoComplete="new-password"
+                  autoCorrect={false}
+                  textContentType="newPassword"
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField(null)}
                 />
@@ -472,7 +565,7 @@ export default function SignUpScreen({
               {/* Return to Email Step */}
               <TouchableOpacity
                 style={styles.secondaryStepBackBtn}
-                onPress={() => changeStep(1)}
+                onPress={handleBackToEmail}
                 activeOpacity={0.7}
               >
                 <Text style={styles.secondaryStepBackText}>← Back to Email Step</Text>
@@ -798,5 +891,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748B',
     fontWeight: '600',
+  },
+  inputContainerError: {
+    borderColor: '#EF4444',
+  },
+  phoneBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#162338',
+    marginLeft: 6,
+  },
+  phoneBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  phoneBadgeValid: {
+    color: '#4ADE80',
+  },
+  phoneBadgePending: {
+    color: '#F97316',
+  },
+  fieldErrorText: {
+    color: '#F87171',
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginTop: -8,
+    marginBottom: 12,
+    marginLeft: 4,
   },
 });

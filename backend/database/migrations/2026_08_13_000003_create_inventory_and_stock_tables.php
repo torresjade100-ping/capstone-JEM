@@ -37,6 +37,7 @@ return new class extends Migration
             $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
             $table->foreignId('product_variant_id')->nullable()->constrained('product_variants')->nullOnDelete();
             $table->foreignId('requested_by')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->unsignedInteger('requested_quantity');
             $table->enum('status', ['pending', 'approved', 'rejected', 'fulfilled'])->default('pending');
             $table->text('notes')->nullable();

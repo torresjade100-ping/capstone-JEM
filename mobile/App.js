@@ -65,6 +65,7 @@ import {
   fetchCurrentUser,
   clearMobileStorage,
   validateMobileCartStock,
+  getMobileNotifications,
 } from './src/api/mobileApi';
 
 // Screens
@@ -72,6 +73,7 @@ import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import SignInScreen from './src/screens/SignInScreen';
 import SignUpScreen from './src/screens/SignUpScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import VerificationCodeScreen from './src/screens/VerificationCodeScreen';
 import GoogleAccountSelectModal from './src/modals/GoogleAccountSelectModal';
 
@@ -107,17 +109,38 @@ export default function App() {
 
 function MainApp() {
   // Screen & Auth Navigation State
-  const [currentScreen, setCurrentScreen] = useState('splash'); // 'splash' | 'onboarding' | 'signin' | 'signup' | 'main'
+  const [currentScreen, setCurrentScreen] = useState('splash'); // 'splash' | 'onboarding' | 'signin' | 'signup' | 'forgot-password' | 'main'
   const [onboardingSlide, setOnboardingSlide] = useState(0);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
-  const [authPhone, setAuthPhone] = useState('0917-123-4567');
+  const [authPhone, setAuthPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [signupStep, setSignupStep] = useState(1);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Dedicated registration form state to prevent autofill or inheritance of logged-in/cached user data
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupName, setSignupName] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+
+  // Clears all registration input fields and resets signup step to 1
+  const resetSignupState = (preserveEmail = false) => {
+    if (!preserveEmail) {
+      setSignupEmail('');
+      setPendingVerificationEmail('');
+      setMaskedVerificationEmail('');
+    }
+    setSignupName('');
+    setSignupPhone('');
+    setSignupPassword('');
+    setSignupStep(1);
+    setAuthError('');
+    setOtpError('');
+  };
 
   // Google OAuth & OTP Verification State
   const [showGoogleModal, setShowGoogleModal] = useState(false);
@@ -153,14 +176,33 @@ function MainApp() {
     },
   });
 
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+
+  const refreshUnreadNotifications = useCallback(async () => {
+    try {
+      const data = await getMobileNotifications(authEmail);
+      if (Array.isArray(data)) {
+        const count = data.filter((n) => !n.read && !n.is_read && !n.read_at).length;
+        setUnreadNotificationsCount(count);
+        return count;
+      }
+    } catch (err) {
+      // Keep existing count on fetch failure
+    }
+    return 0;
+  }, [authEmail]);
+
   const handleRefreshCatalog = useCallback(async () => {
     try {
-      await refreshCatalog(false);
+      await Promise.all([
+        refreshCatalog(false),
+        refreshUnreadNotifications(),
+      ]);
       showToast('Inventory synchronized with warehouse 🔄');
     } catch (e) {
       showToast('Sync failed: Please check network');
     }
-  }, [refreshCatalog]);
+  }, [refreshCatalog, refreshUnreadNotifications]);
 
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -175,7 +217,9 @@ function MainApp() {
   // Active Modals State
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showOrderTrackingModal, setShowOrderTrackingModal] = useState(false);
   const [feedbackOrder, setFeedbackOrder] = useState(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showWishlistModal, setShowWishlistModal] = useState(false);
@@ -300,18 +344,31 @@ function MainApp() {
       }
     };
 
+    const handleNotificationEvent = (e) => {
+      if (e?.detail?.unreadCount !== undefined && typeof e.detail.unreadCount === 'number') {
+        setUnreadNotificationsCount(e.detail.unreadCount);
+      } else {
+        refreshUnreadNotifications();
+      }
+    };
+
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('jem_orders_update', handleOrderEvent);
-      window.addEventListener('jem_notification_update', handleOrderEvent);
+      window.addEventListener('jem_notification_update', handleNotificationEvent);
     }
 
     return () => {
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('jem_orders_update', handleOrderEvent);
-        window.removeEventListener('jem_notification_update', handleOrderEvent);
+        window.removeEventListener('jem_notification_update', handleNotificationEvent);
       }
     };
-  }, []);
+  }, [refreshUnreadNotifications]);
+
+  // Synchronize unread notifications on auth change or when navigating to the Home tab
+  useEffect(() => {
+    refreshUnreadNotifications();
+  }, [authEmail, activeTab, refreshUnreadNotifications]);
 
   // 2. Splash Screen Auto Transition Guard
   useEffect(() => {
@@ -329,6 +386,7 @@ function MainApp() {
             setCurrentScreen('signin');
             return;
           }
+          setActiveTab('home');
           setCurrentScreen('main');
         } else {
           setCurrentScreen('onboarding');
@@ -387,6 +445,7 @@ function MainApp() {
       }
 
       showToast(`Welcome back, ${user.name || 'Customer'}! 👋`);
+      setActiveTab('home');
       setCurrentScreen('main');
     } catch (err) {
       if (err?.message?.includes('customer accounts only') || err?.status === 403) {
@@ -406,14 +465,18 @@ function MainApp() {
 
   // 1. Sign up step 1: Request 6-digit email OTP
   const handleRequestSignupCode = async (enteredEmail) => {
-    const targetEmail = (enteredEmail || authEmail).trim().toLowerCase();
+    const targetEmail = (enteredEmail || signupEmail).trim().toLowerCase();
     setAuthLoading(true);
     setAuthError('');
     try {
       const res = await requestSignupCode(targetEmail);
-      setAuthEmail(targetEmail);
+      setSignupEmail(targetEmail);
       setPendingVerificationEmail(targetEmail);
       setMaskedVerificationEmail(targetEmail);
+      // Reset form fields so new account always starts with completely blank inputs
+      setSignupName('');
+      setSignupPhone('');
+      setSignupPassword('');
       const cooldown = res?.data?.resend_cooldown || res?.resend_cooldown || 60;
       setOtpResendCooldown(cooldown);
       setOtpError('');
@@ -435,6 +498,10 @@ function MainApp() {
     setOtpError('');
     try {
       await verifySignupCode(pendingVerificationEmail, code);
+      // Ensure all Step 2 input fields are completely cleared for fresh user input
+      setSignupName('');
+      setSignupPhone('');
+      setSignupPassword('');
       setSignupStep(2);
       setCurrentScreen('signup');
       showToast('Email verified! Please complete your account details. 🎉');
@@ -469,8 +536,11 @@ function MainApp() {
         if (user.phone) setAuthPhone(user.phone);
       }
 
+      // Reset signup fields completely after successful account registration
+      resetSignupState();
+
       showToast(`Account Created! Welcome to JEM Hardware, ${user?.name || 'Customer'}! 🎉`);
-      setSignupStep(1);
+      setActiveTab('home');
       setCurrentScreen('main');
     } catch (err) {
       setAuthError(err.message || 'Failed to create account.');
@@ -513,6 +583,7 @@ function MainApp() {
         }
 
         showToast(`Signed in with Google as ${user.name}! 👋`);
+        setActiveTab('home');
         setCurrentScreen('main');
         return;
       }
@@ -562,6 +633,7 @@ function MainApp() {
       }
 
       showToast(`Account Verified! Welcome, ${user?.name || 'Customer'}! 🚀`);
+      setActiveTab('home');
       setCurrentScreen('main');
     } catch (err) {
       setOtpError(err.message || 'Verification failed. Please check the code.');
@@ -957,7 +1029,10 @@ function MainApp() {
         slideIndex={onboardingSlide}
         onNextSlide={() => setOnboardingSlide((prev) => prev + 1)}
         onNavigateToSignIn={() => setCurrentScreen('signin')}
-        onNavigateToSignUp={() => setCurrentScreen('signup')}
+        onNavigateToSignUp={() => {
+          resetSignupState();
+          setCurrentScreen('signup');
+        }}
       />
     );
   }
@@ -981,9 +1056,12 @@ function MainApp() {
           errorMsg={authError}
           onSignIn={handleBackendSignIn}
           onGoogleSignIn={handleGoogleAuth}
-          onForgotPassword={() => showToast('Password reset instructions sent to contact.')}
-          onNavigateToSignUp={() => {
+          onForgotPassword={() => {
             setAuthError('');
+            setCurrentScreen('forgot-password');
+          }}
+          onNavigateToSignUp={() => {
+            resetSignupState();
             setCurrentScreen('signup');
           }}
           onGoBack={() => setCurrentScreen('onboarding')}
@@ -999,20 +1077,42 @@ function MainApp() {
   }
 
   // =========================================================================
+  // 3.5. SCREEN: FORGOT PASSWORD (OTP & RESET WORKFLOW)
+  // =========================================================================
+  if (currentScreen === 'forgot-password') {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0B1320' }}>
+        <ForgotPasswordScreen
+          initialEmail={authEmail}
+          onNavigateToSignIn={(resetEmail) => {
+            if (resetEmail) setAuthEmail(resetEmail);
+            setAuthError('');
+            setCurrentScreen('signin');
+          }}
+          onGoBack={() => {
+            setAuthError('');
+            setCurrentScreen('signin');
+          }}
+        />
+      </View>
+    );
+  }
+
+  // =========================================================================
   // 4. SCREEN: SIGN UP
   // =========================================================================
   if (currentScreen === 'signup') {
     return (
       <View style={{ flex: 1, backgroundColor: '#0B1320' }}>
         <SignUpScreen
-          email={authEmail}
-          setEmail={setAuthEmail}
-          name={authName}
-          setName={setAuthName}
-          password={authPassword}
-          setPassword={setAuthPassword}
-          phone={authPhone}
-          setPhone={setAuthPhone}
+          email={signupEmail}
+          setEmail={setSignupEmail}
+          name={signupName}
+          setName={setSignupName}
+          password={signupPassword}
+          setPassword={setSignupPassword}
+          phone={signupPhone}
+          setPhone={setSignupPhone}
           rememberMe={rememberMe}
           setRememberMe={setRememberMe}
           step={signupStep}
@@ -1023,12 +1123,11 @@ function MainApp() {
           onCompleteSignUp={handleCompleteSignup}
           onGoogleSignUp={handleGoogleAuth}
           onNavigateToSignIn={() => {
-            setAuthError('');
-            setSignupStep(1);
+            resetSignupState();
             setCurrentScreen('signin');
           }}
           onGoBack={() => {
-            setSignupStep(1);
+            resetSignupState();
             setCurrentScreen('onboarding');
           }}
         />
@@ -1054,15 +1153,13 @@ function MainApp() {
         onVerifyOtp={isSignupVerify ? handleVerifySignupOtp : handleVerifyOtp}
         onResendOtp={isSignupVerify ? handleResendSignupOtp : handleResendOtp}
         onChangeEmail={() => {
-          setOtpError('');
+          resetSignupState();
           setCurrentScreen('signup');
-          setSignupStep(1);
         }}
         onCancel={() => {
-          setOtpError('');
+          resetSignupState();
           if (isSignupVerify) {
             setCurrentScreen('signup');
-            setSignupStep(1);
           } else {
             setCurrentScreen('signin');
           }
@@ -1104,6 +1201,8 @@ function MainApp() {
             onOpenNotifications={() => setShowNotificationsModal(true)}
             onNavigateToCategories={() => setActiveTab('categories')}
             userName={authName}
+            unreadCount={unreadNotificationsCount}
+            customerEmail={authEmail}
             refreshing={refreshingProducts}
             onRefresh={handleRefreshCatalog}
             isOffline={isOffline}
@@ -1192,7 +1291,12 @@ function MainApp() {
             onSignOut={() => {
               setCart([]);
               setAuthPassword('');
+              setAuthEmail('');
+              setAuthName('');
+              setAuthPhone('');
+              resetSignupState();
               saveStoredUser(null);
+              setActiveTab('home');
               showToast('Signed out successfully.');
               setCurrentScreen('signin');
             }}
@@ -1222,23 +1326,33 @@ function MainApp() {
 
       <NotificationsModal
         visible={showNotificationsModal}
-        onClose={() => setShowNotificationsModal(false)}
+        onClose={() => {
+          setShowNotificationsModal(false);
+          refreshUnreadNotifications();
+        }}
         customerEmail={authEmail}
         onNavigateTab={(tab) => setActiveTab(tab)}
+        onUnreadCountChange={(cnt) => setUnreadNotificationsCount(cnt)}
       />
 
       <OrderTrackingModal
-        order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
+        order={showOrderTrackingModal ? selectedOrder : null}
+        onClose={() => {
+          setSelectedOrder(null);
+          setShowOrderTrackingModal(false);
+        }}
         onLeaveFeedback={(ord) => setFeedbackOrder(ord)}
         onReorder={handleReorder}
         onCancelOrder={handleCancelOrder}
       />
 
       <FeedbackModal
-        visible={!!feedbackOrder}
+        visible={showFeedbackModal || !!feedbackOrder}
         order={feedbackOrder}
-        onClose={() => setFeedbackOrder(null)}
+        onClose={() => {
+          setFeedbackOrder(null);
+          setShowFeedbackModal(false);
+        }}
         onSubmitFeedback={handleSubmitFeedback}
       />
 

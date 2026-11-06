@@ -93,8 +93,10 @@ export default function BottomNavBar({ activeTab, onTabSelect, cartCount = 0, is
 }
 
 const s = StyleSheet.create({
-  wrap: { position: 'absolute', left: 14, right: 14 },
+  wrap: { position: 'absolute', left: 14, right: 14, alignItems: 'center' },
   bar: {
+    width: '100%',
+    maxWidth: 600,
     height: 68,
     borderRadius: 26,
     borderWidth: 1,

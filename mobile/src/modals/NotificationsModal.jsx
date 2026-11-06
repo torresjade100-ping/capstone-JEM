@@ -10,7 +10,7 @@ const INITIAL_NOTIFICATIONS = [
     desc: 'Your delivery truck is en route to site (Zone 1, Mabasa, Balulang, Cagayan de Oro City).',
     time: '15m ago',
     type: 'order',
-    isUnread: true,
+    isUnread: false,
   },
   {
     id: 2,
@@ -18,7 +18,7 @@ const INITIAL_NOTIFICATIONS = [
     desc: 'Holcim & Republic Portland cement bags on special retail promo today!',
     time: '2h ago',
     type: 'promo',
-    isUnread: true,
+    isUnread: false,
   },
   {
     id: 3,
@@ -38,7 +38,13 @@ const INITIAL_NOTIFICATIONS = [
   },
 ];
 
-export default function NotificationsModal({ visible, onClose, customerEmail, onNavigateTab }) {
+export default function NotificationsModal({
+  visible,
+  onClose,
+  customerEmail,
+  onNavigateTab,
+  onUnreadCountChange,
+}) {
   const [filter, setFilter] = useState('all');
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const [loading, setLoading] = useState(false);
@@ -53,17 +59,21 @@ export default function NotificationsModal({ visible, onClose, customerEmail, on
     setLoading(true);
     try {
       const data = await getMobileNotifications(customerEmail);
-      if (Array.isArray(data) && data.length > 0) {
-        setNotifications(
-          data.map((n) => ({
-            id: n.id,
-            title: n.title || 'Notification',
-            desc: n.message || n.desc || '',
-            time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-            type: n.type || 'general',
-            isUnread: !n.is_read && !n.read,
-          }))
-        );
+      if (Array.isArray(data)) {
+        const mapped = data.map((n) => ({
+          id: n.id,
+          title: n.title || 'Notification',
+          desc: n.message || n.desc || '',
+          time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          type: n.type || 'general',
+          isUnread: !n.is_read && !n.read && !n.read_at,
+        }));
+        setNotifications(mapped);
+        const unread = mapped.filter((n) => n.isUnread).length;
+        onUnreadCountChange?.(unread);
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: { unreadCount: unread } }));
+        }
       }
     } catch (e) {
       // fallback to initial
@@ -76,14 +86,29 @@ export default function NotificationsModal({ visible, onClose, customerEmail, on
 
   const markAllAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isUnread: false })));
-    await markMobileNotificationsRead(customerEmail);
+    onUnreadCountChange?.(0);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: { unreadCount: 0 } }));
+    }
+    try {
+      await markMobileNotificationsRead(customerEmail);
+    } catch (e) {}
   };
 
   const handleNotificationPress = async (n) => {
-    // 1. Mark as read
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === n.id ? { ...item, isUnread: false } : item))
-    );
+    // 1. Mark as read immediately and notify listeners
+    let remainingUnread = 0;
+    setNotifications((prev) => {
+      const next = prev.map((item) => (item.id === n.id ? { ...item, isUnread: false } : item));
+      remainingUnread = next.filter((item) => item.isUnread).length;
+      return next;
+    });
+
+    onUnreadCountChange?.(remainingUnread);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('jem_notification_update', { detail: { unreadCount: remainingUnread } }));
+    }
+
     try {
       await markMobileNotificationRead(n.id);
     } catch (e) {}

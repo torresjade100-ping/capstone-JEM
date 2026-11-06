@@ -13,11 +13,24 @@ class ProductController extends Controller
     {
         $query = Product::with(['category', 'brand', 'variants'])
             ->where('status', 'active')
-            ->whereHas('category', fn ($query) => $query->where('status', 'active'))
-            ->whereHas('brand', fn ($query) => $query->where('status', 'active'));
+            ->where(function ($q) {
+                $q->whereNull('category_id')
+                  ->orWhereHas('category', fn ($c) => $c->where('status', 'active'));
+            })
+            ->where(function ($q) {
+                $q->whereNull('brand_id')
+                  ->orWhereHas('brand', fn ($b) => $b->where('status', 'active'));
+            });
 
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $cat = $request->category_id;
+            if (is_numeric($cat)) {
+                $query->where('category_id', (int) $cat);
+            } else {
+                $query->whereHas('category', function ($q) use ($cat) {
+                    $q->where('name', $cat);
+                });
+            }
         }
 
         if ($request->filled('brand_id')) {
@@ -25,13 +38,17 @@ class ProductController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%'.$request->search.'%');
+            $searchTerm = $request->search;
+            $query->where(function ($search) use ($searchTerm) {
+                $search->where('name', 'like', '%'.$searchTerm.'%')
+                    ->orWhereHas('variants', fn ($v) => $v->where('sku', 'like', '%'.$searchTerm.'%'));
+            });
         }
 
-        $perPageInput = $request->input('per_page', 20);
-        $perPage = ($perPageInput === 'all' || (int) $perPageInput > 100)
+        $perPageInput = $request->input('per_page', 300);
+        $perPage = ($perPageInput === 'all' || (int) $perPageInput > 200)
             ? min((int) ($perPageInput === 'all' ? 500 : $perPageInput), 500)
-            : min(max((int) $perPageInput, 1), 200);
+            : min(max((int) $perPageInput, 1), 300);
 
         $products = $query->orderBy('name')->paginate($perPage);
 
@@ -43,7 +60,9 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
-        if ($product->status !== 'active' || $product->category->status !== 'active' || $product->brand->status !== 'active') {
+        if ($product->status !== 'active'
+            || ($product->category_id && $product->category?->status !== 'active')
+            || ($product->brand_id && $product->brand?->status !== 'active')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Product not found.',

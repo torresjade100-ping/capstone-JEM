@@ -7,10 +7,35 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Inventory;
 
 class Product extends Model
 {
     use HasFactory, SoftDeletes;
+
+    /**
+     * The "booted" method of the model.
+     * Automatically creates an inventory record when a new product is created.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (Product $product) {
+            $initialQty = (int) ($product->stock_quantity ?? 0);
+            $threshold = (int) ($product->low_stock_threshold ?? 10);
+
+            Inventory::firstOrCreate(
+                ['product_id' => $product->id],
+                [
+                    'product_variant_id' => null,
+                    'current_quantity' => $initialQty,
+                    'available_quantity' => $initialQty,
+                    'reserved_quantity' => 0,
+                    'threshold' => $threshold,
+                ]
+            );
+        });
+    }
 
     protected $fillable = [
         'category_id',
@@ -78,5 +103,10 @@ class Product extends Model
     public function activeBatches(): HasMany
     {
         return $this->hasMany(InventoryBatch::class)->where('status', 'active')->where('quantity', '>', 0)->orderBy('received_date', 'asc');
+    }
+
+    public function inventory(): HasOne
+    {
+        return $this->hasOne(Inventory::class);
     }
 }

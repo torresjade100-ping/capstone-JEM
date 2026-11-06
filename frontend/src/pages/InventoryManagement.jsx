@@ -5,13 +5,24 @@ import {
   CheckCircle2, XCircle, Clock, Power, AlertTriangle
 } from 'lucide-react'
 import Swal from 'sweetalert2'
-import { API_BASE_URL, getSuppliers, adjustStock, getStockAdjustments, toggleProductStatus, getProductBatches, createProductBatch } from '../api'
+import {
+  API_BASE_URL,
+  getSuppliers,
+  getInventory,
+  adjustStock,
+  getStockAdjustments,
+  toggleProductStatus,
+  getProductBatches,
+  createProductBatch,
+  getStoredUser
+} from '../api'
 import {
   formatQuantityWithUnit,
   getUnitBadgeText,
   getQuantityInputLabel,
   getQuantityPlaceholder,
 } from '../utils/uom'
+import Pagination from '../components/Pagination'
 import '../styles/management.css'
 
 export function calculateStockStatus(quantity, threshold = 10) {
@@ -80,7 +91,10 @@ export function getTransactionTypeBadge(type) {
   }
 }
 
-export default function InventoryManagement() {
+export default function InventoryManagement({ role: propRole }) {
+  const currentUser = getStoredUser()
+  const role = propRole || currentUser?.role || 'admin'
+  const isStaff = role === 'staff'
   const [inventory, setInventory] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -88,6 +102,8 @@ export default function InventoryManagement() {
   const [statusFilter, setStatusFilter] = useState('all') // all, in_stock, low_stock, out_of_stock
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [activityFilter, setActivityFilter] = useState('all') // all, active, inactive
+  const [currentPage, setCurrentPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
 
   // Stock Adjustment Modal (Inventory Correction via Physical Count Only)
   const [showAdjustment, setShowAdjustment] = useState(false)
@@ -127,12 +143,62 @@ export default function InventoryManagement() {
     fetchInventory()
     fetchSuppliersList()
 
+    let isSubscribed = true
+    let isPolling = false
+
+    const pollInventory = async () => {
+      if (isPolling || !isSubscribed) return
+      isPolling = true
+      try {
+        await fetchInventory(true)
+      } finally {
+        if (isSubscribed) {
+          isPolling = false
+        }
+      }
+    }
+
+    const interval = setInterval(pollInventory, 1800)
+
     const handleInvUpdate = () => {
-      fetchInventory()
+      pollInventory()
     }
     window.addEventListener('jem_inventory_update', handleInvUpdate)
-    return () => window.removeEventListener('jem_inventory_update', handleInvUpdate)
-  }, [])
+    window.addEventListener('jem_orders_update', handleInvUpdate)
+
+    return () => {
+      isSubscribed = false
+      clearInterval(interval)
+      window.removeEventListener('jem_inventory_update', handleInvUpdate)
+      window.removeEventListener('jem_orders_update', handleInvUpdate)
+    }
+  }, [categoryFilter, statusFilter, activityFilter, search])
+
+  // Handle ESC key to exit full-screen modals & prevent background body scrolling
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showHistory) {
+          setShowHistory(false)
+        } else if (showRestockModal && !submittingRestock) {
+          setShowRestockModal(false)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showHistory, showRestockModal, submittingRestock])
+
+  useEffect(() => {
+    if (showHistory || showRestockModal) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [showHistory, showRestockModal])
 
   // Handle Deep Linking from Global Search
   useEffect(() => {
@@ -163,20 +229,17 @@ export default function InventoryManagement() {
     }
   }
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (isBackground = false) => {
     try {
-      setLoading(true)
-      const response = await fetch(
-        `${API_BASE_URL}/admin/inventory`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      )
+      if (!isBackground) setLoading(true)
+      const rawList = await getInventory({
+        search: search || undefined,
+        category_id: categoryFilter !== 'all' ? categoryFilter : undefined,
+        stock_status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: activityFilter !== 'all' ? activityFilter : undefined,
+      })
       
-      if (!response.ok) throw new Error('Failed to fetch inventory')
-      const data = await response.json()
-      const payload = data.data || []
-      const rawList = Array.isArray(payload) ? payload : payload.data || []
-      
-      if (rawList.length > 0) {
+      if (Array.isArray(rawList) && rawList.length > 0) {
         const normalized = rawList.map((item) => {
           const qty = Number(item.stock_quantity ?? item.current_quantity ?? item.available_quantity ?? item.product?.stock_quantity ?? item.quantity ?? 0)
           const threshold = Number(item.low_stock_threshold ?? item.threshold ?? item.product?.low_stock_threshold ?? 10)
@@ -192,7 +255,7 @@ export default function InventoryManagement() {
             id: item.id || item.product_id,
             product_id: item.product_id || item.id,
             product_name: item.name || item.product?.name || item.product_name || `Hardware Supply #${item.product_id || item.id}`,
-            category: item.category || item.product?.category?.name || 'General Construction',
+            category: item.category?.name || item.category || item.product?.category?.name || 'General Construction',
             category_id: item.category_id || item.product?.category_id || null,
             supplier: item.supplier || item.brand || item.product?.supplier?.name || item.product?.brand?.name || '—',
             supplier_id: item.supplier_id || item.product?.supplier_id || null,
@@ -215,14 +278,27 @@ export default function InventoryManagement() {
         setInventory([])
       }
     } catch (error) {
-      setInventory([])
+      if (!isBackground) {
+        console.warn('Failed to fetch inventory:', error)
+        setInventory([])
+      }
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }
 
   // Handle Active / Inactive Status Toggle
   const handleToggleStatus = async (item) => {
+    if (isStaff) {
+      Swal.fire({
+        icon: 'info',
+        title: 'Admin Permission Required',
+        text: 'Staff members have full inventory viewing and stock-in capabilities. Changing product visibility/activation in the catalog requires Administrator access.',
+        confirmButtonColor: '#ea580c'
+      })
+      return
+    }
+
     const nextStatus = item.status === 'active' ? 'inactive' : 'active'
     
     // Optimistically update inventory state immediately
@@ -267,6 +343,17 @@ export default function InventoryManagement() {
       return matchesSearch && matchesStatus && matchesCategory && matchesActivity
     })
   }, [inventory, search, statusFilter, categoryFilter, activityFilter])
+
+  // Auto-reset page to 1 whenever search query or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, statusFilter, categoryFilter, activityFilter])
+
+  // Paginated slice for current page
+  const paginatedInventory = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage
+    return filteredInventory.slice(start, start + rowsPerPage)
+  }, [filteredInventory, currentPage, rowsPerPage])
 
   // Extract unique categories for filter
   const categoriesList = useMemo(() => {
@@ -555,7 +642,7 @@ export default function InventoryManagement() {
             Track real-time stock levels, active/inactive catalog items, and view full change logs.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn btn-secondary"
@@ -721,6 +808,7 @@ export default function InventoryManagement() {
           </button>
         </div>
       ) : (
+        <>
         <div className="table-responsive">
           <table className="management-table">
             <thead>
@@ -736,7 +824,7 @@ export default function InventoryManagement() {
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map(item => {
+              {paginatedInventory.map(item => {
                 const isActive = item.status === 'active'
                 const stockStatus = item.stock_status || calculateStockStatus(item.quantity, item.low_stock_threshold)
                 return (
@@ -976,6 +1064,18 @@ export default function InventoryManagement() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredInventory.length}
+          rowsPerPage={rowsPerPage}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setRowsPerPage(newSize)
+            setCurrentPage(1)
+          }}
+          itemName="products"
+        />
+        </>
       )}
 
       {/* =========================================================================
@@ -1171,144 +1271,330 @@ export default function InventoryManagement() {
         const newStock = currentQty + qtyReceived
 
         return (
-          <div className="modal-overlay" onClick={() => setShowRestockModal(false)}>
+          <div
+            className="restock-fullscreen-overlay"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100vw',
+              height: '100dvh',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              margin: 0,
+              padding: 0,
+              zIndex: 2500,
+              background: 'var(--bg-app, #020617)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+            onClick={() => !submittingRestock && setShowRestockModal(false)}
+          >
             <div
-              className="modal-content"
-              style={{ maxWidth: '520px', width: '100%', borderRadius: '16px', padding: '24px' }}
+              className="restock-fullscreen-modal"
+              style={{
+                width: '100vw',
+                height: '100dvh',
+                maxWidth: 'none',
+                maxHeight: 'none',
+                borderRadius: 0,
+                border: 'none',
+                margin: 0,
+                padding: 0,
+                background: 'var(--bg-surface, #0b132b)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxShadow: 'none'
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Package size={20} color="#ea580c" />
+              {/* 1. FIXED TOP HEADER */}
+              <div className="restock-fullscreen-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    background: 'rgba(234, 88, 12, 0.15)',
+                    border: '1px solid rgba(234, 88, 12, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ea580c',
+                    flexShrink: 0
+                  }}>
+                    <Package size={22} />
+                  </div>
                   <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                      Restock Inventory
-                    </h2>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                      Receive incoming stock delivery from supplier or purchase order
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                        Restock Inventory
+                      </h2>
+                      <span className="badge" style={{ background: 'rgba(234, 88, 12, 0.15)', color: '#ea580c', border: '1px solid rgba(234, 88, 12, 0.3)', fontSize: '11px', fontWeight: '700' }}>
+                        Full Screen Mode
+                      </span>
+                    </div>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      Receive incoming stock delivery from supplier or purchase order into inventory
                     </p>
                   </div>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowRestockModal(false)}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  onClick={() => !submittingRestock && setShowRestockModal(false)}
+                  disabled={submittingRestock}
+                  style={{
+                    background: 'var(--bg-hover)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12.5px',
+                    fontWeight: '600',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Close (Esc)"
                 >
+                  <span>Close</span>
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveRestock} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* Product Selection / Display */}
-                <div className="form-group">
-                  <label className="form-label">Product <span style={{ color: '#ef4444' }}>*</span></label>
-                  {restockProduct ? (
-                    <div style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase' }}>
-                        {restockProduct.category}
+              {/* 2. SCROLLABLE FORM BODY */}
+              <form
+                id="restock-inventory-form"
+                onSubmit={handleSaveRestock}
+                className="restock-fullscreen-form"
+              >
+                {/* Product Selection & Current Stock Bar Card */}
+                <div className="restock-card">
+                  <div className="restock-card-header">
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Package size={15} /> Hardware Product &amp; Current Inventory Status
+                    </span>
+                    {activeProd && (
+                      <span className="badge" style={{ background: 'rgba(234, 88, 12, 0.12)', color: '#ea580c', border: '1px solid rgba(234, 88, 12, 0.3)', fontSize: '11.5px', fontWeight: '700' }}>
+                        Unit: {activeProd.unit || 'piece'}
                       </span>
-                      <h4 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '2px', marginBottom: '4px' }}>
-                        {restockProduct.product_name}
-                      </h4>
-                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                        Current Stock: <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(currentQty, restockProduct.unit)}</strong>
-                      </div>
-                    </div>
-                  ) : (
-                    <select
-                      className="form-input"
-                      value={restockFormData.product_id}
-                      onChange={(e) => {
-                        const sel = inventory.find(i => String(i.product_id || i.id) === String(e.target.value))
-                        setRestockFormData({
-                          ...restockFormData,
-                          product_id: e.target.value,
-                          cost_price: sel?.cost_price || '',
-                          supplier_id: sel?.supplier_id || restockFormData.supplier_id
-                        })
-                      }}
-                      required
-                    >
-                      <option value="">-- Select Product to Restock --</option>
-                      {inventory.map(item => (
-                        <option key={item.id || item.product_id} value={item.product_id || item.id}>
-                          {item.product_name} ({formatQuantityWithUnit(item.quantity, item.unit)} in stock)
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* If selected product from dropdown */}
-                {!restockProduct && activeProd && (
-                  <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', fontSize: '12.5px' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Current Stock:</span>
-                    <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(currentQty, activeProd.unit)}</strong>
+                    )}
                   </div>
-                )}
 
-                {/* Quantity Received & Supplier */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Quantity Received <span style={{ color: '#ef4444' }}>*</span></span>
-                      {activeProd && (
-                        <span style={{ fontSize: '11px', color: '#ea580c', fontWeight: '700' }}>
-                          in {getUnitBadgeText(activeProd.unit, true)}
-                        </span>
-                      )}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '13px', fontWeight: '700' }}>
+                      Product <span style={{ color: '#ef4444' }}>*</span>
                     </label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="form-input"
-                      placeholder={`e.g. 20 ${activeProd?.unit || ''}`}
-                      value={restockFormData.quantity}
-                      onChange={(e) => setRestockFormData({ ...restockFormData, quantity: e.target.value })}
-                      required
-                    />
-                  </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Supplier <span style={{ color: '#ef4444' }}>*</span></label>
-                    <select
-                      className="form-input"
-                      value={restockFormData.supplier_id}
-                      onChange={(e) => setRestockFormData({ ...restockFormData, supplier_id: e.target.value })}
-                      required
-                    >
-                      <option value="">-- Select Supplier --</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                    {restockProduct ? (
+                      <div style={{
+                        background: 'var(--bg-hover)',
+                        padding: '16px 20px',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '14px',
+                        width: '100%'
+                      }}>
+                        <div>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            {restockProduct.category || 'General Hardware'}
+                          </span>
+                          <h3 style={{ fontSize: '17px', fontWeight: '800', color: 'var(--text-primary)', margin: '3px 0 6px' }}>
+                            {restockProduct.product_name}
+                          </h3>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="badge" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', fontSize: '11.5px', padding: '3px 8px' }}>
+                              Category: <strong>{restockProduct.category || 'General'}</strong>
+                            </span>
+                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11.5px', padding: '3px 8px' }}>
+                              Unit: <strong>{restockProduct.unit || 'piece'}</strong>
+                            </span>
+                            <span className="badge" style={{ background: 'rgba(234, 88, 12, 0.15)', color: '#ea580c', border: '1px solid rgba(234, 88, 12, 0.3)', fontWeight: '700', fontSize: '11.5px', padding: '3px 8px' }}>
+                              Current Stock: {formatQuantityWithUnit(currentQty, restockProduct.unit)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Selling Price:</span>
+                          <span style={{ fontSize: '16px', fontWeight: '800', color: '#ea580c' }}>
+                            ₱{Number(restockProduct.selling_price || restockProduct.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                          {restockProduct.cost_price && (
+                            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                              Unit Cost: ₱{Number(restockProduct.cost_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                        <select
+                          className="form-input"
+                          value={restockFormData.product_id}
+                          onChange={(e) => {
+                            const sel = inventory.find(i => String(i.product_id || i.id) === String(e.target.value))
+                            setRestockFormData({
+                              ...restockFormData,
+                              product_id: e.target.value,
+                              cost_price: sel?.cost_price || '',
+                              supplier_id: sel?.supplier_id || restockFormData.supplier_id
+                            })
+                          }}
+                          style={{ height: '46px', fontSize: '14px', width: '100%', borderRadius: '10px' }}
+                          required
+                          autoFocus
+                        >
+                          <option value="">-- Select Product to Restock ({inventory.length} items available) --</option>
+                          {inventory.map(item => (
+                            <option key={item.id || item.product_id} value={item.product_id || item.id}>
+                              {item.product_name} — {item.category || 'General'} ({formatQuantityWithUnit(item.quantity, item.unit)} currently in stock)
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Expanded Full-Width Current Stock Information Bar */}
+                        {activeProd && (
+                          <div style={{
+                            background: 'var(--bg-hover)',
+                            padding: '12px 18px',
+                            borderRadius: '10px',
+                            border: '1px solid var(--border-color)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            width: '100%'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Selected Item:</span>
+                              <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{activeProd.product_name}</strong>
+                              <span className="badge" style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '11px' }}>
+                                {activeProd.category || 'Catalog'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                Current Stock: <strong style={{ color: '#ea580c', fontSize: '14px' }}>{formatQuantityWithUnit(currentQty, activeProd.unit)}</strong>
+                              </span>
+                              <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                                Reorder Level: {activeProd.low_stock_threshold || 10} {activeProd.unit}
+                              </span>
+                              {activeProd.cost_price && (
+                                <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                                  Unit Cost: ₱{Number(activeProd.cost_price).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* PO / Reference Number & Unit Cost */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group">
-                    <label className="form-label">PO / Reference Number</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. PO-1042 / DR #8821"
-                      value={restockFormData.reference_number}
-                      onChange={(e) => setRestockFormData({ ...restockFormData, reference_number: e.target.value })}
-                    />
+                {/* Restock Delivery Details Card */}
+                <div className="restock-card">
+                  <div className="restock-card-header">
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <RefreshCw size={15} /> Incoming Delivery Specifications
+                    </span>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Delivery Batch Information</span>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Unit Cost (₱)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="form-input"
-                      placeholder="0.00"
-                      value={restockFormData.cost_price}
-                      onChange={(e) => setRestockFormData({ ...restockFormData, cost_price: e.target.value })}
-                    />
+                  {/* Quantity Received & Supplier Fields (Side by Side on Larger Screens) */}
+                  <div className="restock-grid-2col">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Quantity Received <span style={{ color: '#ef4444' }}>*</span></span>
+                        {activeProd && (
+                          <span style={{ fontSize: '11.5px', color: '#ea580c', fontWeight: '700' }}>
+                            in {getUnitBadgeText(activeProd.unit, true)}
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        className="form-input"
+                        placeholder={activeProd ? getQuantityPlaceholder(activeProd.unit, 20) : "e.g. 20"}
+                        value={restockFormData.quantity}
+                        onChange={(e) => setRestockFormData({ ...restockFormData, quantity: e.target.value })}
+                        style={{ height: '42px', fontSize: '14px' }}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">
+                        Supplier / Source Distributor <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <select
+                        className="form-input"
+                        value={restockFormData.supplier_id}
+                        onChange={(e) => setRestockFormData({ ...restockFormData, supplier_id: e.target.value })}
+                        style={{ height: '42px', fontSize: '14px' }}
+                        required
+                      >
+                        <option value="">-- Select Supplier --</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* PO / Reference Number & Unit Cost Fields (Side by Side on Larger Screens) */}
+                  <div className="restock-grid-2col">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">
+                        PO / Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. PO-1042 / DR #8821 / Invoice #INV-5902"
+                        value={restockFormData.reference_number}
+                        onChange={(e) => setRestockFormData({ ...restockFormData, reference_number: e.target.value })}
+                        style={{ height: '42px', fontSize: '14px' }}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Unit Cost (₱)</span>
+                        {activeProd?.cost_price && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Previous: ₱{Number(activeProd.cost_price).toFixed(2)}
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="form-input"
+                        placeholder="0.00"
+                        value={restockFormData.cost_price}
+                        onChange={(e) => setRestockFormData({ ...restockFormData, cost_price: e.target.value })}
+                        style={{ height: '42px', fontSize: '14px' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1317,63 +1603,131 @@ export default function InventoryManagement() {
                   <div style={{
                     background: 'rgba(16, 185, 129, 0.08)',
                     border: '1px solid rgba(16, 185, 129, 0.3)',
-                    borderRadius: '10px',
-                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '14px'
                   }}>
-                    <div>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
-                        Calculation
-                      </span>
-                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        {currentQty} + {qtyReceived} = <strong style={{ color: '#10b981' }}>{newStock} {activeProd.unit}</strong>
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#10b981',
+                        flexShrink: 0
+                      }}>
+                        <CheckCircle2 size={22} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.04em', display: 'block' }}>
+                          Inventory Stock Math Preview
+                        </span>
+                        <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
+                          {currentQty} {activeProd.unit} (Current) + <strong style={{ color: '#ea580c' }}>{qtyReceived} {activeProd.unit}</strong> (Incoming) = <strong style={{ color: '#10b981', fontSize: '15px' }}>{newStock} {activeProd.unit}</strong>
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
-                        New Stock
-                      </span>
-                      <strong style={{ fontSize: '16px', color: '#10b981' }}>
-                        {newStock} {activeProd.unit}
-                      </strong>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                      {restockFormData.cost_price && Number(restockFormData.cost_price) > 0 && (
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                            Total Batch Cost
+                          </span>
+                          <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>
+                            ₱{(Number(restockFormData.cost_price) * qtyReceived).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', display: 'block' }}>
+                          Resulting Stock Level
+                        </span>
+                        <strong style={{ fontSize: '18px', color: '#10b981' }}>
+                          {newStock} {activeProd.unit}
+                        </strong>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Notes / Remarks */}
-                <div className="form-group">
-                  <label className="form-label">Notes / Remarks</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. Delivered via truck 2, inspected good condition"
-                    value={restockFormData.notes}
-                    onChange={(e) => setRestockFormData({ ...restockFormData, notes: e.target.value })}
-                  />
+                {/* Delivery Notes / Remarks (Wider and Easier to Use) */}
+                <div className="restock-card">
+                  <div className="restock-card-header">
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Notes &amp; Delivery Remarks
+                    </span>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Optional Documentation</span>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Delivery Notes / Remarks</label>
+                    <textarea
+                      className="form-input"
+                      rows={3}
+                      style={{ minHeight: '90px', padding: '12px 14px', fontSize: '13.5px', resize: 'vertical', width: '100%' }}
+                      placeholder="e.g. Delivered via supplier freight truck 2, inspected in good condition, seal intact, DR verified..."
+                      value={restockFormData.notes}
+                      onChange={(e) => setRestockFormData({ ...restockFormData, notes: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </form>
+
+              {/* 3. FIXED BOTTOM ACTION BAR */}
+              <div className="restock-fullscreen-footer">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {activeProd ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span className="badge" style={{ background: 'rgba(234, 88, 12, 0.15)', color: '#ea580c', border: '1px solid rgba(234, 88, 12, 0.3)', fontWeight: '700' }}>
+                        Restocking Product
+                      </span>
+                      <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>
+                        {activeProd.product_name}
+                      </strong>
+                      {qtyReceived > 0 && (
+                        <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '700' }}>
+                          +{qtyReceived} {activeProd.unit} &rarr; Total: {newStock} {activeProd.unit}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      💡 Please select a product above to restock inventory
+                    </span>
+                  )}
                 </div>
 
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ flex: 1 }}
+                    style={{ padding: '10px 20px', fontSize: '13.5px' }}
                     onClick={() => setShowRestockModal(false)}
+                    disabled={submittingRestock}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
+                    form="restock-inventory-form"
                     className="btn btn-primary"
-                    style={{ flex: 2, background: '#ea580c', borderColor: '#ea580c' }}
+                    style={{ padding: '10px 24px', fontSize: '13.5px', background: '#ea580c', borderColor: '#ea580c', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}
                     disabled={submittingRestock || !activeProd || qtyReceived <= 0}
                   >
                     {submittingRestock ? 'Saving Restock...' : 'Save Restock'}
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         )
@@ -1383,141 +1737,311 @@ export default function InventoryManagement() {
           MODAL: PRODUCT INVENTORY & BATCH HISTORY (DUAL TAB)
           ========================================================================= */}
       {showHistory && historyItem && (
-        <div className="modal-overlay" onClick={() => setShowHistory(false)}>
+        <div
+          className="batch-fullscreen-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100dvh',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            margin: 0,
+            padding: 0,
+            zIndex: 2500,
+            background: 'var(--bg-app, #020617)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+          onClick={() => setShowHistory(false)}
+        >
           <div
-            className="modal-content"
-            style={{ maxWidth: '860px', width: '100%', borderRadius: '16px', padding: '24px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            className="batch-fullscreen-modal"
+            style={{
+              width: '100vw',
+              height: '100dvh',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              borderRadius: 0,
+              border: 'none',
+              margin: 0,
+              padding: 0,
+              background: 'var(--bg-surface, #0b132b)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: 'none'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '14px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <History size={20} color="#ea580c" />
-                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                    Product Inventory History
-                  </h2>
+            {/* 1. FIXED TOP HEADER BAR */}
+            <div className="batch-fullscreen-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'rgba(249, 115, 22, 0.15)',
+                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#f97316',
+                  flexShrink: 0
+                }}>
+                  <History size={22} />
                 </div>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  <strong>{historyItem.product_name}</strong> · Total In-Stock: <strong style={{ color: '#ea580c' }}>{historyItem.quantity} {historyItem.unit}</strong>
-                </p>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
+                      Product Inventory History
+                    </h2>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'rgba(249, 115, 22, 0.12)',
+                      border: '1px solid rgba(249, 115, 22, 0.3)',
+                      color: '#f97316',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      padding: '2px 8px',
+                      borderRadius: '6px'
+                    }}>
+                      Full-Screen Interface
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '3px 0 0' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>{historyItem.product_name}</strong> · Total In-Stock: <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(historyItem.quantity, historyItem.unit)}</strong>
+                    {historyItem.sku && (
+                      <span style={{ marginLeft: '12px', color: 'var(--text-muted)' }}>
+                        SKU: <code style={{ color: 'var(--text-secondary)' }}>{historyItem.sku}</code>
+                      </span>
+                    )}
+                    {historyItem.category && (
+                      <span style={{ marginLeft: '12px', color: 'var(--text-muted)' }}>
+                        Category: <strong style={{ color: 'var(--text-secondary)' }}>{historyItem.category}</strong>
+                      </span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowHistory(false)}
-                style={{ background: 'var(--bg-hover)', border: 'none', borderRadius: '8px', width: '32px', height: '32px', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', cursor: 'pointer' }}
-              >
-                <X size={18} />
-              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(false)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                  title="Close (Esc)"
+                >
+                  <X size={18} />
+                  <span>Close (Esc)</span>
+                </button>
+              </div>
             </div>
 
-            {/* Tab Switcher */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setHistoryTab('batches')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: historyTab === 'batches' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
-                  color: historyTab === 'batches' ? '#ea580c' : 'var(--text-muted)'
-                }}
-              >
-                <Package size={15} />
-                <span>Inventory Batches ({productBatchesData?.batches?.length ?? historyItem.batches_count ?? 0})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setHistoryTab('movements')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: historyTab === 'movements' ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
-                  color: historyTab === 'movements' ? '#ea580c' : 'var(--text-muted)'
-                }}
-              >
-                <Clock size={15} />
-                <span>Stock Movement Logs ({historyLogs.length})</span>
-              </button>
-            </div>
+            {/* 2. SCROLLABLE BODY */}
+            <div className="batch-fullscreen-body">
+              {/* SUB-HEADER / TAB NAVIGATION CARD */}
+              <div style={{
+                background: 'var(--bg-surface-elevated, #0f172a)',
+                border: '1px solid rgba(249, 115, 22, 0.3)',
+                borderRadius: '12px',
+                padding: '14px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '14px'
+              }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('batches')}
+                    style={{
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      border: historyTab === 'batches' ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid var(--border-color)',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: historyTab === 'batches' ? 'rgba(249, 115, 22, 0.15)' : 'var(--bg-hover)',
+                      color: historyTab === 'batches' ? '#f97316' : 'var(--text-secondary)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Package size={16} />
+                    <span>Inventory Batches ({productBatchesData?.batches?.length ?? historyItem.batches_count ?? 0})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('movements')}
+                    style={{
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      border: historyTab === 'movements' ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid var(--border-color)',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: historyTab === 'movements' ? 'rgba(249, 115, 22, 0.15)' : 'var(--bg-hover)',
+                      color: historyTab === 'movements' ? '#f97316' : 'var(--text-secondary)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Clock size={16} />
+                    <span>Stock Movement Logs ({historyLogs.length})</span>
+                  </button>
+                </div>
 
-            {/* Content Body */}
-            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setShowHistory(false)
+                      handleOpenRestock(historyItem)
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      background: '#ea580c',
+                      borderColor: '#ea580c',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: '700'
+                    }}
+                  >
+                    <Plus size={15} /> Receive Restock
+                  </button>
+                </div>
+              </div>
+
+              {/* SUMMARY METRIC CARDS */}
+              {historyTab === 'batches' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+                  <div style={{
+                    background: 'var(--bg-surface-elevated, #0f172a)',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-color)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                  }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Total Batches Logged
+                    </span>
+                    <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px' }}>
+                      {productBatchesData?.summary?.total_batches || productBatchesData?.batches?.length || 1}
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>All batches recorded for this item</span>
+                  </div>
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                  }}>
+                    <span style={{ fontSize: '11.5px', color: '#10b981', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Active In-Stock Batches
+                    </span>
+                    <div style={{ fontSize: '26px', fontWeight: '800', color: '#10b981', marginTop: '4px' }}>
+                      {productBatchesData?.summary?.active_batches_count ?? productBatchesData?.batches?.filter(b => b.status === 'active' && b.quantity > 0).length ?? 1}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#10b981' }}>Currently available for POS &amp; online sales</span>
+                  </div>
+                  <div style={{
+                    background: 'rgba(249, 115, 22, 0.08)',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(249, 115, 22, 0.3)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                  }}>
+                    <span style={{ fontSize: '11.5px', color: '#f97316', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Previous / Depleted Batches
+                    </span>
+                    <div style={{ fontSize: '26px', fontWeight: '800', color: '#f97316', marginTop: '4px' }}>
+                      {productBatchesData?.summary?.previous_batches_count ?? productBatchesData?.batches?.filter(b => b.status !== 'active' || b.quantity <= 0).length ?? 0}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#f97316' }}>Preserved for historical cost &amp; margin audit</span>
+                  </div>
+                </div>
+              )}
+
+              {/* MAIN CONTENT AREA */}
               {loadingHistory ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                  Loading product history records...
+                <div style={{
+                  textAlign: 'center',
+                  padding: '60px 20px',
+                  background: 'var(--bg-surface-elevated, #0f172a)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-muted)'
+                }}>
+                  <span className="spinner" style={{ width: '24px', height: '24px', display: 'inline-block', marginBottom: '12px' }} />
+                  <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Loading product history records...</p>
                 </div>
               ) : historyTab === 'batches' ? (
                 <div>
-                  {/* Summary Metric Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
-                    <div style={{ background: 'var(--bg-hover)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Total Batches Logged</span>
-                      <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>
-                        {productBatchesData?.summary?.total_batches || productBatchesData?.batches?.length || 1}
-                      </div>
-                    </div>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.12)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                      <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '700', textTransform: 'uppercase' }}>Active In-Stock Batches</span>
-                      <div style={{ fontSize: '20px', fontWeight: '800', color: '#10b981' }}>
-                        {productBatchesData?.summary?.active_batches_count ?? productBatchesData?.batches?.filter(b => b.status === 'active' && b.quantity > 0).length ?? 1}
-                      </div>
-                    </div>
-                    <div style={{ background: 'rgba(249, 115, 22, 0.12)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
-                      <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700', textTransform: 'uppercase' }}>Previous / Depleted Batches</span>
-                      <div style={{ fontSize: '20px', fontWeight: '800', color: '#f97316' }}>
-                        {productBatchesData?.summary?.previous_batches_count ?? productBatchesData?.batches?.filter(b => b.status !== 'active' || b.quantity <= 0).length ?? 0}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Batch Records Table */}
                   {!productBatchesData || !productBatchesData.batches || productBatchesData.batches.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '30px 20px', background: 'var(--bg-hover)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
-                      <Package size={28} color="var(--text-muted)" style={{ margin: '0 auto 8px' }} />
-                      <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>No batches found</h4>
-                      <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                        Use the "Restock" button to receive incoming stock batches for this product.
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '50px 20px',
+                      background: 'var(--bg-surface-elevated, #0f172a)',
+                      borderRadius: '12px',
+                      border: '1px dashed var(--border-color)'
+                    }}>
+                      <Package size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+                      <h4 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>No batches found</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        Use the "Receive Restock For This Product" button below to log incoming stock batches for this product.
                       </p>
                     </div>
                   ) : (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Current &amp; Historical Batches
-                        </span>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                          Older records &amp; prices are permanently preserved
-                        </span>
-                      </div>
-                      <table className="management-table" style={{ fontSize: '12px' }}>
+                    <div className="batch-fullscreen-table-wrap">
+                      <table className="management-table" style={{ width: '100%' }}>
                         <thead>
                           <tr>
-                            <th style={{ width: '18%' }}>Batch #</th>
-                            <th style={{ width: '22%' }}>Supplier &amp; Notes</th>
-                            <th style={{ width: '12%' }}>Cost Price</th>
-                            <th style={{ width: '13%' }}>Selling Price</th>
-                            <th style={{ width: '13%' }}>Stock (Remain / Init)</th>
-                            <th style={{ width: '12%' }}>Received</th>
-                            <th style={{ width: '10%', textAlign: 'center' }}>Status</th>
+                            <th style={{ width: '50px', textAlign: 'center' }}>#</th>
+                            <th style={{ width: '220px' }}>Batch #</th>
+                            <th>Supplier &amp; Notes</th>
+                            <th style={{ width: '150px', textAlign: 'right' }}>Cost Price (₱)</th>
+                            <th style={{ width: '170px', textAlign: 'right' }}>Selling Price (₱) &amp; Margin</th>
+                            <th style={{ width: '200px' }}>In-Stock / Initial Qty</th>
+                            <th style={{ width: '140px' }}>Received Date</th>
+                            <th style={{ width: '130px', textAlign: 'center' }}>Batch Status</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {productBatchesData.batches.map(batch => {
+                          {productBatchesData.batches.map((batch, idx) => {
                             const isDepleted = Number(batch.quantity || 0) <= 0 || batch.status === 'depleted'
                             const isExpired = batch.status === 'expired'
                             const cost = Number(batch.cost_price || 0)
@@ -1525,56 +2049,80 @@ export default function InventoryManagement() {
                             const margin = selling > 0 ? Math.round(((selling - cost) / selling) * 100) : 0
 
                             return (
-                              <tr key={batch.id} style={{ opacity: isDepleted ? 0.75 : 1 }}>
+                              <tr key={batch.id || idx} style={{ opacity: isDepleted ? 0.75 : 1 }}>
+                                <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600' }}>
+                                  {idx + 1}
+                                </td>
                                 <td>
-                                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{batch.batch_number}</strong>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px', display: 'block' }}>
+                                    {batch.batch_number}
+                                  </strong>
                                   {batch.expiration_date ? (
-                                    <span style={{ fontSize: '10.5px', color: '#ef4444', fontWeight: '600' }}>
+                                    <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                                       Exp: {batch.expiration_date}
                                     </span>
                                   ) : (
-                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>No Expiration</span>
+                                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>No Expiration</span>
                                   )}
                                 </td>
                                 <td>
-                                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px', display: 'block' }}>
                                     {batch.supplier_name || batch.supplier?.name || '—'}
                                   </strong>
-                                  {batch.notes && (
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{batch.notes}</span>
+                                  {batch.notes ? (
+                                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginTop: '3px', lineHeight: 1.4 }}>
+                                      {batch.notes}
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No notes provided</span>
                                   )}
                                 </td>
-                                <td>
-                                  <span style={{ fontWeight: '700', color: 'var(--text-secondary)' }}>
-                                    ₱{cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <td style={{ textAlign: 'right' }}>
+                                  <span style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '13.5px' }}>
+                                    ₱{cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </td>
-                                <td>
-                                  <strong style={{ color: '#f97316' }}>
-                                    ₱{selling.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <td style={{ textAlign: 'right' }}>
+                                  <strong style={{ color: '#ea580c', fontSize: '13.5px' }}>
+                                    ₱{selling.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </strong>
-                                  <span style={{ display: 'block', fontSize: '10px', color: '#10b981', fontWeight: '700' }}>
-                                    {margin}% margin
+                                  <span style={{
+                                    display: 'inline-block',
+                                    marginLeft: '6px',
+                                    fontSize: '10.5px',
+                                    color: margin >= 20 ? '#10b981' : margin > 0 ? '#f59e0b' : '#ef4444',
+                                    fontWeight: '800',
+                                    background: margin >= 20 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px'
+                                  }}>
+                                    {margin}%
                                   </span>
                                 </td>
                                 <td>
-                                  <strong style={{ color: isDepleted ? 'var(--text-muted)' : 'var(--text-primary)', fontSize: '13px' }}>
+                                  <strong style={{ color: isDepleted ? 'var(--text-muted)' : 'var(--text-primary)', fontSize: '13.5px' }}>
                                     {formatQuantityWithUnit(batch.quantity, historyItem.unit)}
                                   </strong>
-                                  <span style={{ color: 'var(--text-secondary)', fontSize: '11px', display: 'block' }}>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px', display: 'block', marginTop: '2px' }}>
                                     Initial: {formatQuantityWithUnit(batch.initial_quantity, historyItem.unit)}
                                   </span>
                                 </td>
-                                <td style={{ color: 'var(--text-secondary)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
+                                <td style={{ color: 'var(--text-secondary)', fontSize: '12px', whiteSpace: 'nowrap' }}>
                                   {batch.received_date || '—'}
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
                                   {isExpired ? (
-                                    <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '10px' }}>EXPIRED</span>
+                                    <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '11px', fontWeight: '800' }}>
+                                      EXPIRED
+                                    </span>
                                   ) : isDepleted ? (
-                                    <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', fontSize: '10px' }}>DEPLETED</span>
+                                    <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', fontSize: '11px', fontWeight: '700' }}>
+                                      DEPLETED
+                                    </span>
                                   ) : (
-                                    <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '10px' }}>ACTIVE</span>
+                                    <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11px', fontWeight: '800' }}>
+                                      ACTIVE
+                                    </span>
                                   )}
                                 </td>
                               </tr>
@@ -1589,130 +2137,191 @@ export default function InventoryManagement() {
                 /* Tab 2: Stock Movement Logs */
                 <div>
                   {historyLogs.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-hover)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
-                      <Clock size={32} color="var(--text-muted)" style={{ margin: '0 auto 8px' }} />
-                      <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>No movement logs yet</h4>
-                      <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '50px 20px',
+                      background: 'var(--bg-surface-elevated, #0f172a)',
+                      borderRadius: '12px',
+                      border: '1px dashed var(--border-color)'
+                    }}>
+                      <Clock size={36} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+                      <h4 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>No movement logs yet</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
                         Stock adjustments, restock shipments, or POS sales will appear in this history log automatically.
                       </p>
                     </div>
                   ) : (
-                    <table className="management-table" style={{ fontSize: '12px' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: '16%' }}>Date &amp; Time</th>
-                          <th style={{ width: '16%' }}>Transaction Type</th>
-                          <th style={{ width: '12%' }}>Quantity Change</th>
-                          <th style={{ width: '16%' }}>Stock Movement</th>
-                          <th style={{ width: '22%' }}>Reason &amp; Reference</th>
-                          <th style={{ width: '18%' }}>Performed By</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {historyLogs.map((log, idx) => {
-                          const qtyChanged = Number(log.quantity_changed ?? 0)
-                          const isPositive = qtyChanged > 0
-                          const isZero = qtyChanged === 0
-                          const dateStr = log.created_at
-                            ? new Date(log.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                            : 'Recent'
-                          const typeBadge = getTransactionTypeBadge(log.adjustment_type || log.type)
-                          const supplierName = log.supplier?.name || log.supplier_name
-                          const refNo = log.reference_number || log.purchase_order
+                    <div className="batch-fullscreen-table-wrap">
+                      <table className="management-table" style={{ width: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: '50px', textAlign: 'center' }}>#</th>
+                            <th style={{ width: '180px' }}>Date &amp; Time</th>
+                            <th style={{ width: '170px' }}>Transaction Type</th>
+                            <th style={{ width: '150px' }}>Quantity Change</th>
+                            <th style={{ width: '190px' }}>Stock Movement</th>
+                            <th>Reason &amp; Reference Notes</th>
+                            <th style={{ width: '180px' }}>Performed By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyLogs.map((log, idx) => {
+                            const qtyChanged = Number(log.quantity_changed ?? 0)
+                            const isPositive = qtyChanged > 0
+                            const isZero = qtyChanged === 0
+                            const dateStr = log.created_at
+                              ? new Date(log.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                              : 'Recent'
+                            const typeBadge = getTransactionTypeBadge(log.adjustment_type || log.type)
+                            const supplierName = log.supplier?.name || log.supplier_name
+                            const refNo = log.reference_number || log.purchase_order
 
-                          return (
-                            <tr key={log.id || idx}>
-                              <td style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '11.5px' }}>
-                                {dateStr}
-                              </td>
-                              <td>
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '2px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '10.5px',
-                                  fontWeight: '800',
-                                  letterSpacing: '0.03em',
-                                  background: typeBadge.bg,
-                                  color: typeBadge.color,
-                                  border: typeBadge.border,
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {typeBadge.label}
-                                </span>
-                              </td>
-                              <td>
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '2px 8px',
-                                  borderRadius: '6px',
-                                  fontWeight: '700',
-                                  fontSize: '12px',
-                                  background: isZero ? 'var(--bg-hover)' : isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                                  color: isZero ? 'var(--text-secondary)' : isPositive ? '#10b981' : '#ef4444',
-                                  border: isZero ? '1px solid var(--border-color)' : isPositive ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {isPositive ? `+${formatQuantityWithUnit(qtyChanged, historyItem.unit)}` : formatQuantityWithUnit(qtyChanged, historyItem.unit)}
-                                </span>
-                              </td>
-                              <td>
-                                <span style={{ color: 'var(--text-primary)', fontWeight: '700', fontSize: '12px' }}>
-                                  {log.quantity_before != null ? formatQuantityWithUnit(log.quantity_before, historyItem.unit) : '—'} ➔ {log.quantity_after != null ? formatQuantityWithUnit(log.quantity_after, historyItem.unit) : '—'}
-                                </span>
-                              </td>
-                              <td>
-                                <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '12px' }}>
-                                  {log.reason || 'Stock Update'}
-                                </strong>
-                                {(supplierName || refNo) && (
-                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                    {supplierName && <span>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{supplierName}</strong> </span>}
-                                    {refNo && <span>(PO/Ref: <strong style={{ color: '#ea580c' }}>{refNo}</strong>)</span>}
-                                  </div>
-                                )}
-                                {log.notes && (
-                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
-                                    {log.notes}
-                                  </div>
-                                )}
-                              </td>
-                              <td>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px', fontWeight: '500' }}>
-                                  {log.user?.name || 'System Administrator'}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                            return (
+                              <tr key={log.id || idx}>
+                                <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600' }}>
+                                  {idx + 1}
+                                </td>
+                                <td style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                                  {dateStr}
+                                </td>
+                                <td>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 10px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    letterSpacing: '0.03em',
+                                    background: typeBadge.bg,
+                                    color: typeBadge.color,
+                                    border: typeBadge.border,
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {typeBadge.label}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 10px',
+                                    borderRadius: '6px',
+                                    fontWeight: '700',
+                                    fontSize: '12.5px',
+                                    background: isZero ? 'var(--bg-hover)' : isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                    color: isZero ? 'var(--text-secondary)' : isPositive ? '#10b981' : '#ef4444',
+                                    border: isZero ? '1px solid var(--border-color)' : isPositive ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {isPositive ? `+${formatQuantityWithUnit(qtyChanged, historyItem.unit)}` : formatQuantityWithUnit(qtyChanged, historyItem.unit)}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span style={{ color: 'var(--text-primary)', fontWeight: '700', fontSize: '12.5px' }}>
+                                    {log.quantity_before != null ? formatQuantityWithUnit(log.quantity_before, historyItem.unit) : '—'} ➔ {log.quantity_after != null ? formatQuantityWithUnit(log.quantity_after, historyItem.unit) : '—'}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '12.5px' }}>
+                                    {log.reason || 'Stock Update'}
+                                  </strong>
+                                  {(supplierName || refNo) && (
+                                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      {supplierName && <span>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{supplierName}</strong> </span>}
+                                      {refNo && <span>(PO/Ref: <strong style={{ color: '#ea580c' }}>{refNo}</strong>)</span>}
+                                    </div>
+                                  )}
+                                  {log.notes && (
+                                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                                      {log.notes}
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '12px', fontWeight: '500' }}>
+                                    {log.user?.name || 'System Administrator'}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderTop: '1px solid var(--border-color)', marginTop: '14px' }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  setShowHistory(false)
-                  handleOpenRestock(historyItem)
-                }}
-                style={{ padding: '7px 16px', fontSize: '13px', background: '#ea580c', borderColor: '#ea580c' }}
-              >
-                <Plus size={14} /> Receive Restock For This Product
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setShowHistory(false)}
-                style={{ padding: '7px 18px', fontSize: '13px' }}
-              >
-                Close History
-              </button>
+            {/* 3. FIXED BOTTOM ACTION BAR / FOOTER */}
+            <div className="batch-fullscreen-footer">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowHistory(false)
+                    handleOpenRestock(historyItem)
+                  }}
+                  style={{
+                    fontSize: '13px',
+                    padding: '10px 18px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontWeight: '700',
+                    background: '#ea580c',
+                    borderColor: '#ea580c'
+                  }}
+                >
+                  <Plus size={16} /> Receive Restock For This Product
+                </button>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  {historyTab === 'batches' ? (
+                    <>
+                      <strong>{productBatchesData?.batches?.length ?? 0}</strong> inventory {productBatchesData?.batches?.length === 1 ? 'batch' : 'batches'} recorded for <strong>{historyItem.product_name}</strong>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{historyLogs.length}</strong> stock movement {historyLogs.length === 1 ? 'log entry' : 'log entries'} recorded
+                    </>
+                  )}
+                </span>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                  • Total Current Stock: <strong style={{ color: '#ea580c' }}>{formatQuantityWithUnit(historyItem.quantity, historyItem.unit)}</strong>
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowHistory(false)}
+                  style={{ padding: '10px 20px', fontSize: '13.5px', fontWeight: '600' }}
+                >
+                  Close (Esc)
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowHistory(false)
+                    handleOpenRestock(historyItem)
+                  }}
+                  style={{
+                    padding: '10px 24px',
+                    fontSize: '13.5px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontWeight: '700',
+                    background: '#ea580c',
+                    borderColor: '#ea580c'
+                  }}
+                >
+                  <RefreshCw size={16} />
+                  Restock Now
+                </button>
+              </div>
             </div>
           </div>
         </div>

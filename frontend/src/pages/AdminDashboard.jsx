@@ -6,12 +6,12 @@ import {
   Home, LogOut, Menu, X, Check, Truck,
   MessageSquare, ClipboardList, Search, MoreHorizontal, Tag,
   Receipt, KeyRound, RotateCcw, Ban, ShieldCheck, RefreshCw,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, AlertTriangle
 } from 'lucide-react'
 import {
   getAdminOrders, getInventory, getProducts, getRestockRequests,
   getStoredUser, getUsers, logout, getSharedOrders, getTransactions,
-  clearApiCache
+  getStockAdjustments, clearApiCache
 } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
@@ -20,6 +20,7 @@ import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
 import SidebarFloatingTooltip from '../components/SidebarFloatingTooltip'
+import Sidebar from '../components/Sidebar'
 import useSidebarCollapse from '../hooks/useSidebarCollapse'
 import '../styles/dashboard.css'
 
@@ -34,6 +35,7 @@ const ReportsPage = lazy(() => import('./ReportsPage'))
 const FeedbackManagement = lazy(() => import('./FeedbackManagement'))
 const TransactionsPage = lazy(() => import('./TransactionsPage'))
 const VoidSecurityPage = lazy(() => import('./VoidSecurityPage'))
+const LossDamageTheftPage = lazy(() => import('./LossDamageTheftPage'))
 
 const SIDEBAR_PAGES = [
   {
@@ -75,6 +77,14 @@ const SIDEBAR_PAGES = [
     icon: Box,
     description: 'Stock levels, stock adjustments & low-stock alerts',
     keywords: ['inventory', 'stock', 'stocks', 'adjustments', 'supplies', 'warehouse'],
+  },
+  {
+    id: 'loss-damage-theft',
+    name: 'Loss & Damage',
+    path: '/loss-damage-theft',
+    icon: AlertTriangle,
+    description: 'Loss, damage, and theft records & audit tracking',
+    keywords: ['loss', 'damage', 'theft', 'damaged', 'stolen', 'lost', 'shrinkage', 'incidents', 'records'],
   },
   {
     id: 'orders',
@@ -135,6 +145,32 @@ const SIDEBAR_PAGES = [
   },
 ]
 
+function getGreetingText() {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) {
+    return 'Good morning, JEM.'
+  }
+  if (hour >= 12 && hour < 18) {
+    return 'Good afternoon, JEM.'
+  }
+  return 'Good evening, JEM.'
+}
+
+function OperationsGreeting() {
+  const [greeting, setGreeting] = useState(() => getGreetingText())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const next = getGreetingText()
+      setGreeting((prev) => (prev !== next ? next : prev))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  return <h1>{greeting}</h1>
+}
+
 export default function AdminDashboard() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -165,6 +201,7 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState([])
   const [inventory, setInventory] = useState([])
   const [recentTransactions, setRecentTransactions] = useState([])
+  const [recentStockMovements, setRecentStockMovements] = useState([])
   const [salesYear, setSalesYear] = useState(new Date().getFullYear())
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshSuccess, setRefreshSuccess] = useState(false)
@@ -173,11 +210,12 @@ export default function AdminDashboard() {
   // Derive active route from browser URL
   const getActivePage = (pathname) => {
     const cleanPath = (pathname || '/').toLowerCase().replace(/\/$/, '') || '/'
-    if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
+    if (cleanPath === '/' || cleanPath === '/dashboard' || cleanPath === '/admin/dashboard') return 'dashboard'
     if (cleanPath.startsWith('/users')) return 'users'
     if (cleanPath.startsWith('/products')) return 'products'
     if (cleanPath.startsWith('/categories') || cleanPath.startsWith('/category')) return 'categories'
     if (cleanPath.startsWith('/inventory')) return 'inventory'
+    if (cleanPath.startsWith('/loss-damage-theft') || cleanPath.startsWith('/loss-damage') || cleanPath.startsWith('/incidents')) return 'loss-damage-theft'
     if (cleanPath.startsWith('/orders')) return 'orders'
     if (cleanPath.startsWith('/transactions')) return 'transactions'
     if (cleanPath.startsWith('/void-security') || cleanPath.startsWith('/settings/void-security') || cleanPath.startsWith('/settings')) return 'void-security'
@@ -338,16 +376,40 @@ export default function AdminDashboard() {
   useEffect(() => {
     const storedUser = getStoredUser()
     if (storedUser) setUser(storedUser)
-    fetchDashboardStats()
+
+    let isSubscribed = true
+    let isFetching = false
+
+    const pollDashboard = async () => {
+      if (isFetching || !isSubscribed) return
+      isFetching = true
+      try {
+        await fetchDashboardStats(false)
+      } finally {
+        if (isSubscribed) {
+          isFetching = false
+        }
+      }
+    }
+
+    pollDashboard()
+
+    // Smooth 1.5 - 2 second data refresh without overlapping requests
+    const interval = setInterval(pollDashboard, 1800)
 
     const handleSync = () => {
-      fetchDashboardStats()
+      pollDashboard()
     }
     window.addEventListener('jem_orders_update', handleSync)
     window.addEventListener('jem_inventory_update', handleSync)
+    window.addEventListener('jem_notification_update', handleSync)
+
     return () => {
+      isSubscribed = false
+      clearInterval(interval)
       window.removeEventListener('jem_orders_update', handleSync)
       window.removeEventListener('jem_inventory_update', handleSync)
+      window.removeEventListener('jem_notification_update', handleSync)
     }
   }, [])
 
@@ -358,13 +420,14 @@ export default function AdminDashboard() {
       clearApiCache()
     }
     try {
-      const [productData, orderData, inventoryData, userData, restockData, transactionData] = await Promise.allSettled([
+      const [productData, orderData, inventoryData, userData, restockData, transactionData, stockAdjustmentData] = await Promise.allSettled([
         getProducts({ status: 'active' }),
         getAdminOrders(),
         getInventory(),
         getUsers(),
         getRestockRequests(),
         getTransactions({ per_page: 6 }),
+        getStockAdjustments(null, { per_page: 6 }),
       ])
 
       const extract = (res) => {
@@ -377,7 +440,7 @@ export default function AdminDashboard() {
 
       const nextProducts = extract(productData)
       let nextOrders = extract(orderData)
-      if (nextOrders.length === 0) {
+      if (orderData.status !== 'fulfilled' && nextOrders.length === 0) {
         nextOrders = getSharedOrders()
       }
       const nextInventory = extract(inventoryData)
@@ -392,6 +455,12 @@ export default function AdminDashboard() {
         txMeta = tVal.meta || { counts: {}, summary: {} }
       }
       setRecentTransactions(txList)
+
+      let stockAdjList = []
+      if (stockAdjustmentData.status === 'fulfilled' && stockAdjustmentData.value) {
+        stockAdjList = extract(stockAdjustmentData)
+      }
+      setRecentStockMovements(stockAdjList)
 
       const sales = (txMeta.summary?.total_net_sales !== undefined && txMeta.summary?.total_net_sales !== null && Number(txMeta.summary.total_net_sales) > 0)
         ? Number(txMeta.summary.total_net_sales)
@@ -475,6 +544,7 @@ export default function AdminDashboard() {
     products: 'Products Catalog',
     categories: 'Category Management',
     inventory: 'Inventory Stock',
+    'loss-damage-theft': 'Loss, Damage & Theft Records',
     orders: 'Orders Management',
     transactions: 'Transactions & Audit Ledger',
     'void-security': 'Settings (Void PIN Security)',
@@ -503,178 +573,19 @@ export default function AdminDashboard() {
       {/* Floating tooltip for icon-only collapsed mode */}
       <SidebarFloatingTooltip tooltip={activeTooltip} />
 
-      {/* Sidebar - Fixed and Persistent */}
-      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'} ${isCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-brand">
-          <div className="sidebar-brand-main">
-            <button
-              type="button"
-              className="brand-mark clickable-brand-logo"
-              onClick={toggleSidebar}
-              title={isCollapsed ? "Expand sidebar (J)" : "Collapse sidebar (J)"}
-              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              {...getTooltipProps(isCollapsed ? "Expand Sidebar" : "Collapse Sidebar")}
-            >
-              J
-            </button>
-            <div className="brand-text">
-              <strong>JEM Hardware</strong>
-              <small>&amp; Coco Lumber</small>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="sidebar-collapse-btn"
-            onClick={toggleSidebar}
-            aria-label="Toggle sidebar"
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {!isCollapsed ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-          </button>
-        </div>
-
-        <nav className="sidebar-nav">
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
-            onClick={() => navigateTo('/dashboard')}
-            aria-label="Dashboard"
-            {...getTooltipProps("Dashboard")}
-          >
-            <Home size={18} />
-            <span className="nav-label">Dashboard</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'users' ? 'active' : ''}`}
-            onClick={() => navigateTo('/users')}
-            aria-label="Users"
-            {...getTooltipProps("Users")}
-          >
-            <Users size={18} />
-            <span className="nav-label">Users</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'products' ? 'active' : ''}`}
-            onClick={() => navigateTo('/products')}
-            aria-label="Products"
-            {...getTooltipProps("Products")}
-          >
-            <Package size={18} />
-            <span className="nav-label">Products</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'categories' ? 'active' : ''}`}
-            onClick={() => navigateTo('/categories')}
-            aria-label="Categories"
-            {...getTooltipProps("Categories")}
-          >
-            <Tag size={18} />
-            <span className="nav-label">Categories</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'inventory' ? 'active' : ''}`}
-            onClick={() => navigateTo('/inventory')}
-            aria-label="Inventory"
-            {...getTooltipProps("Inventory")}
-          >
-            <Box size={18} />
-            <span className="nav-label">Inventory</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'orders' ? 'active' : ''}`}
-            onClick={() => navigateTo('/orders')}
-            aria-label="Orders"
-            {...getTooltipProps("Orders")}
-          >
-            <ShoppingCart size={18} />
-            <span className="nav-label">Orders</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'transactions' ? 'active' : ''}`}
-            onClick={() => navigateTo('/transactions')}
-            aria-label="Transactions"
-            {...getTooltipProps("Transactions")}
-          >
-            <Receipt size={18} />
-            <span className="nav-label">Transactions</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'suppliers' ? 'active' : ''}`}
-            onClick={() => navigateTo('/suppliers')}
-            aria-label="Suppliers"
-            {...getTooltipProps("Suppliers")}
-          >
-            <Truck size={18} />
-            <span className="nav-label">Suppliers</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'restock' ? 'active' : ''}`}
-            onClick={() => navigateTo('/stock-requests')}
-            aria-label="Stock Requests"
-            {...getTooltipProps("Stock Requests")}
-          >
-            <ClipboardList size={18} />
-            <span className="nav-label">Stock Requests</span>
-            {stats.pendingRestock > 0 && (
-              <span className="nav-badge" title={`${stats.pendingRestock} pending requests`}>
-                {stats.pendingRestock}
-              </span>
-            )}
-          </button>
-
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'reports' ? 'active' : ''}`}
-            onClick={() => navigateTo('/reports')}
-            aria-label="Reports"
-            {...getTooltipProps("Reports")}
-          >
-            <BarChart3 size={18} />
-            <span className="nav-label">Reports</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'void-security' ? 'active' : ''}`}
-            onClick={() => navigateTo('/void-security')}
-            aria-label="Settings"
-            {...getTooltipProps("Settings")}
-          >
-            <KeyRound size={18} />
-            <span className="nav-label">Settings</span>
-          </button>
-          <button 
-            type="button"
-            className={`nav-item ${activePage === 'feedback' ? 'active' : ''}`}
-            onClick={() => navigateTo('/feedback')}
-            aria-label="Feedback"
-            {...getTooltipProps("Feedback")}
-          >
-            <MessageSquare size={18} />
-            <span className="nav-label">Feedback</span>
-          </button>
-        </nav>
-
-        <div className="sidebar-footer">
-          <button
-            type="button"
-            className="sidebar-logout"
-            onClick={handleLogoutClick}
-            aria-label="Logout"
-            {...getTooltipProps("Logout")}
-          >
-            <LogOut size={18} />
-            <span className="nav-label">Logout</span>
-          </button>
-        </div>
-      </aside>
+      {/* Sidebar - Minimalist Rail & Responsive Drawer */}
+      <Sidebar
+        role="admin"
+        activePage={activePage}
+        isCollapsed={isCollapsed}
+        toggleSidebar={toggleSidebar}
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        onLogout={handleLogoutClick}
+        navigateTo={navigateTo}
+        getTooltipProps={getTooltipProps}
+        badges={{ pendingRestock: stats.pendingRestock }}
+      />
 
 
       {/* Main Content Area - Dynamically switches based on route */}
@@ -836,7 +747,7 @@ export default function AdminDashboard() {
                 <div className="dashboard-title-row">
                   <div>
                     <p className="eyebrow">Operations overview</p>
-                    <h1>Good morning, {user?.name ? user.name.split(' ')[0] : 'Admin'}.</h1>
+                    <OperationsGreeting />
                     <p className="section-subtitle">
                       A clear view of today’s sales, stock, and order flow.
                       {lastRefreshedAt && (
@@ -1104,6 +1015,98 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   </div>
+
+                  <div className="dashboard-card table-card" style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
+                    <div className="card-heading">
+                      <div>
+                        <p className="eyebrow">Warehouse audit trail</p>
+                        <h2>Inventory Transactions &amp; Stock Movements</h2>
+                      </div>
+                      <button type="button" className="text-button" onClick={() => navigateTo('/inventory')}>
+                        Manage inventory <ArrowUpRight size={14} />
+                      </button>
+                    </div>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Ref # / Batch</th>
+                            <th>Product Name</th>
+                            <th>Movement Type</th>
+                            <th>Qty Changed</th>
+                            <th>Before → After</th>
+                            <th>Reason / Notes</th>
+                            <th>Date</th>
+                            <th style={{ textAlign: 'center' }}>Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recentStockMovements.map((adj) => {
+                            const change = Number(adj.quantity_changed ?? adj.quantity_change ?? 0)
+                            const isPositive = change > 0
+                            const type = (adj.adjustment_type || 'adjustment').toUpperCase()
+                            const dateDisplay = adj.created_at ? new Date(adj.created_at).toLocaleDateString() : '—'
+                            const before = adj.quantity_before ?? '—'
+                            const after = adj.quantity_after ?? '—'
+
+                            return (
+                              <tr key={adj.id}>
+                                <td>
+                                  <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                    {adj.reference_number || `ADJ-${adj.id}`}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <strong>{adj.product?.name || adj.product_name || `Product #${adj.product_id}`}</strong>
+                                </td>
+                                <td>
+                                  <span style={{
+                                    fontSize: '11px',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    background: isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                    color: isPositive ? '#10b981' : '#ef4444',
+                                    fontWeight: 700
+                                  }}>
+                                    {type}
+                                  </span>
+                                </td>
+                                <td>
+                                  <strong style={{ color: isPositive ? '#10b981' : '#ef4444' }}>
+                                    {isPositive ? `+${change}` : change}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <span style={{ fontSize: '12px', opacity: 0.85 }}>{before} → <strong>{after}</strong></span>
+                                </td>
+                                <td>
+                                  <span style={{ fontSize: '12.5px' }}>{adj.reason || 'Inventory Adjustment'}</span>
+                                  {adj.notes && <small style={{ display: 'block', opacity: 0.65, fontSize: '11px' }}>{adj.notes}</small>}
+                                </td>
+                                <td>{dateDisplay}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    onClick={() => navigateTo(`/inventory?productId=${adj.product_id}`)}
+                                    style={{ padding: '3px 8px', fontSize: '11.5px' }}
+                                  >
+                                    Inspect <ArrowUpRight size={12} />
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      {!recentStockMovements.length && (
+                        <div className="empty-state">
+                          <Box size={24} />
+                          <p>No inventory movements recorded yet</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </section>
             )}
@@ -1117,9 +1120,10 @@ export default function AdminDashboard() {
               {activePage === 'void-security' && <VoidSecurityPage />}
               {activePage === 'users' && <UserManagement />}
               {activePage === 'inventory' && <InventoryManagement />}
+              {activePage === 'loss-damage-theft' && <LossDamageTheftPage />}
               {activePage === 'suppliers' && <SuppliersManagement />}
               {activePage === 'restock' && <RestockRequestsPage role="admin" />}
-              {activePage === 'reports' && <ReportsPage />}
+              {activePage === 'reports' && <ReportsPage user={user} />}
 
               {activePage === 'feedback' && <FeedbackManagement />}
             </Suspense>

@@ -29,7 +29,7 @@ export default function SignInScreen({
   setPassword,
   showPassword,
   setShowPassword,
-  rememberMe = true,
+  rememberMe = false,
   setRememberMe,
   loading = false,
   errorMsg = '',

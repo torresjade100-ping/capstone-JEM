@@ -22,3 +22,7 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local database seed data (keep real data private)
+/database/data/*.json
+!/database/data/*.example.json

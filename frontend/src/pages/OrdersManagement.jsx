@@ -17,6 +17,7 @@ import {
   cancelBackorder
 } from '../api'
 import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
+import Pagination from '../components/Pagination'
 import '../styles/dashboard.css'
 import '../styles/management.css'
 
@@ -30,6 +31,10 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [showDetails, setShowDetails] = useState(false)
   const [updatingId, setUpdatingId] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const [boCurrentPage, setBoCurrentPage] = useState(1)
+  const [boRowsPerPage, setBoRowsPerPage] = useState(10)
 
   // Backorders Queue state
   const [backordersList, setBackordersList] = useState([])
@@ -52,15 +57,29 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     fetchOrders()
     fetchBackordersData()
 
-    // Periodic auto-polling every 3 seconds to catch live orders & restock allocations
-    const interval = setInterval(() => {
-      syncOrdersSilently()
-      syncBackordersSilently()
-    }, 3000)
+    let isSubscribed = true
+    let isPolling = false
+
+    const pollOrdersAndBackorders = async () => {
+      if (isPolling || !isSubscribed) return
+      isPolling = true
+      try {
+        await Promise.allSettled([
+          syncOrdersSilently(),
+          syncBackordersSilently(),
+        ])
+      } finally {
+        if (isSubscribed) {
+          isPolling = false
+        }
+      }
+    }
+
+    // Periodic auto-polling every 1.8 seconds with in-flight lock to catch live orders & restock allocations
+    const interval = setInterval(pollOrdersAndBackorders, 1800)
 
     const handleEventUpdate = () => {
-      syncOrdersSilently()
-      syncBackordersSilently()
+      pollOrdersAndBackorders()
     }
 
     if (typeof window !== 'undefined') {
@@ -69,6 +88,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     }
 
     return () => {
+      isSubscribed = false
       clearInterval(interval)
       if (typeof window !== 'undefined') {
         window.removeEventListener('jem_orders_update', handleEventUpdate)
@@ -418,6 +438,33 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
     })
   }, [orders, search, statusFilter, sourceFilter])
 
+  // Auto-reset orders pagination to page 1 on filter or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, statusFilter, sourceFilter])
+
+  // Auto-reset backorders pagination to page 1 on filter or search change
+  useEffect(() => {
+    setBoCurrentPage(1)
+  }, [backorderSearch, backorderStatusFilter])
+
+  // Unique filtered orders list
+  const uniqueFilteredOrders = useMemo(() => {
+    return Array.from(new Map((filteredOrders || []).map(o => [o.id, o])).values())
+  }, [filteredOrders])
+
+  // Sliced page orders
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage
+    return uniqueFilteredOrders.slice(start, start + rowsPerPage)
+  }, [uniqueFilteredOrders, currentPage, rowsPerPage])
+
+  // Sliced page backorders
+  const paginatedBackorders = useMemo(() => {
+    const start = (boCurrentPage - 1) * boRowsPerPage
+    return (backordersList || []).slice(start, start + boRowsPerPage)
+  }, [backordersList, boCurrentPage, boRowsPerPage])
+
   // Key Metrics for Orders
   const totalCount = (orders || []).length
   const mobileCount = (orders || []).filter(o => (o.order_source || '').toLowerCase().includes('mobile')).length
@@ -651,6 +698,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No orders matched your current search or filter criteria.</p>
               </div>
             ) : (
+              <>
               <div className="table-wrap">
                 <table className="management-table">
                   <thead>
@@ -666,9 +714,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                   </thead>
 
                   <tbody>
-                    {(() => {
-                      const uniqueOrders = Array.from(new Map((filteredOrders || []).map(o => [o.id, o])).values());
-                      return uniqueOrders.map((order) => {
+                    {paginatedOrders.map((order) => {
                         const isMobile = (order.order_source || '').toLowerCase().includes('mobile')
                         const itemCount = (order.items || []).reduce((sum, it) => sum + Number(it.quantity || 1), 0)
                         const custName = order.customer_name || order.customer?.user?.name || 'Customer'
@@ -868,11 +914,22 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                             </td>
                           </tr>
                         )
-                      })
-                    })()}
+                      })}
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                currentPage={currentPage}
+                totalItems={uniqueFilteredOrders.length}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(newSize) => {
+                  setRowsPerPage(newSize)
+                  setCurrentPage(1)
+                }}
+                itemName="orders"
+              />
+              </>
             )}
           </div>
         </>
@@ -1006,6 +1063,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>All current customer demand is fulfilled or no backorders match the selected filter.</p>
               </div>
             ) : (
+              <>
               <div className="table-wrap">
                 <table className="management-table">
                   <thead>
@@ -1022,7 +1080,7 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                   </thead>
 
                   <tbody>
-                    {backordersList.map((bo) => {
+                    {paginatedBackorders.map((bo) => {
                       const orderNum = bo.order?.order_number || `#${bo.order_id}`
                       const custName = bo.order?.customer?.user?.name || bo.order?.customer_name || 'Customer'
                       const productName = bo.product?.name || 'Hardware Supply'
@@ -1174,6 +1232,18 @@ export default function OrdersManagement({ role = 'staff', defaultTab = 'orders'
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                currentPage={boCurrentPage}
+                totalItems={backordersList.length}
+                rowsPerPage={boRowsPerPage}
+                onPageChange={setBoCurrentPage}
+                onPageSizeChange={(newSize) => {
+                  setBoRowsPerPage(newSize)
+                  setBoCurrentPage(1)
+                }}
+                itemName="backorders"
+              />
+              </>
             )}
           </div>
         </>

@@ -15,8 +15,10 @@ import {
   Warehouse,
   Receipt,
   ArrowUpRight,
+  AlertTriangle,
+  Box,
 } from 'lucide-react'
-import { getStoredUser, logout, getSharedOrders, getTransactions } from '../api'
+import { getStoredUser, logout, getSharedOrders, getAdminOrders, getTransactions, getInventory, getStockAdjustments } from '../api'
 import NotificationDropdown from '../components/NotificationDropdown'
 import ThemeToggle from '../components/ThemeToggle'
 import HeaderDateTime from '../components/HeaderDateTime'
@@ -24,23 +26,19 @@ import LogoutConfirmationModal from '../components/LogoutConfirmationModal'
 import PageSkeletonLoader from '../components/PageSkeletonLoader'
 import ErrorBoundary from '../components/ErrorBoundary'
 import SidebarFloatingTooltip from '../components/SidebarFloatingTooltip'
+import Sidebar from '../components/Sidebar'
 import useSidebarCollapse from '../hooks/useSidebarCollapse'
+import '../styles/dashboard.css'
 
 const POSPage = lazy(() => import('./POSPage'))
 const OrdersManagement = lazy(() => import('./OrdersManagement'))
+const InventoryManagement = lazy(() => import('./InventoryManagement'))
 const RestockRequestsPage = lazy(() => import('./RestockRequestsPage'))
 const FeedbackManagement = lazy(() => import('./FeedbackManagement'))
 const TransactionsPage = lazy(() => import('./TransactionsPage'))
+const LossDamageTheftPage = lazy(() => import('./LossDamageTheftPage'))
 
 
-const navItems = [
-  { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'pos', path: '/pos', label: 'POS', icon: ShoppingCart },
-  { key: 'orders', path: '/orders', label: 'Orders', icon: ClipboardList },
-  { key: 'transactions', path: '/transactions', label: 'Transactions', icon: Receipt },
-  { key: 'restock', path: '/stock-requests', label: 'Stock Requests', icon: Package },
-  { key: 'feedback', path: '/feedback', label: 'Feedback', icon: MessageSquareText },
-]
 
 
 export default function StaffDashboard() {
@@ -57,6 +55,8 @@ export default function StaffDashboard() {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [recentTransactions, setRecentTransactions] = useState([])
+  const [staffInventory, setStaffInventory] = useState([])
+  const [stockAdjustments, setStockAdjustments] = useState([])
   const [orders, setOrders] = useState(() => {
     const list = getSharedOrders()
     return Array.isArray(list) ? list : []
@@ -64,12 +64,14 @@ export default function StaffDashboard() {
 
   const getActivePage = (pathname) => {
     const cleanPath = (pathname || '/').toLowerCase().replace(/\/$/, '') || '/'
-    if (cleanPath === '/' || cleanPath === '/dashboard') return 'dashboard'
+    if (cleanPath === '/' || cleanPath === '/dashboard' || cleanPath === '/staff/dashboard') return 'dashboard'
     if (cleanPath.startsWith('/pos')) return 'pos'
+    if (cleanPath.startsWith('/inventory')) return 'inventory'
     if (cleanPath.startsWith('/orders')) return 'orders'
     if (cleanPath.startsWith('/transactions')) return 'transactions'
     if (cleanPath.startsWith('/backorders')) return 'backorders'
     if (cleanPath.startsWith('/stock-requests') || cleanPath.startsWith('/stock-request') || cleanPath.startsWith('/restock')) return 'restock'
+    if (cleanPath.startsWith('/loss-damage-theft') || cleanPath.startsWith('/loss-damage') || cleanPath.startsWith('/incidents')) return 'loss-damage-theft'
     if (cleanPath.startsWith('/feedback')) return 'feedback'
     return 'dashboard'
   }
@@ -79,6 +81,21 @@ export default function StaffDashboard() {
 
   const navigateTo = (path) => {
     navigate(path)
+  }
+
+  const fetchStaffOrders = async () => {
+    try {
+      const data = await getAdminOrders()
+      if (Array.isArray(data)) {
+        setOrders(data)
+      } else {
+        const live = getSharedOrders()
+        setOrders(Array.isArray(live) ? live : [])
+      }
+    } catch (e) {
+      const live = getSharedOrders()
+      setOrders(Array.isArray(live) ? live : [])
+    }
   }
 
   const fetchStaffTransactions = async () => {
@@ -92,27 +109,76 @@ export default function StaffDashboard() {
     }
   }
 
+  const fetchStaffInventoryData = async () => {
+    try {
+      const [invRes, adjRes] = await Promise.allSettled([
+        getInventory(),
+        getStockAdjustments(null, { per_page: 6 })
+      ])
+      if (invRes.status === 'fulfilled' && Array.isArray(invRes.value)) {
+        setStaffInventory(invRes.value)
+      }
+      if (adjRes.status === 'fulfilled' && Array.isArray(adjRes.value)) {
+        setStockAdjustments(adjRes.value)
+      }
+    } catch (e) {
+      console.warn('Failed to fetch staff inventory overview:', e)
+    }
+  }
+
   useEffect(() => {
     setUser(getStoredUser())
-    const initialOrders = getSharedOrders()
-    setOrders(Array.isArray(initialOrders) ? initialOrders : [])
-    fetchStaffTransactions()
+    let isSubscribed = true
+    let isFetching = false
 
-    const interval = setInterval(() => {
-      const live = getSharedOrders()
-      setOrders(Array.isArray(live) ? live : [])
-      fetchStaffTransactions()
-    }, 4000)
-    return () => clearInterval(interval)
+    const pollStaffDashboard = async () => {
+      if (isFetching || !isSubscribed) return
+      isFetching = true
+      try {
+        await Promise.allSettled([
+          fetchStaffOrders(),
+          fetchStaffTransactions(),
+          fetchStaffInventoryData(),
+        ])
+      } finally {
+        if (isSubscribed) {
+          isFetching = false
+        }
+      }
+    }
+
+    pollStaffDashboard()
+
+    // Smooth 1.5 - 2 second data refresh without overlapping requests
+    const interval = setInterval(pollStaffDashboard, 1800)
+
+    const handleSync = () => {
+      pollStaffDashboard()
+    }
+    window.addEventListener('jem_orders_update', handleSync)
+    window.addEventListener('jem_inventory_update', handleSync)
+    window.addEventListener('jem_notification_update', handleSync)
+
+    return () => {
+      isSubscribed = false
+      clearInterval(interval)
+      window.removeEventListener('jem_orders_update', handleSync)
+      window.removeEventListener('jem_inventory_update', handleSync)
+      window.removeEventListener('jem_notification_update', handleSync)
+    }
   }, [])
 
   const safeOrders = Array.isArray(orders) ? orders : []
+  const safeInventory = Array.isArray(staffInventory) ? staffInventory : []
+  const lowStockCount = safeInventory.filter(i => Number(i.quantity ?? i.stock_quantity ?? 0) <= Number(i.low_stock_threshold ?? 10)).length
+  const inStockCount = safeInventory.filter(i => Number(i.quantity ?? i.stock_quantity ?? 0) > Number(i.low_stock_threshold ?? 10)).length
 
   const stats = [
     { label: 'TODAY SALES', value: safeOrders.reduce((sum, order) => sum + Number(order?.total || 0), 0), format: 'currency' },
     { label: 'ORDERS TODAY', value: safeOrders.length, format: 'number' },
-    { label: 'PENDING ORDERS', value: safeOrders.filter((o) => ['pending', 'confirmed'].includes(o?.status)).length, format: 'number' },
-    { label: 'COMPLETED TODAY', value: safeOrders.filter((o) => o?.status === 'completed').length, format: 'number' },
+    { label: 'CATALOG ITEMS', value: safeInventory.length, format: 'number' },
+    { label: 'IN STOCK', value: inStockCount, format: 'number' },
+    { label: 'LOW STOCK ALERTS', value: lowStockCount, format: 'number', highlight: lowStockCount > 0 },
   ]
 
   const handleLogoutClick = () => {
@@ -153,6 +219,14 @@ export default function StaffDashboard() {
       )
     }
 
+    if (activePage === 'inventory') {
+      return (
+        <Suspense fallback={<PageSkeletonLoader rows={6} />}>
+          <InventoryManagement role="staff" />
+        </Suspense>
+      )
+    }
+
     if (activePage === 'orders') {
       return <OrdersManagement role="staff" defaultTab="orders" />
     }
@@ -165,6 +239,13 @@ export default function StaffDashboard() {
       return <RestockRequestsPage role="staff" />
     }
 
+    if (activePage === 'loss-damage-theft') {
+      return (
+        <Suspense fallback={<PageSkeletonLoader rows={6} />}>
+          <LossDamageTheftPage />
+        </Suspense>
+      )
+    }
 
     if (activePage === 'feedback') {
       return <FeedbackManagement />
@@ -268,7 +349,6 @@ export default function StaffDashboard() {
               type="button"
               className="jem-button jem-button-secondary"
               onClick={() => navigateTo('/transactions')}
-              style={{ fontSize: '12px', padding: '5px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               Open Ledger <ArrowUpRight size={14} />
             </button>
@@ -313,6 +393,65 @@ export default function StaffDashboard() {
               </div>
             )}
           </div>
+
+          <div className="jem-panel-header" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <p className="jem-eyebrow">Warehouse &amp; Inventory</p>
+              <h2>Recent Stock Movements</h2>
+            </div>
+            <button
+              type="button"
+              className="jem-button jem-button-secondary"
+              onClick={() => navigateTo('/inventory')}
+            >
+              Manage Inventory <ArrowUpRight size={14} />
+            </button>
+          </div>
+
+          <div className="jem-orders-list">
+            {stockAdjustments.slice(0, 5).map((adj) => {
+              const prodName = adj.product?.name || adj.product_name || `Product #${adj.product_id}`
+              const change = Number(adj.quantity_changed ?? adj.quantity_change ?? 0)
+              const isPositive = change > 0
+              const type = (adj.adjustment_type || 'adjustment').toUpperCase()
+              const dateDisplay = adj.created_at ? new Date(adj.created_at).toLocaleDateString() : 'Today'
+
+              return (
+                <div className="jem-order-row" key={adj.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {prodName}
+                    </strong>
+                    <span>{adj.reason || 'Stock Update'} • {dateDisplay} {adj.reference_number ? `(${adj.reference_number})` : ''}</span>
+                  </div>
+                  <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                      color: isPositive ? '#10b981' : '#ef4444',
+                      fontWeight: 700
+                    }}>
+                      {type}
+                    </span>
+                    <strong style={{
+                      fontSize: '1rem',
+                      color: isPositive ? '#10b981' : '#ef4444'
+                    }}>
+                      {isPositive ? `+${change}` : change}
+                    </strong>
+                  </div>
+                </div>
+              )
+            })}
+            {stockAdjustments.length === 0 && (
+              <div className="jem-empty-state compact">
+                <Box size={32} />
+                <p>No recent stock adjustments recorded yet.</p>
+              </div>
+            )}
+          </div>
         </div>
       )
     }
@@ -340,279 +479,6 @@ export default function StaffDashboard() {
           box-sizing: border-box;
         }
 
-        .jem-staff-sidebar {
-          width: 256px;
-          min-width: 256px;
-          flex: 0 0 256px;
-          height: 100vh;
-          flex-shrink: 0;
-          position: sticky;
-          top: 0;
-          align-self: flex-start;
-          z-index: 20;
-          box-sizing: border-box;
-          background: var(--navy, #17293a);
-          color: #dfe7e4;
-          padding: 22px 14px 18px;
-          display: flex;
-          flex-direction: column;
-          border-right: 1px solid rgba(255,255,255,0.06);
-          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                      min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                      flex-basis 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                      padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-          overflow-y: auto;
-          overflow-x: hidden;
-        }
-
-        .jem-staff-sidebar.collapsed {
-          width: 80px;
-          min-width: 80px;
-          flex-basis: 80px;
-          padding: 22px 12px 18px;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-brand-copy,
-        .jem-staff-sidebar.collapsed .jem-badge,
-        .jem-staff-sidebar.collapsed .jem-nav-label,
-        .jem-staff-sidebar.collapsed .jem-nav-indicator,
-        .jem-staff-sidebar.collapsed .jem-collapse-btn {
-          display: none;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-brand {
-          justify-content: center;
-          padding: 2px 0 16px;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-brand-main {
-          justify-content: center;
-          width: 100%;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-nav-item {
-          justify-content: center;
-          padding-left: 0;
-          padding-right: 0;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-nav-main {
-          justify-content: center;
-          gap: 0;
-          width: 100%;
-        }
-
-        .jem-staff-sidebar.collapsed .jem-sidebar-footer .jem-nav-item {
-          justify-content: center;
-          padding-left: 0;
-          padding-right: 0;
-        }
-
-        .clickable-brand-logo {
-          cursor: pointer;
-          border: none;
-          outline: none;
-          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, filter 0.2s ease;
-          user-select: none;
-        }
-
-        .clickable-brand-logo:hover {
-          transform: scale(1.08);
-          filter: brightness(1.1);
-          box-shadow: 0 0 14px rgba(249, 115, 22, 0.5);
-        }
-
-        .clickable-brand-logo:active {
-          transform: scale(0.95);
-        }
-
-        /* Floating Tooltip */
-        .sidebar-floating-tooltip {
-          display: flex;
-          align-items: center;
-          filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.45));
-          animation: sidebarTooltipIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        @keyframes sidebarTooltipIn {
-          from {
-            opacity: 0;
-            transform: translateY(-50%) translateX(-4px) scale(0.96);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(-50%) translateX(0) scale(1);
-          }
-        }
-
-        .sidebar-tooltip-content {
-          position: relative;
-          background: #0f172a;
-          color: #ffffff;
-          padding: 6px 12px;
-          border-radius: 6px;
-          font-size: 12px;
-          font-weight: 600;
-          letter-spacing: 0.01em;
-          white-space: nowrap;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          display: flex;
-          align-items: center;
-        }
-
-        .sidebar-tooltip-content::before {
-          content: '';
-          position: absolute;
-          left: -5px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 0;
-          height: 0;
-          border-top: 5px solid transparent;
-          border-bottom: 5px solid transparent;
-          border-right: 5px solid #0f172a;
-        }
-
-        .jem-brand {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 2px 4px 18px;
-          border-bottom: 1px solid rgba(255,255,255,0.09);
-        }
-
-        .jem-brand-main {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .jem-brand-mark {
-          width: 34px;
-          height: 34px;
-          border-radius: 9px;
-          background: #f97316;
-          color: white;
-          display: grid;
-          place-items: center;
-          font-weight: 800;
-          font-size: 1.2rem;
-          box-shadow: 0 10px 18px rgba(249, 115, 22, 0.25);
-        }
-
-        .jem-brand-copy {
-          min-width: 0;
-        }
-
-        .jem-brand-copy strong,
-        .jem-brand-copy span {
-          display: block;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .jem-brand-copy strong {
-          font-size: 0.82rem;
-          color: #fff;
-          margin-bottom: 2px;
-        }
-
-        .jem-brand-copy span {
-          font-size: 0.62rem;
-          color: rgba(255,255,255,0.7);
-        }
-
-        .jem-collapse-btn {
-          width: 28px;
-          height: 28px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.8);
-          border-radius: 8px;
-          display: grid;
-          place-items: center;
-          cursor: pointer;
-        }
-
-        .jem-badge {
-          margin: 18px 10px 12px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: fit-content;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(249, 115, 22, 0.35);
-          background: rgba(249, 115, 22, 0.12);
-          color: #f6b787;
-          font-size: 0.6rem;
-          font-weight: 800;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-        }
-
-        .jem-nav {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          margin-top: 6px;
-        }
-
-        .jem-nav-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          width: 100%;
-          background: transparent;
-          border: none;
-          color: #c7d1d0;
-          border-radius: 10px;
-          padding: 11px 12px;
-          font-size: 0.8rem;
-          font-weight: 600;
-          text-align: left;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .jem-nav-item:hover {
-          background: rgba(255,255,255,0.04);
-        }
-
-        .jem-nav-item.active {
-          background: rgba(249, 115, 22, 0.14);
-          color: #ffb17e;
-          box-shadow: inset 3px 0 0 #f97316;
-        }
-
-        .jem-nav-main {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .jem-nav-item.active svg {
-          color: #f97316;
-        }
-
-        .jem-nav-indicator {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #f97316;
-          flex-shrink: 0;
-        }
-
-        .jem-sidebar-footer {
-          margin-top: auto;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255,255,255,0.09);
-        }
 
         .jem-main {
           flex: 1;
@@ -774,6 +640,70 @@ export default function StaffDashboard() {
           color: var(--text-primary);
         }
 
+        .jem-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border-radius: 8px;
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 6px 14px;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          text-decoration: none;
+          box-sizing: border-box;
+          line-height: 1.4;
+          white-space: nowrap;
+        }
+
+        .jem-button-secondary {
+          background: rgba(255, 255, 255, 0.08);
+          color: #f8fafc;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        .jem-button-secondary:hover {
+          background: #f97316;
+          color: #ffffff;
+          border-color: #f97316;
+          box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .jem-button-secondary:active {
+          transform: translateY(0);
+        }
+
+        [data-theme="light"] .jem-button-secondary {
+          background: #ffffff;
+          color: #0f172a;
+          border: 1px solid #cbd5e1;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="light"] .jem-button-secondary:hover {
+          background: #f97316;
+          color: #ffffff;
+          border-color: #f97316;
+          box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+        }
+
+        [data-theme="dark"] .jem-button-secondary {
+          background: rgba(255, 255, 255, 0.08);
+          color: #f8fafc;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        [data-theme="dark"] .jem-button-secondary:hover {
+          background: #f97316;
+          color: #ffffff;
+          border-color: #f97316;
+          box-shadow: 0 4px 14px rgba(249, 115, 22, 0.45);
+        }
+
         .jem-orders-list {
           display: grid;
           gap: 12px;
@@ -916,31 +846,6 @@ export default function StaffDashboard() {
             right: 0;
           }
 
-          .jem-staff-sidebar {
-            width: 72px !important;
-            min-width: 72px !important;
-            flex-basis: 72px !important;
-            padding: 16px 8px;
-          }
-
-          .jem-brand-copy,
-          .jem-badge,
-          .jem-nav-label,
-          .jem-nav-indicator,
-          .jem-collapse-btn {
-            display: none !important;
-          }
-
-          .jem-brand {
-            justify-content: center;
-            padding-bottom: 12px;
-          }
-
-          .jem-nav-item {
-            justify-content: center;
-            padding: 10px 0;
-          }
-
           .jem-header {
             padding: 0 16px;
           }
@@ -969,71 +874,15 @@ export default function StaffDashboard() {
 
       <div className="jem-staff-shell">
 
-        <aside className={`jem-staff-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-          <div className="jem-brand">
-            <div className="jem-brand-main">
-              <button
-                type="button"
-                className="jem-brand-mark clickable-brand-logo"
-                onClick={toggleSidebar}
-                title={isCollapsed ? "Expand sidebar (J)" : "Collapse sidebar (J)"}
-                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                {...getTooltipProps(isCollapsed ? "Expand Sidebar" : "Collapse Sidebar")}
-              >
-                J
-              </button>
-              <div className="jem-brand-copy">
-                <strong>JEM Hardware</strong>
-                <span>&amp; Coco Lumber</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="jem-collapse-btn"
-              onClick={toggleSidebar}
-              aria-label="Toggle sidebar"
-              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {!isCollapsed ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-            </button>
-          </div>
-
-          <div className="jem-badge">Staff</div>
-
-          <nav className="jem-nav" aria-label="Sidebar navigation">
-            {navItems.map(({ key, path, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                className={`jem-nav-item ${activePage === key ? 'active' : ''}`}
-                onClick={() => navigateTo(path)}
-                aria-label={label}
-                {...getTooltipProps(label)}
-              >
-                <span className="jem-nav-main">
-                  <Icon size={17} />
-                  <span className="jem-nav-label">{label}</span>
-                </span>
-                {activePage === key && <span className="jem-nav-indicator" aria-hidden="true" />}
-              </button>
-            ))}
-          </nav>
-
-          <div className="jem-sidebar-footer">
-            <button
-              type="button"
-              className="jem-nav-item"
-              onClick={handleLogoutClick}
-              aria-label="Logout"
-              {...getTooltipProps("Logout")}
-            >
-              <span className="jem-nav-main">
-                <LogOut size={17} />
-                <span className="jem-nav-label">Logout</span>
-              </span>
-            </button>
-          </div>
-        </aside>
+        <Sidebar
+          role="staff"
+          activePage={activePage}
+          isCollapsed={isCollapsed}
+          toggleSidebar={toggleSidebar}
+          onLogout={handleLogoutClick}
+          navigateTo={navigateTo}
+          getTooltipProps={getTooltipProps}
+        />
 
         <main className="jem-main">
           <header className="jem-header">

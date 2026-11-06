@@ -81,6 +81,7 @@ const fallbackCatalog = [
   { id: 7, name: 'Aluminum Screen 3ft', category: 'Roofing', price: 180, unit: 'meter', stock: 80, emoji: '🏠', image: '/images/products/aluminum-screen.png' },
   { id: 8, name: 'PE Pipe 1/2"', category: 'Pipes', price: 45, unit: 'meter', stock: 200, emoji: '🚿' },
   { id: 9, name: 'Blue Elbow Plain 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧', image: '/images/products/blue-elbow-plain-1-2.png' },
+  { id: 44, name: 'Blue Elbow Threaded 1/2"', category: 'Plumbing', price: 20, unit: 'piece', stock: 120, emoji: '🔧', image: '/images/products/blue-elbow-threaded-1-2.png' },
   { id: 10, name: 'GI Nipple 1/2" × 2" S-20', category: 'Plumbing', price: 18, unit: 'piece', stock: 100, emoji: '🔩' },
   { id: 11, name: 'Hose Clamp 1/2"', category: 'Hardware', price: 15, unit: 'piece', stock: 150, emoji: '🔩' },
   { id: 12, name: 'Poly Rope 6mm', category: 'Hardware', price: 14, unit: 'meter', stock: 250, emoji: '🪢' },
@@ -91,6 +92,21 @@ const fallbackCatalog = [
   { id: 19, name: 'Ayagan / Hardware Cloth 3ft', category: 'Roofing', price: 95, unit: 'meter', stock: 100, emoji: '🏠', image: '/images/products/hardware-cloth-3ft.png' },
   { id: 49, name: 'Blue Coupling 1/2"', category: 'Plumbing', price: 15, unit: 'piece', stock: 150, emoji: '🔧', image: '/images/products/blue-coupling-1-2.png' },
   { id: 52, name: 'Blue Coupling Reducer 1/2" × 3/4"', category: 'Plumbing', price: 22, unit: 'piece', stock: 100, emoji: '🔧', image: '/images/products/blue-coupling-reducer.png' },
+  { id: 45, name: 'Blue Tee Plain 1/2"', category: 'Plumbing', price: 20, unit: 'piece', stock: 120, emoji: '🔧', image: '/images/products/blue-tee-plain-1-2.png' },
+  { id: 47, name: 'Blue Female Adaptor 1/2"', category: 'Plumbing', price: 18, unit: 'piece', stock: 120, emoji: '🔧', image: '/images/products/blue-female-adaptor-1-2.png' },
+  { id: 48, name: 'Blue Male Adaptor 1/2"', category: 'Plumbing', price: 18, unit: 'piece', stock: 120, emoji: '🔧', image: '/images/products/blue-male-adaptor-1-2.png' },
+  { id: 50, name: 'Blue Female Plug 1/2"', category: 'Plumbing', price: 12, unit: 'piece', stock: 100, emoji: '🔧', image: '/images/products/blue-female-plug-1-2.png' },
+  { id: 51, name: 'Blue Male Plug 1/2"', category: 'Plumbing', price: 12, unit: 'piece', stock: 100, emoji: '🔧', image: '/images/products/blue-male-plug-1-2.png' },
+  { id: 46, name: 'Blue Tee Threaded 1/2"', category: 'Plumbing', price: 25, unit: 'piece', stock: 100, emoji: '🔧', image: '/images/products/blue-tee-threaded-1-2.png' },
+  { id: 84, name: 'Cup Hook 3/4"', category: 'Fasteners', price: 3, unit: 'piece', stock: 300, emoji: '🪝', image: '/images/products/cup-hook-3-4.png' },
+  { id: 85, name: 'Cup Hook 7/8"', category: 'Fasteners', price: 4, unit: 'piece', stock: 300, emoji: '🪝', image: '/images/products/cup-hook-7-8.png' },
+  { id: 86, name: 'Cup Hook 1"', category: 'Fasteners', price: 5, unit: 'piece', stock: 250, emoji: '🪝', image: '/images/products/cup-hook-1.png' },
+  { id: 87, name: 'Cup Hook 1-1/4"', category: 'Fasteners', price: 6, unit: 'piece', stock: 200, emoji: '🪝', image: '/images/products/cup-hook-1-1-4.png' },
+  { id: 88, name: 'Cup Hook 2"', category: 'Fasteners', price: 8, unit: 'piece', stock: 200, emoji: '🪝', image: '/images/products/cup-hook-2.png' },
+  { id: 57, name: 'GI Nipple 1/2" × 10" S-20', category: 'Plumbing', price: 48, unit: 'piece', stock: 80, emoji: '🔧', image: '/images/products/gi-nipple-1-2-x-10-s20.png' },
+  { id: 63, name: 'GI Nipple 1/2" × 10" S-40', category: 'Plumbing', price: 65, unit: 'piece', stock: 80, emoji: '🔧', image: '/images/products/gi-nipple-1-2-x-10-s40.png' },
+  { id: 58, name: 'GI Nipple 1/2" × 12" S-20', category: 'Plumbing', price: 56, unit: 'piece', stock: 80, emoji: '🔧', image: '/images/products/gi-nipple-1-2-x-12-s20.png' },
+  { id: 64, name: 'GI Nipple 1/2" × 12" S-40', category: 'Plumbing', price: 75, unit: 'piece', stock: 80, emoji: '🔧', image: '/images/products/gi-nipple-1-2-x-12-s40.png' },
 ]
 
 function getProductEmoji(product) {
@@ -332,7 +348,7 @@ export default function POSPage({ onTransactionComplete }) {
   }
 
   const fetchLiveProducts = () => {
-    getProducts({ per_page: 150 })
+    return getProducts({ per_page: 300 })
       .then((payload) => {
         const rawList = Array.isArray(payload)
           ? payload
@@ -342,34 +358,51 @@ export default function POSPage({ onTransactionComplete }) {
                   ? payload.data.data
                   : []))
 
-        if (rawList.length > 0) {
-          const mapped = rawList.map((p) => {
-            const cleanedCat = cleanCategory(p.category?.name || 'General', p.name)
-            return {
-              id: p.id,
-              name: p.name,
-              category: cleanedCat,
-              price: Number(p.selling_price ?? p.base_price ?? 0),
-              unit: p.unit || 'piece',
-              stock: Number(p.stock_quantity ?? p.stock ?? 0),
-              image: p.image || (
-                p.name?.toLowerCase().includes('aluminum screen') ? '/images/products/aluminum-screen.png' :
-                (p.name?.toLowerCase().includes('hardware cloth') || p.name?.toLowerCase().includes('ayagan')) ? '/images/products/hardware-cloth-3ft.png' :
-                (p.name?.toLowerCase().includes('coupling reducer') || p.name?.toLowerCase().includes('reducer')) ? '/images/products/blue-coupling-reducer.png' :
-                p.name?.toLowerCase().includes('blue coupling') ? '/images/products/blue-coupling-1-2.png' :
-                p.name?.toLowerCase().includes('blue elbow') ? '/images/products/blue-elbow-plain-1-2.png' :
-                null
-              ),
-              emoji: getProductEmoji({ name: p.name, category: cleanedCat }),
-            }
-          })
-          setProducts(mapped)
-          try {
+        const mapped = rawList.map((p) => {
+          const cleanedCat = cleanCategory(p.category?.name || 'General', p.name)
+          return {
+            id: p.id,
+            name: p.name,
+            category: cleanedCat,
+            price: Number(p.selling_price ?? p.base_price ?? 0),
+            unit: p.unit || 'piece',
+            stock: Number(p.stock_quantity ?? p.stock ?? 0),
+            image: p.image || (
+              p.name?.toLowerCase().includes('aluminum screen') ? '/images/products/aluminum-screen.png' :
+              (p.name?.toLowerCase().includes('hardware cloth') || p.name?.toLowerCase().includes('ayagan')) ? '/images/products/hardware-cloth-3ft.png' :
+              (p.name?.toLowerCase().includes('coupling reducer') || p.name?.toLowerCase().includes('reducer')) ? '/images/products/blue-coupling-reducer.png' :
+              p.name?.toLowerCase().includes('blue coupling') ? '/images/products/blue-coupling-1-2.png' :
+              p.name?.toLowerCase().includes('elbow threaded') ? '/images/products/blue-elbow-threaded-1-2.png' :
+              p.name?.toLowerCase().includes('blue elbow') ? '/images/products/blue-elbow-plain-1-2.png' :
+              p.name?.toLowerCase().includes('female adaptor') ? '/images/products/blue-female-adaptor-1-2.png' :
+              p.name?.toLowerCase().includes('female plug') ? '/images/products/blue-female-plug-1-2.png' :
+              p.name?.toLowerCase().includes('male adaptor') ? '/images/products/blue-male-adaptor-1-2.png' :
+              p.name?.toLowerCase().includes('male plug') ? '/images/products/blue-male-plug-1-2.png' :
+              p.name?.toLowerCase().includes('tee threaded') ? '/images/products/blue-tee-threaded-1-2.png' :
+              (p.name?.toLowerCase().includes('blue tee') || p.name?.toLowerCase().includes('tee plain')) ? '/images/products/blue-tee-plain-1-2.png' :
+              (p.name?.toLowerCase().includes('cup hook') && p.name?.includes('3/4')) ? '/images/products/cup-hook-3-4.png' :
+              (p.name?.toLowerCase().includes('cup hook') && p.name?.includes('7/8')) ? '/images/products/cup-hook-7-8.png' :
+              (p.name?.toLowerCase().includes('cup hook') && (p.name?.includes('1-1/4') || p.name?.includes('1-14'))) ? '/images/products/cup-hook-1-1-4.png' :
+              (p.name?.toLowerCase().includes('cup hook') && p.name?.includes('2')) ? '/images/products/cup-hook-2.png' :
+              (p.name?.toLowerCase().includes('cup hook') && p.name?.includes('1')) ? '/images/products/cup-hook-1.png' :
+              (p.name?.toLowerCase().includes('nipple') && p.name?.includes('10') && (p.name?.toLowerCase().includes('s-20') || p.name?.toLowerCase().includes('s20'))) ? '/images/products/gi-nipple-1-2-x-10-s20.png' :
+              (p.name?.toLowerCase().includes('nipple') && p.name?.includes('10') && (p.name?.toLowerCase().includes('s-40') || p.name?.toLowerCase().includes('s40'))) ? '/images/products/gi-nipple-1-2-x-10-s40.png' :
+              (p.name?.toLowerCase().includes('nipple') && p.name?.includes('12') && (p.name?.toLowerCase().includes('s-20') || p.name?.toLowerCase().includes('s20'))) ? '/images/products/gi-nipple-1-2-x-12-s20.png' :
+              (p.name?.toLowerCase().includes('nipple') && p.name?.includes('12') && (p.name?.toLowerCase().includes('s-40') || p.name?.toLowerCase().includes('s40'))) ? '/images/products/gi-nipple-1-2-x-12-s40.png' :
+              null
+            ),
+            emoji: getProductEmoji({ name: p.name, category: cleanedCat }),
+          }
+        })
+
+        setProducts(mapped)
+        try {
+          if (mapped.length > 0) {
             localStorage.setItem('jem_pos_catalog', JSON.stringify(mapped))
-          } catch (e) {}
-        } else {
-          setProducts(getSavedCatalog())
-        }
+          } else {
+            localStorage.removeItem('jem_pos_catalog')
+          }
+        } catch (e) {}
       })
       .catch(() => {
         setProducts(getSavedCatalog())
@@ -379,11 +412,35 @@ export default function POSPage({ onTransactionComplete }) {
   useEffect(() => {
     fetchLiveProducts()
 
+    let isSubscribed = true
+    let isFetching = false
+
+    const pollLiveProducts = async () => {
+      if (isFetching || !isSubscribed) return
+      isFetching = true
+      try {
+        await fetchLiveProducts()
+      } finally {
+        if (isSubscribed) {
+          isFetching = false
+        }
+      }
+    }
+
+    const interval = setInterval(pollLiveProducts, 1800)
+
     const handleInv = () => {
-      fetchLiveProducts()
+      pollLiveProducts()
     }
     window.addEventListener('jem_inventory_update', handleInv)
-    return () => window.removeEventListener('jem_inventory_update', handleInv)
+    window.addEventListener('jem_orders_update', handleInv)
+
+    return () => {
+      isSubscribed = false
+      clearInterval(interval)
+      window.removeEventListener('jem_inventory_update', handleInv)
+      window.removeEventListener('jem_orders_update', handleInv)
+    }
   }, [])
 
   const categoryOptions = useMemo(() => {
@@ -2122,9 +2179,31 @@ export default function POSPage({ onTransactionComplete }) {
       <div className="pos-shell">
         {/* Left Side: Products Catalog */}
         <section className="pos-main-area">
-          <div className="pos-header-block">
-            <h1>Point of Sale</h1>
-            <p>Walk-in customer checkout & real-time inventory management</p>
+          <div className="pos-header-block" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h1>Point of Sale</h1>
+              <p>Walk-in customer checkout & real-time inventory management</p>
+            </div>
+            <a
+              href="/loss-damage-theft"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                fontSize: '12px',
+                fontWeight: '700',
+                textDecoration: 'none',
+                cursor: 'pointer'
+              }}
+              title="Report damaged, missing, or stolen inventory"
+            >
+              <AlertTriangle size={14} /> Report Damage / Loss
+            </a>
           </div>
 
           <div className="pos-toolbar">

@@ -27,6 +27,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -41,6 +45,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report['top_products'] ?? [],
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -55,6 +63,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -70,6 +82,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -84,6 +100,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -97,6 +117,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -112,6 +136,10 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'data' => $report,
+            'meta' => [
+                'generated_at' => now()->toIso8601String(),
+                'generated_by' => $this->reportService->resolveGeneratedBy($request->user()),
+            ],
         ]);
     }
 
@@ -122,11 +150,41 @@ class ReportController extends Controller
     {
         $date = $request->query('date');
         $report = $this->reportService->dailySalesReport($date);
-        $csv = $this->reportService->exportToCSV($report, 'daily_sales');
+        $csv = $this->reportService->exportToCSV($report, 'daily_sales', $request->user(), ['period' => $date ?: now()->toDateString()]);
         
         return response()->streamDownload(function () use ($csv) {
             echo $csv;
         }, 'daily-sales-report.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Export monthly report to CSV
+     */
+    public function exportMonthly(Request $request): StreamedResponse
+    {
+        $year = $request->query('year', now()->year);
+        $month = $request->query('month', now()->month);
+        $report = $this->reportService->monthlySalesReport($year, $month);
+        $period = sprintf('%02d/%s', (int)$month, $year);
+        $csv = $this->reportService->exportToCSV($report, 'monthly', $request->user(), ['period' => $period]);
+        
+        return response()->streamDownload(function () use ($csv) {
+            echo $csv;
+        }, 'monthly-sales-report.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Export yearly report to CSV
+     */
+    public function exportYearly(Request $request): StreamedResponse
+    {
+        $year = $request->query('year', now()->year);
+        $report = $this->reportService->yearlySalesReport($year);
+        $csv = $this->reportService->exportToCSV($report, 'yearly', $request->user(), ['period' => (string) $year]);
+        
+        return response()->streamDownload(function () use ($csv) {
+            echo $csv;
+        }, 'yearly-sales-report.csv', ['Content-Type' => 'text/csv']);
     }
 
     /**
@@ -135,10 +193,26 @@ class ReportController extends Controller
     public function exportInventory(Request $request): StreamedResponse
     {
         $report = $this->reportService->inventoryReport();
-        $csv = $this->reportService->exportToCSV($report, 'inventory');
+        $csv = $this->reportService->exportToCSV($report, 'inventory', $request->user());
         
         return response()->streamDownload(function () use ($csv) {
             echo $csv;
         }, 'inventory-report.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Export profit & loss report to CSV
+     */
+    public function exportProfitLoss(Request $request): StreamedResponse
+    {
+        $year = $request->query('year', now()->year);
+        $month = $request->query('month', now()->month);
+        $report = $this->reportService->profitLossReport($year, $month);
+        $period = sprintf('%02d/%s', (int)$month, $year);
+        $csv = $this->reportService->exportToCSV($report, 'profit-loss', $request->user(), ['period' => $period]);
+        
+        return response()->streamDownload(function () use ($csv) {
+            echo $csv;
+        }, 'profit-loss-report.csv', ['Content-Type' => 'text/csv']);
     }
 }

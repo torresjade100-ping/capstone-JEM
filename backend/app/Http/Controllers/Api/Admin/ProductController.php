@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use App\Services\AuditService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Request as RequestFacade;
 
 class ProductController extends Controller
@@ -129,6 +130,15 @@ class ProductController extends Controller
 
         $product = Product::create($data);
 
+        // Auto-create default variant so product always has at least 1 variant for Mobile & POS
+        \App\Models\ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => $request->input('sku') ?: ('SKU-' . strtoupper(\Illuminate\Support\Str::random(8))),
+            'price' => $sellingPrice,
+            'stock_quantity' => (int) $product->stock_quantity,
+            'status' => 'active',
+        ]);
+
         // Auto-create initial inventory batch if stock > 0
         $stockQty = (int) $product->stock_quantity;
         if ($stockQty > 0) {
@@ -177,6 +187,190 @@ class ProductController extends Controller
             'success' => true,
             'message' => 'Product created successfully.',
             'data' => $product,
+        ], 201);
+    }
+
+    public function batchStore(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'category_id' => ['required', Rule::exists('categories', 'id')->where('status', 'active')],
+            'products' => ['required', 'array', 'min:1'],
+            'products.*.name' => ['required', 'string', 'max:255'],
+            'products.*.base_price' => ['nullable', 'numeric', 'min:0'],
+            'products.*.selling_price' => ['nullable', 'numeric', 'min:0'],
+            'products.*.cost_price' => ['nullable', 'numeric', 'min:0'],
+            'products.*.stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'products.*.low_stock_threshold' => ['nullable', 'integer', 'min:0'],
+            'products.*.unit' => ['nullable', 'string', 'max:50'],
+            'products.*.supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'products.*.supplier_name' => ['nullable', 'string', 'max:255'],
+            'products.*.brand_id' => ['nullable', 'exists:brands,id'],
+            'products.*.description' => ['nullable', 'string'],
+        ], [
+            'category_id.required' => 'Please select a category.',
+            'category_id.exists' => 'The selected category is inactive or does not exist.',
+            'products.required' => 'At least one product is required.',
+            'products.min' => 'At least one product is required.',
+            'products.*.name.required' => 'Product name is required for all rows.',
+            'products.*.name.string' => 'Product name must be a valid string.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed. Please review the batch entries.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $categoryId = (int) $request->input('category_id');
+        $category = \App\Models\Category::find($categoryId);
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found.',
+            ], 404);
+        }
+
+        // Get default brand in case brand_id is not specified in row
+        $defaultBrandId = \App\Models\Brand::whereRaw('LOWER(name) = ?', ['generic'])->value('id')
+            ?? \App\Models\Brand::first()?->id;
+
+        $productsData = $request->input('products');
+
+        // Check for duplicates within the submitted batch itself
+        $submittedNames = [];
+        foreach ($productsData as $index => $row) {
+            $normalizedName = strtolower(trim((string) ($row['name'] ?? '')));
+            if (empty($normalizedName)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Row #" . ($index + 1) . " has an empty product name.",
+                    'errors' => ["products.{$index}.name" => ["Product name cannot be empty."]],
+                ], 422);
+            }
+            if (in_array($normalizedName, $submittedNames, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Duplicate product name '{$row['name']}' found multiple times in this batch. Each product name must be unique.",
+                    'errors' => ["products.{$index}.name" => ["Duplicate product name in batch."]],
+                ], 422);
+            }
+            $submittedNames[] = $normalizedName;
+        }
+
+        // Check for existing products in DB with matching names
+        $existing = Product::whereIn(DB::raw('LOWER(TRIM(name))'), $submittedNames)->get(['id', 'name']);
+        if ($existing->isNotEmpty()) {
+            $existingNames = $existing->pluck('name')->implode(', ');
+            return response()->json([
+                'success' => false,
+                'message' => "The following product(s) already exist in your inventory: {$existingNames}. Please use distinct names or restock existing items.",
+                'errors' => [
+                    'name' => ["Products already exist in catalog: {$existingNames}."],
+                ],
+            ], 422);
+        }
+
+        // Save all products within a database transaction
+        $createdProducts = [];
+        DB::beginTransaction();
+        try {
+            foreach ($productsData as $row) {
+                $sellingPrice = (float) ($row['selling_price'] ?? $row['base_price'] ?? 0);
+                $costPrice = isset($row['cost_price']) && is_numeric($row['cost_price']) && (float) $row['cost_price'] > 0
+                    ? (float) $row['cost_price']
+                    : (float) round($sellingPrice * 0.70, 2);
+                $stockQty = isset($row['stock_quantity']) && is_numeric($row['stock_quantity'])
+                    ? max(0, (int) $row['stock_quantity'])
+                    : 0;
+                $lowStock = isset($row['low_stock_threshold']) && is_numeric($row['low_stock_threshold'])
+                    ? max(0, (int) $row['low_stock_threshold'])
+                    : 10;
+                $unit = !empty(trim($row['unit'] ?? '')) ? trim($row['unit']) : 'piece';
+                $brandId = !empty($row['brand_id']) ? (int) $row['brand_id'] : $defaultBrandId;
+
+                $product = Product::create([
+                    'category_id' => $categoryId,
+                    'brand_id' => $brandId,
+                    'name' => trim((string) $row['name']),
+                    'description' => trim((string) ($row['description'] ?? "Batch product added under {$category->name}")),
+                    'base_price' => $sellingPrice,
+                    'selling_price' => $sellingPrice,
+                    'cost_price' => $costPrice,
+                    'unit' => $unit,
+                    'stock_quantity' => $stockQty,
+                    'low_stock_threshold' => $lowStock,
+                    'status' => 'active',
+                ]);
+
+                // Auto-create default variant for batch product
+                \App\Models\ProductVariant::create([
+                    'product_id' => $product->id,
+                    'sku' => !empty($row['sku']) ? trim($row['sku']) : ('SKU-' . strtoupper(\Illuminate\Support\Str::random(8))),
+                    'price' => $sellingPrice,
+                    'stock_quantity' => $stockQty,
+                    'status' => 'active',
+                ]);
+
+                // Create initial inventory batch if stock > 0
+                if ($stockQty > 0) {
+                    $supplierId = !empty($row['supplier_id']) ? (int) $row['supplier_id'] : null;
+                    $supplierName = $row['supplier_name'] ?? null;
+                    if ($supplierId && !$supplierName) {
+                        $sup = \App\Models\Supplier::find($supplierId);
+                        $supplierName = $sup?->name;
+                    }
+
+                    \App\Models\InventoryBatch::create([
+                        'product_id' => $product->id,
+                        'batch_number' => sprintf('BAT-%s-%04d', date('Ymd'), $product->id),
+                        'supplier_id' => $supplierId,
+                        'supplier_name' => $supplierName ?: 'Initial Supplier',
+                        'cost_price' => $costPrice,
+                        'selling_price' => $sellingPrice,
+                        'initial_quantity' => $stockQty,
+                        'quantity' => $stockQty,
+                        'received_date' => date('Y-m-d'),
+                        'status' => 'active',
+                        'notes' => 'Batch creation initial stock',
+                        'created_by' => $request->user()->id ?? null,
+                    ]);
+                }
+
+                // Record audit
+                try {
+                    app(AuditService::class)->record([
+                        'user_id' => $request->user()->id ?? null,
+                        'action' => 'batch_create',
+                        'module' => 'product',
+                        'record_type' => 'product',
+                        'record_id' => $product->id,
+                        'before' => null,
+                        'after' => $product->toArray(),
+                        'ip_address' => RequestFacade::ip(),
+                    ]);
+                } catch (\Throwable $e) {
+                }
+
+                $product->load(['category', 'brand']);
+                $createdProducts[] = $product;
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save batch products: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => count($createdProducts) . " products successfully added under '{$category->name}'.",
+            'count' => count($createdProducts),
+            'data' => $createdProducts,
         ], 201);
     }
 

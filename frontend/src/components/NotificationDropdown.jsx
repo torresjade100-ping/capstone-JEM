@@ -241,10 +241,23 @@ export default function NotificationDropdown({
   }
 
   useEffect(() => {
-    fetchNotifs()
+    let isSubscribed = true
+    let isPolling = false
 
-    // 3-second background sync for cross-window and real-time updates
-    const pollInterval = setInterval(fetchNotifs, 3000)
+    const safeFetch = async () => {
+      if (!isSubscribed || isPolling) return
+      isPolling = true
+      try {
+        await fetchNotifs()
+      } finally {
+        isPolling = false
+      }
+    }
+
+    safeFetch()
+
+    // 1.8-second smooth background sync with in-flight lock
+    const pollInterval = setInterval(safeFetch, 1800)
 
     // Listen to custom browser events for immediate notification popups
     const handlePop = (e) => {
@@ -253,16 +266,16 @@ export default function NotificationDropdown({
         const matchesRole = !notif.targetRole || notif.targetRole === effectiveRole || notif.targetRole === 'all'
         if (matchesRole) {
           setToastNotif(notif)
-          fetchNotifs()
+          safeFetch()
           setTimeout(() => {
-            setToastNotif(null)
+            if (isSubscribed) setToastNotif(null)
           }, 6000)
         }
       }
     }
 
     const handleUpdate = () => {
-      fetchNotifs()
+      safeFetch()
     }
 
     window.addEventListener('jem_notification_pop', handlePop)
@@ -270,6 +283,7 @@ export default function NotificationDropdown({
     window.addEventListener('storage', handleUpdate)
 
     return () => {
+      isSubscribed = false
       clearInterval(pollInterval)
       window.removeEventListener('jem_notification_pop', handlePop)
       window.removeEventListener('jem_notification_update', handleUpdate)

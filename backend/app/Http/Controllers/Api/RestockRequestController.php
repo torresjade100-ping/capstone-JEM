@@ -11,9 +11,13 @@ class RestockRequestController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = RestockRequest::with(['product', 'requester', 'variant'])->latest();
+        $query = RestockRequest::with(['product', 'requester', 'variant', 'user'])->latest();
         if ($request->user()->role === 'staff') {
-            $query->where('requested_by', $request->user()->id);
+            $staffId = auth()->id() ?? $request->user()->id;
+            $query->where(function ($q) use ($staffId) {
+                $q->where('user_id', $staffId)
+                  ->orWhere('requested_by', $staffId);
+            });
         }
         $perPage = min(max((int) $request->input('per_page', 100), 1), 500);
         return response()->json(['success' => true, 'data' => $query->paginate($perPage)]);
@@ -21,6 +25,10 @@ class RestockRequestController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('quantity_requested') && !$request->has('requested_quantity')) {
+            $request->merge(['requested_quantity' => $request->input('quantity_requested')]);
+        }
+
         $data = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
@@ -28,11 +36,15 @@ class RestockRequestController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $userId = $request->user()->id;
+        $userId = auth()->id() ?? $request->user()?->id;
+        $data['user_id'] = auth()->id();
         $data['requested_by'] = $userId;
 
         // Idempotency & Duplicate Protection: Check if the exact same pending request was submitted within the last 15 seconds
-        $existingRecent = RestockRequest::where('requested_by', $userId)
+        $existingRecent = RestockRequest::where(function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                  ->orWhere('requested_by', $userId);
+            })
             ->where('product_id', $data['product_id'])
             ->where('requested_quantity', $data['requested_quantity'])
             ->where(function ($q) {
@@ -42,7 +54,7 @@ class RestockRequestController extends Controller
             ->first();
 
         if ($existingRecent) {
-            $existingRecent->load(['product', 'requester']);
+            $existingRecent->load(['product', 'requester', 'user']);
             return response()->json([
                 'success' => true,
                 'message' => 'Stock request already received.',
@@ -52,7 +64,7 @@ class RestockRequestController extends Controller
         }
 
         $requestModel = RestockRequest::create($data);
-        $requestModel->load(['product', 'requester']);
+        $requestModel->load(['product', 'requester', 'user']);
 
         // Dispatch Notification to all Admin accounts (avoid duplicate notification for this request)
         $admins = \App\Models\User::where('role', 'admin')->get();
@@ -184,7 +196,8 @@ class RestockRequestController extends Controller
         }
 
         // Dispatch Notification back to the requesting Staff member (avoid duplicates)
-        if ($restockRequest->requested_by) {
+        $staffUserId = $restockRequest->user_id ?? $restockRequest->requested_by;
+        if ($staffUserId) {
             $statusLabel = ucfirst($restockRequest->status);
             $productName = $restockRequest->product?->name ?? 'Product';
             $qty = $restockRequest->requested_quantity ?? $restockRequest->quantity_requested ?? 0;
@@ -194,7 +207,7 @@ class RestockRequestController extends Controller
                 : "Your stock request for {$productName} ({$qty} units) has been {$restockRequest->status} by Admin.";
 
             $notifType = $isNowApproved ? 'stock_request_confirmed' : 'stock_request_update';
-            $alreadyNotifiedStaff = \App\Models\Notification::where('user_id', $restockRequest->requested_by)
+            $alreadyNotifiedStaff = \App\Models\Notification::where('user_id', $staffUserId)
                 ->where('type', $notifType)
                 ->where('data->request_id', $restockRequest->id)
                 ->where('data->status', $restockRequest->status)
@@ -202,7 +215,7 @@ class RestockRequestController extends Controller
 
             if (!$alreadyNotifiedStaff) {
                 \App\Models\Notification::create([
-                    'user_id' => $restockRequest->requested_by,
+                    'user_id' => $staffUserId,
                     'title' => $notifTitle,
                     'message' => $notifMessage,
                     'type' => $notifType,
@@ -222,7 +235,7 @@ class RestockRequestController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Stock request updated and inventory stock adjusted accordingly.',
-            'data' => $restockRequest->fresh()->load('product', 'requester')
+            'data' => $restockRequest->fresh()->load('product', 'requester', 'user')
         ]);
     }
 

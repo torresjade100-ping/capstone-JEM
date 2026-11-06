@@ -171,6 +171,7 @@ CREATE TABLE restock_requests (
     request_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     product_id INT UNSIGNED NOT NULL,
     variant_id INT UNSIGNED NULL,
+    user_id INT UNSIGNED NULL,
     requested_by INT UNSIGNED NOT NULL,
     quantity_requested INT UNSIGNED NOT NULL,
     reason VARCHAR(255),
@@ -187,6 +188,9 @@ CREATE TABLE restock_requests (
     CONSTRAINT fk_restock_staff
         FOREIGN KEY (requested_by) REFERENCES staff_users(user_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_restock_user
+        FOREIGN KEY (user_id) REFERENCES staff_users(user_id)
+        ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_restock_status (status),
     INDEX idx_restock_product (product_id)
 ) ENGINE=InnoDB;

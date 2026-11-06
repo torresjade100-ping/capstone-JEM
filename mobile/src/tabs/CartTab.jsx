@@ -23,7 +23,6 @@ import { validateMobileCartStock } from '../api/mobileApi';
 const PAYMENT_OPTIONS = [
   { id: 'gcash', title: 'GCash E-Wallet', desc: 'Instant mobile checkout', icon: 'phone-portrait-outline', tint: '#0EA5E9', bg: '#F0F9FF' },
   { id: 'maya', title: 'Maya E-Wallet', desc: 'Secure QR & digital payment', icon: 'wallet-outline', tint: '#10B981', bg: '#ECFDF5' },
-  { id: 'bank_transfer', title: 'Bank Transfer', desc: 'BDO, BPI, UnionBank direct', icon: 'business-outline', tint: '#6366F1', bg: '#EEF2FF' },
   { id: 'cod', title: 'Cash on Delivery (COD)', desc: 'Pay driver upon site unloading', icon: 'cash-outline', tint: '#F97316', bg: '#FFF7ED' },
 ];
 
@@ -533,9 +532,7 @@ export default function CartTab({
             </View>
 
             {/* Reference input for digital payments */}
-            {(paymentMethod === 'gcash' ||
-              paymentMethod === 'maya' ||
-              paymentMethod === 'bank_transfer') && (
+            {(paymentMethod === 'gcash' || paymentMethod === 'maya') && (
               <View style={[s.refBox, SHADOWS.card]}>
                 <Text style={s.refLabel}>Payment Reference / Trace No. (Optional)</Text>
                 <TextInput

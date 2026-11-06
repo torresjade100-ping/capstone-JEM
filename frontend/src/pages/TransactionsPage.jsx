@@ -13,6 +13,7 @@ import {
   voidTransaction,
   getStoredUser
 } from '../api'
+import Pagination from '../components/Pagination'
 import '../styles/transactions.css'
 
 export default function TransactionsPage({ role = 'staff' }) {
@@ -27,7 +28,7 @@ export default function TransactionsPage({ role = 'staff' }) {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
-  const [perPage, setPerPage] = useState(100)
+  const [perPage, setPerPage] = useState(10)
 
   // Data & Loading state
   const [transactions, setTransactions] = useState([])
@@ -76,9 +77,9 @@ export default function TransactionsPage({ role = 'staff' }) {
   }
 
   // Fetch transactions from backend
-  const fetchTransactionsData = async (isManualRefresh = false) => {
+  const fetchTransactionsData = async (isManualRefresh = false, isBackground = false) => {
     if (isManualRefresh) setRefreshing(true)
-    else setLoading(true)
+    else if (!isBackground) setLoading(true)
 
     try {
       const response = await getTransactions({
@@ -106,17 +107,57 @@ export default function TransactionsPage({ role = 'staff' }) {
         }
       }
     } catch (err) {
-      console.error('Failed to load transactions:', err)
-      showToast(err.message || 'Failed to load transaction records', 'error')
+      if (!isBackground) {
+        console.error('Failed to load transactions:', err)
+        showToast(err.message || 'Failed to load transaction records', 'error')
+      }
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (isManualRefresh) setRefreshing(false)
+      else if (!isBackground) setLoading(false)
     }
   }
 
+  // Auto-reset page to 1 whenever filters or search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, searchTerm, selectedDate, orderSourceFilter, paymentMethodFilter, statusFilter])
+
   useEffect(() => {
     fetchTransactionsData()
-  }, [activeTab, selectedDate, orderSourceFilter, paymentMethodFilter, statusFilter, currentPage])
+  }, [activeTab, searchTerm, selectedDate, orderSourceFilter, paymentMethodFilter, statusFilter, currentPage, perPage])
+
+  // Real-time 1.5 - 2 second smooth polling for live POS and online transactions
+  useEffect(() => {
+    let isSubscribed = true
+    let isPolling = false
+
+    const pollTransactions = async () => {
+      if (isPolling || !isSubscribed) return
+      isPolling = true
+      try {
+        await fetchTransactionsData(false, true)
+      } finally {
+        if (isSubscribed) {
+          isPolling = false
+        }
+      }
+    }
+
+    const interval = setInterval(pollTransactions, 1800)
+
+    const handleSync = () => {
+      pollTransactions()
+    }
+    window.addEventListener('jem_orders_update', handleSync)
+    window.addEventListener('jem_notification_update', handleSync)
+
+    return () => {
+      isSubscribed = false
+      clearInterval(interval)
+      window.removeEventListener('jem_orders_update', handleSync)
+      window.removeEventListener('jem_notification_update', handleSync)
+    }
+  }, [activeTab, selectedDate, orderSourceFilter, paymentMethodFilter, statusFilter, currentPage, searchTerm])
 
   // Handle Deep Linking from Global Search
   useEffect(() => {
@@ -723,6 +764,22 @@ export default function TransactionsPage({ role = 'staff' }) {
             )
           })}
         </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!loading && pagination.total > 0 && (
+        <Pagination
+          className="standalone"
+          currentPage={currentPage}
+          totalItems={pagination.total}
+          rowsPerPage={perPage}
+          onPageChange={(page) => setCurrentPage(page)}
+          onPageSizeChange={(newSize) => {
+            setPerPage(newSize)
+            setCurrentPage(1)
+          }}
+          itemName="transactions"
+        />
       )}
 
       {/* ======================================================== */}

@@ -95,11 +95,17 @@ Route::prefix('auth')->group(function () use ($sendOtpHandler, $verifyOtpHandler
     // Standalone / Custom OTP endpoints
     Route::post('send-otp', $sendOtpHandler);
     Route::post('verify-otp-standalone', $verifyOtpHandler);
+
+    // Password Reset Flow
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 });
 
-// Root-level aliases for direct standalone OTP calls
+// Root-level endpoints for direct mobile & external client calls
 Route::post('send-otp', $sendOtpHandler);
-Route::post('verify-otp', $verifyOtpHandler);
+Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
+Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:15,1');
+Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::apiResource('users', App\Http\Controllers\Api\Admin\UserController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
@@ -107,6 +113,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 
     Route::patch('users/{user}/activate', [App\Http\Controllers\Api\Admin\UserController::class, 'activate']);
     Route::patch('users/{user}/role', [App\Http\Controllers\Api\Admin\UserController::class, 'changeRole']);
+    Route::post('products/batch', [App\Http\Controllers\Api\Admin\ProductController::class, 'batchStore']);
     Route::apiResource('products', App\Http\Controllers\Api\Admin\ProductController::class);
     Route::post('products/{product}/restore', [App\Http\Controllers\Api\Admin\ProductController::class, 'restore']);
     Route::post('products/{product}/activate', [App\Http\Controllers\Api\Admin\ProductController::class, 'activate']);
@@ -122,6 +129,49 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('brands/{brand}/deactivate', [App\Http\Controllers\Api\Admin\BrandController::class, 'deactivate']);
 
     Route::get('global-search', [App\Http\Controllers\Api\Admin\GlobalSearchController::class, 'search']);
+    Route::post('system/wipe-transactions-and-orders', function () {
+        \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
+
+        $tables = [
+            'refunds',
+            'voids',
+            'transaction_items',
+            'transactions',
+            'order_adjustments',
+            'backorders',
+            'deliveries',
+            'payment_transactions',
+            'payments',
+            'order_items',
+            'orders',
+            'sale_items',
+            'sales_transactions',
+            'cart_items',
+        ];
+
+        foreach ($tables as $table) {
+            if (\Illuminate\Support\Facades\Schema::hasTable($table)) {
+                \Illuminate\Support\Facades\DB::table($table)->truncate();
+            }
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('audit_logs')) {
+            \Illuminate\Support\Facades\DB::table('audit_logs')
+                ->whereNotNull('transaction_id')
+                ->orWhere('action', 'like', '%transaction%')
+                ->orWhere('action', 'like', '%order%')
+                ->orWhere('action', 'like', '%void%')
+                ->orWhere('action', 'like', '%refund%')
+                ->delete();
+        }
+
+        \Illuminate\Support\Facades\Schema::enableForeignKeyConstraints();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'All fake transactions, orders, and sales records have been wiped cleanly.'
+        ]);
+    });
 });
 
 Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(function () {
@@ -133,6 +183,27 @@ Route::middleware(['auth:sanctum', 'role:admin|staff'])->prefix('admin')->group(
     Route::post('inventory/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'store']);
     Route::get('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
     Route::post('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'store']);
+    Route::get('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'index']);
+    Route::get('stock-adjustments/product/{productId}', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'byProduct']);
+    Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
+});
+
+// Staff & Root aliases for Inventory and Stock Adjustments (Role: admin|staff)
+Route::middleware(['auth:sanctum', 'role:admin|staff'])->group(function () {
+    Route::prefix('staff')->group(function () {
+        Route::get('inventory', [App\Http\Controllers\Api\Admin\InventoryController::class, 'index']);
+        Route::get('inventory/low-stock', [App\Http\Controllers\Api\Admin\InventoryController::class, 'lowStock']);
+        Route::get('inventory/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
+        Route::get('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
+        Route::get('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'index']);
+        Route::get('stock-adjustments/product/{productId}', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'byProduct']);
+        Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
+    });
+
+    Route::get('inventory', [App\Http\Controllers\Api\Admin\InventoryController::class, 'index']);
+    Route::get('inventory/low-stock', [App\Http\Controllers\Api\Admin\InventoryController::class, 'lowStock']);
+    Route::get('inventory/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
+    Route::get('products/{product}/batches', [App\Http\Controllers\Api\Admin\InventoryBatchController::class, 'index']);
     Route::get('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'index']);
     Route::get('stock-adjustments/product/{productId}', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'byProduct']);
     Route::post('stock-adjustments', [App\Http\Controllers\Api\Admin\StockAdjustmentController::class, 'store']);
@@ -153,6 +224,30 @@ Route::middleware(['auth:sanctum', 'active', 'role:staff'])->group(function () {
 Route::middleware(['auth:sanctum', 'active', 'role:admin'])->group(function () {
     Route::put('restock-requests/{restockRequest}', [App\Http\Controllers\Api\RestockRequestController::class, 'update']);
     Route::put('stock-requests/{restockRequest}', [App\Http\Controllers\Api\RestockRequestController::class, 'update']);
+});
+
+// Loss, Damage, and Theft Records (Staff & Admin)
+Route::middleware(['auth:sanctum', 'active', 'role:admin|staff'])->group(function () {
+    Route::get('loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'index']);
+    Route::get('loss-damage-thefts/summary', [App\Http\Controllers\Api\LossDamageTheftController::class, 'summary']);
+    Route::get('loss-damage-thefts/{id}', [App\Http\Controllers\Api\LossDamageTheftController::class, 'show']);
+    Route::post('loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'store']);
+    Route::patch('loss-damage-thefts/{id}/status', [App\Http\Controllers\Api\LossDamageTheftController::class, 'updateStatus']);
+
+    // Admin & Staff aliases
+    Route::get('admin/loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'index']);
+    Route::get('admin/loss-damage-thefts/summary', [App\Http\Controllers\Api\LossDamageTheftController::class, 'summary']);
+    Route::post('admin/loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'store']);
+    Route::patch('admin/loss-damage-thefts/{id}/status', [App\Http\Controllers\Api\LossDamageTheftController::class, 'updateStatus']);
+    Route::get('staff/loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'index']);
+    Route::post('staff/loss-damage-thefts', [App\Http\Controllers\Api\LossDamageTheftController::class, 'store']);
+});
+
+Route::middleware(['auth:sanctum', 'active', 'role:admin'])->group(function () {
+    Route::put('loss-damage-thefts/{id}', [App\Http\Controllers\Api\LossDamageTheftController::class, 'update']);
+    Route::delete('loss-damage-thefts/{id}', [App\Http\Controllers\Api\LossDamageTheftController::class, 'destroy']);
+    Route::put('admin/loss-damage-thefts/{id}', [App\Http\Controllers\Api\LossDamageTheftController::class, 'update']);
+    Route::delete('admin/loss-damage-thefts/{id}', [App\Http\Controllers\Api\LossDamageTheftController::class, 'destroy']);
 });
 
 
@@ -300,7 +395,10 @@ Route::middleware(['auth:sanctum','active','role:admin|staff'])->group(function 
     Route::get('admin/reports/monthly', [App\Http\Controllers\Api\Admin\ReportController::class, 'monthly']);
     Route::get('admin/reports/yearly', [App\Http\Controllers\Api\Admin\ReportController::class, 'yearly']);
     Route::get('admin/reports/daily/csv', [App\Http\Controllers\Api\Admin\ReportController::class, 'exportDaily']);
+    Route::get('admin/reports/monthly/csv', [App\Http\Controllers\Api\Admin\ReportController::class, 'exportMonthly']);
+    Route::get('admin/reports/yearly/csv', [App\Http\Controllers\Api\Admin\ReportController::class, 'exportYearly']);
     Route::get('admin/reports/inventory/csv', [App\Http\Controllers\Api\Admin\ReportController::class, 'exportInventory']);
+    Route::get('admin/reports/profit-loss/csv', [App\Http\Controllers\Api\Admin\ReportController::class, 'exportProfitLoss']);
     Route::get('admin/reports/sales', [App\Http\Controllers\Api\Admin\ReportController::class, 'sales']);
     Route::get('admin/reports/product-sales', [App\Http\Controllers\Api\Admin\ReportController::class, 'productSales']);
     Route::get('admin/reports/inventory', [App\Http\Controllers\Api\Admin\ReportController::class, 'inventory']);

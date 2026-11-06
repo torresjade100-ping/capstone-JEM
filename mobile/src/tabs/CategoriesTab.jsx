@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader, SearchBar, EmptyState } from '../components/ui/Primitives';
@@ -26,6 +26,9 @@ export default function CategoriesTab({
   onRefresh = null,
   isOffline = false,
 }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
+
   const [activeCat, setActiveCat] = useState(selectedCategory || 'all');
   const [activeBrand, setActiveBrand] = useState('all');
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -152,7 +155,10 @@ export default function CategoriesTab({
       {/* 3. Scrollable content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scroll}
+        contentContainerStyle={[
+          s.scroll,
+          isTablet && { maxWidth: 1100, alignSelf: 'center', width: '100%', paddingHorizontal: 28 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           onRefresh ? (

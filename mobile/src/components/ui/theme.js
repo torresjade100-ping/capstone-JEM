@@ -136,6 +136,22 @@ const LOCAL_PRODUCT_IMAGES = {
   blue_coupling: require('../../../assets/products/blue-coupling-1-2.png'),
   blue_coupling_reducer: require('../../../assets/products/blue-coupling-reducer.png'),
   blue_elbow_plain: require('../../../assets/products/blue-elbow-plain-1-2.png'),
+  blue_elbow_threaded: require('../../../assets/products/blue-elbow-threaded-1-2.png'),
+  blue_female_adaptor: require('../../../assets/products/blue-female-adaptor-1-2.png'),
+  blue_female_plug: require('../../../assets/products/blue-female-plug-1-2.png'),
+  blue_male_adaptor: require('../../../assets/products/blue-male-adaptor-1-2.png'),
+  blue_male_plug: require('../../../assets/products/blue-male-plug-1-2.png'),
+  blue_tee_plain: require('../../../assets/products/blue-tee-plain-1-2.png'),
+  blue_tee_threaded: require('../../../assets/products/blue-tee-threaded-1-2.png'),
+  cup_hook_3_4: require('../../../assets/products/cup-hook-3-4.png'),
+  cup_hook_7_8: require('../../../assets/products/cup-hook-7-8.png'),
+  cup_hook_1: require('../../../assets/products/cup-hook-1.png'),
+  cup_hook_1_1_4: require('../../../assets/products/cup-hook-1-1-4.png'),
+  cup_hook_2: require('../../../assets/products/cup-hook-2.png'),
+  gi_nipple_10_s20: require('../../../assets/products/gi-nipple-1-2-x-10-s20.png'),
+  gi_nipple_10_s40: require('../../../assets/products/gi-nipple-1-2-x-10-s40.png'),
+  gi_nipple_12_s20: require('../../../assets/products/gi-nipple-1-2-x-12-s20.png'),
+  gi_nipple_12_s40: require('../../../assets/products/gi-nipple-1-2-x-12-s40.png'),
 };
 
 export const getProductImageSource = (product) => {
@@ -166,8 +182,56 @@ export const getProductImageSource = (product) => {
     if (img.includes('blue-coupling')) {
       return LOCAL_PRODUCT_IMAGES.blue_coupling;
     }
+    if (img.includes('blue-elbow-threaded') || img.includes('elbow-threaded')) {
+      return LOCAL_PRODUCT_IMAGES.blue_elbow_threaded;
+    }
     if (img.includes('blue-elbow')) {
       return LOCAL_PRODUCT_IMAGES.blue_elbow_plain;
+    }
+    if (img.includes('female-adaptor') || img.includes('female_adaptor')) {
+      return LOCAL_PRODUCT_IMAGES.blue_female_adaptor;
+    }
+    if (img.includes('female-plug') || img.includes('female_plug')) {
+      return LOCAL_PRODUCT_IMAGES.blue_female_plug;
+    }
+    if (img.includes('male-adaptor') || img.includes('male_adaptor')) {
+      return LOCAL_PRODUCT_IMAGES.blue_male_adaptor;
+    }
+    if (img.includes('male-plug') || img.includes('male_plug')) {
+      return LOCAL_PRODUCT_IMAGES.blue_male_plug;
+    }
+    if (img.includes('tee-threaded') || img.includes('tee_threaded')) {
+      return LOCAL_PRODUCT_IMAGES.blue_tee_threaded;
+    }
+    if (img.includes('tee-plain') || img.includes('tee_plain') || img.includes('blue-tee')) {
+      return LOCAL_PRODUCT_IMAGES.blue_tee_plain;
+    }
+    if (img.includes('cup-hook-3-4')) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_3_4;
+    }
+    if (img.includes('cup-hook-7-8') || img.includes('cup-hook-78')) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_7_8;
+    }
+    if (img.includes('cup-hook-1-1-4') || img.includes('cup-hook-1-14')) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_1_1_4;
+    }
+    if (img.includes('cup-hook-2')) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_2;
+    }
+    if (img.includes('cup-hook-1')) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_1;
+    }
+    if (img.includes('gi-nipple-1-2-x-10-s20') || img.includes('gi-nipple-10-s20')) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_10_s20;
+    }
+    if (img.includes('gi-nipple-1-2-x-10-s40') || img.includes('gi-nipple-10-s40')) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_10_s40;
+    }
+    if (img.includes('gi-nipple-1-2-x-12-s20') || img.includes('gi-nipple-12-s20')) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_12_s20;
+    }
+    if (img.includes('gi-nipple-1-2-x-12-s40') || img.includes('gi-nipple-12-s40')) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_12_s40;
     }
     if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) {
       return { uri: img };
@@ -178,7 +242,7 @@ export const getProductImageSource = (product) => {
     }
   }
 
-  // 4. Name or ID match for Aluminum Screen, Hardware Cloth, and Blue Fittings
+  // 4. Name or ID match for Aluminum Screen, Hardware Cloth, Blue Fittings, Cup Hooks, and GI Nipples
   const name = String(product.name || '').toLowerCase();
   if (name.includes('aluminum screen') || product.id === 16 || product.id === 17) {
     return LOCAL_PRODUCT_IMAGES.aluminum_screen;
@@ -186,14 +250,66 @@ export const getProductImageSource = (product) => {
   if (name.includes('hardware cloth') || name.includes('ayagan') || product.id === 19) {
     return LOCAL_PRODUCT_IMAGES.hardware_cloth;
   }
-  if (name.includes('coupling reducer') || product.id === 52 || product.id === 58) {
+  if (name.includes('coupling reducer') || product.id === 52) {
     return LOCAL_PRODUCT_IMAGES.blue_coupling_reducer;
   }
   if (name.includes('blue coupling') || product.id === 49 || product.id === 33) {
     return LOCAL_PRODUCT_IMAGES.blue_coupling;
   }
+  if (name.includes('elbow threaded') || product.id === 44 || product.id === 31) {
+    return LOCAL_PRODUCT_IMAGES.blue_elbow_threaded;
+  }
   if (name.includes('blue elbow') || product.id === 43 || product.id === 30 || product.id === 9) {
     return LOCAL_PRODUCT_IMAGES.blue_elbow_plain;
+  }
+  if (name.includes('female adaptor') || product.id === 47) {
+    return LOCAL_PRODUCT_IMAGES.blue_female_adaptor;
+  }
+  if (name.includes('female plug') || product.id === 50) {
+    return LOCAL_PRODUCT_IMAGES.blue_female_plug;
+  }
+  if (name.includes('male adaptor') || product.id === 48) {
+    return LOCAL_PRODUCT_IMAGES.blue_male_adaptor;
+  }
+  if (name.includes('male plug') || product.id === 51) {
+    return LOCAL_PRODUCT_IMAGES.blue_male_plug;
+  }
+  if (name.includes('tee threaded') || product.id === 46) {
+    return LOCAL_PRODUCT_IMAGES.blue_tee_threaded;
+  }
+  if (name.includes('tee plain') || name.includes('blue tee') || product.id === 45 || product.id === 32) {
+    return LOCAL_PRODUCT_IMAGES.blue_tee_plain;
+  }
+  if (name.includes('cup hook')) {
+    if (name.includes('3/4') || product.id === 84) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_3_4;
+    }
+    if (name.includes('7/8') || product.id === 85) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_7_8;
+    }
+    if (name.includes('1-1/4') || product.id === 87) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_1_1_4;
+    }
+    if (name.includes('2') || product.id === 88) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_2;
+    }
+    if (name.includes('1') || product.id === 86) {
+      return LOCAL_PRODUCT_IMAGES.cup_hook_1;
+    }
+  }
+  if (name.includes('gi nipple') || name.includes('g.i. nipple') || name.includes('nipple')) {
+    if ((name.includes('10') && (name.includes('s-20') || name.includes('s20'))) || product.id === 57) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_10_s20;
+    }
+    if ((name.includes('10') && (name.includes('s-40') || name.includes('s40'))) || product.id === 63) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_10_s40;
+    }
+    if ((name.includes('12') && (name.includes('s-20') || name.includes('s20'))) || product.id === 58) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_12_s20;
+    }
+    if ((name.includes('12') && (name.includes('s-40') || name.includes('s40'))) || product.id === 64) {
+      return LOCAL_PRODUCT_IMAGES.gi_nipple_12_s40;
+    }
   }
 
   return null;

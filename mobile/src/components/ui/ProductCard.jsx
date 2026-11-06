@@ -17,7 +17,8 @@ export default function ProductCard({ product, isWished, onPress, onToggleWish, 
   const numColumns = isDesktop ? 4 : isTablet ? 3 : 2;
   const containerPadding = isTablet ? 24 * 2 : 16 * 2;
   const gap = isTablet ? 16 : 12;
-  const computedWidth = cardWidth || Math.floor((windowWidth - containerPadding - gap * (numColumns - 1)) / numColumns);
+  const effectiveWidth = Math.min(windowWidth, 1100);
+  const computedWidth = cardWidth || Math.floor((effectiveWidth - containerPadding - gap * (numColumns - 1)) / numColumns);
 
   const stock = Number(product.stock_quantity || 0);
   const isOut = stock === 0;

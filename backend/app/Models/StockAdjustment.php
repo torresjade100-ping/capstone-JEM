@@ -25,6 +25,13 @@ class StockAdjustment extends Model
         'notes',
     ];
 
+    protected $appends = ['quantity_change'];
+
+    public function getQuantityChangeAttribute()
+    {
+        return $this->attributes['quantity_changed'] ?? null;
+    }
+
     public function product()
     {
         return $this->belongsTo(Product::class);

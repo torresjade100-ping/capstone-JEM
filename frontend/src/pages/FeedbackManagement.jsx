@@ -14,9 +14,9 @@ export default function FeedbackManagement() {
   const [successMessage, setSuccessMessage] = useState('')
   const token = localStorage.getItem('jem_api_token')
 
-  const load = async () => {
+  const load = async (isBackground = false) => {
     try {
-      setError('')
+      if (!isBackground) setError('')
       const payload = await getAdminFeedback()
       const list = Array.isArray(payload)
         ? payload
@@ -45,25 +45,40 @@ export default function FeedbackManagement() {
       setFeedback(localFeedbacks)
 
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    let isSubscribed = true
+    let isPolling = false
 
-    // 3-second live polling for new customer reviews from mobile
-    const timer = setInterval(() => {
-      load()
-    }, 3000)
+    setLoading(true)
+    load(false)
 
-    const handleEvent = () => load()
+    // 1.8-second smooth live polling with in-flight lock for customer reviews
+    const timer = setInterval(async () => {
+      if (!isSubscribed || isPolling) return
+      isPolling = true
+      try {
+        await load(true)
+      } finally {
+        isPolling = false
+      }
+    }, 1800)
+
+    const handleEvent = () => {
+      if (!isPolling) {
+        load(true)
+      }
+    }
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('jem_notification_update', handleEvent)
       window.addEventListener('jem_orders_update', handleEvent)
     }
 
     return () => {
+      isSubscribed = false
       clearInterval(timer)
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('jem_notification_update', handleEvent)

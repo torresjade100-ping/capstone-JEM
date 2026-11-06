@@ -61,7 +61,7 @@ Artisan::command('users:test-auth', function () {
     // Test Admin Login
     $adminReq = \Illuminate\Http\Request::create('/api/auth/login', 'POST', [
         'email' => 'admin',
-        'password' => 'admin123'
+        'password' => 'admin123',
     ]);
     $adminRes = $authController->login($adminReq);
     $adminData = json_decode($adminRes->getContent(), true);
@@ -76,5 +76,66 @@ Artisan::command('users:test-auth', function () {
     $staffData = json_decode($staffRes->getContent(), true);
     $this->info("Staff Login Result: Status {$staffRes->getStatusCode()} - " . ($staffData['success'] ? 'SUCCESS' : 'FAILED: ' . ($staffData['message'] ?? '')));
 })->purpose('Test admin and staff login authentication');
+
+Artisan::command('data:wipe-transactions-and-orders', function () {
+    $this->warn('Wiping all transaction, order, sales, payment, and audit records...');
+
+    \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
+
+    $tables = [
+        'refunds',
+        'voids',
+        'transaction_items',
+        'transactions',
+        'order_adjustments',
+        'backorders',
+        'deliveries',
+        'payment_transactions',
+        'payments',
+        'order_items',
+        'orders',
+        'sale_items',
+        'sales_transactions',
+        'cart_items',
+    ];
+
+    foreach ($tables as $table) {
+        if (\Illuminate\Support\Facades\Schema::hasTable($table)) {
+            \Illuminate\Support\Facades\DB::table($table)->truncate();
+            $this->info("Truncated: {$table}");
+        }
+    }
+
+    if (\Illuminate\Support\Facades\Schema::hasTable('audit_logs')) {
+        \Illuminate\Support\Facades\DB::table('audit_logs')
+            ->whereNotNull('transaction_id')
+            ->orWhere('action', 'like', '%transaction%')
+            ->orWhere('action', 'like', '%order%')
+            ->orWhere('action', 'like', '%void%')
+            ->orWhere('action', 'like', '%refund%')
+            ->delete();
+        $this->info("Cleaned transaction audit logs from: audit_logs");
+    }
+
+    \Illuminate\Support\Facades\Schema::enableForeignKeyConstraints();
+
+    $this->info('Successfully wiped all transaction and order records. Ready for clean production use.');
+})->purpose('Wipe all fake transactions, orders, and sales records while preserving products, categories, suppliers, and users');
+
+Artisan::command('data:status', function () {
+    $this->info("=== JEM System Database Counts ===");
+    $this->line("Users: " . \App\Models\User::count());
+    $this->line("Categories: " . \App\Models\Category::count());
+    $this->line("Products: " . \App\Models\Product::count());
+    $this->line("Suppliers: " . (\Illuminate\Support\Facades\Schema::hasTable('suppliers') ? \App\Models\Supplier::count() : 0));
+    $this->line("Orders: " . (\Illuminate\Support\Facades\Schema::hasTable('orders') ? \App\Models\Order::count() : 0));
+    $this->line("Transactions: " . (\Illuminate\Support\Facades\Schema::hasTable('transactions') ? \App\Models\Transaction::count() : 0));
+    $this->line("Sales Transactions: " . (\Illuminate\Support\Facades\Schema::hasTable('sales_transactions') ? \Illuminate\Support\Facades\DB::table('sales_transactions')->count() : 0));
+    $this->line("Backorders: " . (\Illuminate\Support\Facades\Schema::hasTable('backorders') ? \Illuminate\Support\Facades\DB::table('backorders')->count() : 0));
+    $this->line("Refunds: " . (\Illuminate\Support\Facades\Schema::hasTable('refunds') ? \Illuminate\Support\Facades\DB::table('refunds')->count() : 0));
+    $this->line("Voids: " . (\Illuminate\Support\Facades\Schema::hasTable('voids') ? \Illuminate\Support\Facades\DB::table('voids')->count() : 0));
+})->purpose('Show system record counts');
+
+
 
 

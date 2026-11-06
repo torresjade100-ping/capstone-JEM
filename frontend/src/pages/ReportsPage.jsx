@@ -5,7 +5,7 @@ import { exportReportToPDF, exportReportToCSV } from '../utils/exportReports'
 import { formatQuantityWithUnit, getUnitBadgeText } from '../utils/uom'
 import '../styles/management.css'
 
-export default function ReportsPage() {
+export default function ReportsPage({ user: propUser }) {
   const getInitialReportType = () => {
     try {
       const params = new URLSearchParams(window.location.search)
@@ -223,7 +223,7 @@ export default function ReportsPage() {
       alert('Please wait for report data to load before exporting.')
       return
     }
-    exportReportToPDF(reportType, reportData, { selectedDate, selectedMonth, selectedYear })
+    exportReportToPDF(reportType, reportData, { selectedDate, selectedMonth, selectedYear, user: propUser })
   }
 
   const handleExportCSV = () => {
@@ -231,7 +231,7 @@ export default function ReportsPage() {
       alert('Please wait for report data to load before exporting.')
       return
     }
-    exportReportToCSV(reportType, reportData, { selectedDate, selectedMonth, selectedYear })
+    exportReportToCSV(reportType, reportData, { selectedDate, selectedMonth, selectedYear, user: propUser })
   }
 
   const renderDailyReport = () => {

@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Sparkles, RotateCcw
 } from 'lucide-react'
 import Swal from 'sweetalert2'
-import { API_BASE_URL, getBrands, getCategories, getAdminCategories, createCategory, getSuppliers, getProductBatches, createProductBatch } from '../api'
+import { API_BASE_URL, getBrands, getCategories, getAdminCategories, createCategory, getSuppliers, getProductBatches, createProductBatch, createProductsBatch } from '../api'
 import {
   STANDARD_UOM_OPTIONS,
   formatQuantityWithUnit,
@@ -13,183 +13,12 @@ import {
   getQuantityInputLabel,
   getQuantityPlaceholder,
 } from '../utils/uom'
+import Pagination from '../components/Pagination'
 import '../styles/dashboard.css'
 import '../styles/management.css'
 
 const UNIT_OPTIONS = STANDARD_UOM_OPTIONS
 
-function BatchCategoryDropdown({
-  value,
-  categories,
-  onChange,
-  hasError,
-  isOpen,
-  onToggle,
-  onClose
-}) {
-  const dropdownRef = useRef(null)
-  const activeCategories = useMemo(() => categories.filter((c) => c.status === 'active' || c.status === undefined), [categories])
-  const selectedCat = categories.find((c) => String(c.id) === String(value))
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        onClose()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [isOpen, onClose])
-
-  return (
-    <div
-      ref={dropdownRef}
-      style={{
-        position: 'relative',
-        width: '100%',
-        userSelect: 'none'
-      }}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onToggle()
-          } else if (e.key === 'Escape') {
-            onClose()
-          }
-        }}
-        className="form-input"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '6px 8px',
-          fontSize: '12.5px',
-          minHeight: '34px',
-          height: '34px',
-          cursor: 'pointer',
-          borderRadius: '8px',
-          background: 'var(--input-bg)',
-          color: selectedCat ? 'var(--text-primary)' : 'var(--text-muted)',
-          borderColor: hasError ? '#ef4444' : isOpen ? '#ea580c' : 'var(--border-color)',
-          boxShadow: isOpen ? '0 0 0 2px rgba(234, 88, 12, 0.15)' : 'none',
-          boxSizing: 'border-box',
-          lineHeight: 'normal'
-        }}
-      >
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            marginRight: '4px',
-            fontWeight: selectedCat ? '600' : '400'
-          }}
-        >
-          {selectedCat ? selectedCat.name : 'Category'}
-        </span>
-        <ChevronDown
-          size={14}
-          style={{
-            color: 'var(--text-secondary)',
-            transform: isOpen ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.2s ease',
-            flexShrink: 0
-          }}
-        />
-      </div>
-
-      {isOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            width: '100%',
-            minWidth: '180px',
-            maxHeight: '200px',
-            overflowY: 'auto',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
-            zIndex: 9999,
-            padding: '4px',
-            boxSizing: 'border-box'
-          }}
-        >
-          <div
-            onClick={() => {
-              onChange('')
-              onClose()
-            }}
-            style={{
-              padding: '7px 10px',
-              fontSize: '12px',
-              color: !value ? '#ea580c' : 'var(--text-muted)',
-              background: !value ? 'rgba(234, 88, 12, 0.1)' : 'transparent',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              fontWeight: !value ? '700' : '400',
-              marginBottom: '2px'
-            }}
-            onMouseEnter={(e) => {
-              if (value) e.currentTarget.style.background = 'var(--bg-hover)'
-            }}
-            onMouseLeave={(e) => {
-              if (value) e.currentTarget.style.background = 'transparent'
-            }}
-          >
-            Category
-          </div>
-
-          {activeCategories.map((c) => {
-            const isSelected = String(c.id) === String(value)
-            return (
-              <div
-                key={c.id}
-                onClick={() => {
-                  onChange(String(c.id))
-                  onClose()
-                }}
-                style={{
-                  padding: '7px 10px',
-                  fontSize: '12px',
-                  color: isSelected ? '#ea580c' : 'var(--text-primary)',
-                  background: isSelected ? 'rgba(234, 88, 12, 0.12)' : 'transparent',
-                  borderRadius: '5px',
-                  cursor: 'pointer',
-                  fontWeight: isSelected ? '700' : '500',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '2px',
-                  transition: 'background 0.15s ease'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = 'transparent'
-                }}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.name}
-                </span>
-                {isSelected && <Check size={13} color="#ea580c" style={{ flexShrink: 0, marginLeft: '6px' }} />}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([])
@@ -200,6 +29,8 @@ export default function ProductManagement() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ category_id: '', brand_id: '', supplier_id: '', status: 'active' })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
   const [unitDropdownOpen, setUnitDropdownOpen] = useState(false)
   const unitDropdownRef = useRef(null)
 
@@ -243,20 +74,24 @@ export default function ProductManagement() {
   const [selectedExistingProduct, setSelectedExistingProduct] = useState(null)
   const [showProductSearchResults, setShowProductSearchResults] = useState(false)
 
-  // Multiple Products (Batch Add) State
+  // Multiple Products (Batch Add) State - Single Category for whole batch
+  const [batchCategoryId, setBatchCategoryId] = useState('')
+  const [batchCategoryError, setBatchCategoryError] = useState('')
+  const [batchSubmitting, setBatchSubmitting] = useState(false)
   const [batchRows, setBatchRows] = useState([
-    { id: 1, name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' },
-    { id: 2, name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' }
+    { id: 1, name: '', base_price: '', stock_quantity: '', unit: 'piece' },
+    { id: 2, name: '', base_price: '', stock_quantity: '', unit: 'piece' },
+    { id: 3, name: '', base_price: '', stock_quantity: '', unit: 'piece' }
   ])
   const [batchErrors, setBatchErrors] = useState({})
-  const [openBatchCategoryRowId, setOpenBatchCategoryRowId] = useState(null)
 
   // Quick Add Category Modal state
   const [showQuickAddCat, setShowQuickAddCat] = useState(false)
   const [quickCatName, setQuickCatName] = useState('')
   const [quickCatSaving, setQuickCatSaving] = useState(false)
 
-  const token = localStorage.getItem('jem_api_token')
+  const getAuthToken = () => localStorage.getItem('jem_api_token') || sessionStorage.getItem('jem_api_token') || ''
+  const token = getAuthToken()
 
   useEffect(() => {
     try {
@@ -309,6 +144,21 @@ export default function ProductManagement() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [unitDropdownOpen])
+
+  // Handle ESC key to exit full-screen modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showBatchModal && !batchSubmitting) {
+          setShowBatchModal(false)
+        } else if (showForm && !submitting) {
+          setShowForm(false)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showBatchModal, batchSubmitting, showForm, submitting])
 
   const handleQuickCreateCategory = async (e) => {
     if (e) e.preventDefault()
@@ -388,6 +238,7 @@ export default function ProductManagement() {
     setLoading(true)
     setError('')
     try {
+      const activeToken = localStorage.getItem('jem_api_token') || sessionStorage.getItem('jem_api_token')
       const params = new URLSearchParams()
       params.append('per_page', '500')
       if (filters.category_id) params.append('category_id', filters.category_id)
@@ -395,14 +246,28 @@ export default function ProductManagement() {
       if (filters.status) params.append('status', filters.status)
       if (search) params.append('search', search)
 
-      const res = await fetch(`${API_BASE_URL}/admin/products?${params.toString()}`, {
-        headers: { 
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-      })
+      let res = null
+      try {
+        res = await fetch(`${API_BASE_URL}/admin/products?${params.toString()}`, {
+          headers: { 
+            Accept: 'application/json',
+            ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
+          },
+        })
+      } catch (adminErr) {
+        // Network or CORS error on admin endpoint
+        res = null
+      }
+
+      // If admin endpoint fails or is unauthorized (401/403/404), fall back to public /products endpoint
+      if (!res || !res.ok) {
+        res = await fetch(`${API_BASE_URL}/products?${params.toString()}`, {
+          headers: { Accept: 'application/json' }
+        })
+      }
+
       const data = await res.json()
-      if (data.success) {
+      if (data.success || data.data) {
         const list = Array.isArray(data.data) ? data.data : data.data?.data || []
         // Ensure category object is populated if missing
         const mapped = list.map(item => {
@@ -447,16 +312,27 @@ export default function ProductManagement() {
     })
   }, [products, search, filters, categories])
 
-  // Matching products for existing product search in modal
+  // Auto-reset page to 1 whenever search query or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, filters])
+
+  // Paginated slice for current page
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage
+    return filteredProducts.slice(start, start + rowsPerPage)
+  }, [filteredProducts, currentPage, rowsPerPage])
+
+  // Matching products for existing product search in modal (expanded for full-screen mode)
   const matchingExistingProducts = useMemo(() => {
     const q = existingProductSearch.trim().toLowerCase()
-    if (!q) return products.slice(0, 20)
+    if (!q) return products.slice(0, 100)
     return products.filter(p =>
       (p.name && p.name.toLowerCase().includes(q)) ||
       (p.category?.name && p.category.name.toLowerCase().includes(q)) ||
       (p.brand?.name && p.brand.name.toLowerCase().includes(q)) ||
       (p.sku && p.sku.toLowerCase().includes(q))
-    ).slice(0, 20)
+    ).slice(0, 100)
   }, [products, existingProductSearch])
 
   // Real-time duplicate detection when typing a product name in 'new' mode
@@ -606,7 +482,7 @@ export default function ProductManagement() {
               headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
+                Authorization: `Bearer ${getAuthToken() || token}`
               },
               body: JSON.stringify({
                 low_stock_threshold: parseInt(formData.low_stock_threshold, 10),
@@ -699,7 +575,7 @@ export default function ProductManagement() {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${getAuthToken() || token}`,
         },
         body: JSON.stringify(payload),
       })
@@ -821,7 +697,7 @@ export default function ProductManagement() {
       try {
         await fetch(`${API_BASE_URL}/admin/products/${product.id}/deactivate`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${getAuthToken() || token}` },
         })
       } catch (e) {}
 
@@ -886,35 +762,120 @@ export default function ProductManagement() {
     }
   }
 
-  // Batch / Multiple Products Add Handlers
+  // Batch / Multiple Products Add Handlers (Single Category Mode)
+  const handleOpenBatchModal = () => {
+    if (filters.category_id && !batchCategoryId) {
+      setBatchCategoryId(String(filters.category_id))
+    }
+    setBatchCategoryError('')
+    setBatchErrors({})
+    setShowBatchModal(true)
+  }
+
   const handleAddBatchRow = () => {
     setBatchRows(prev => [
       ...prev,
-      { id: Date.now(), name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' }
+      { id: Date.now() + Math.random(), name: '', base_price: '', stock_quantity: '', unit: 'piece' }
     ])
   }
 
   const handleRemoveBatchRow = (id) => {
-    if (batchRows.length <= 1) return
-    if (openBatchCategoryRowId === id) setOpenBatchCategoryRowId(null)
+    if (batchRows.length <= 1) {
+      setBatchRows([{ id: Date.now(), name: '', base_price: '', stock_quantity: '', unit: 'piece' }])
+      setBatchErrors({})
+      return
+    }
     setBatchRows(prev => prev.filter(r => r.id !== id))
+    setBatchErrors(prev => {
+      const copy = { ...prev }
+      delete copy[id]
+      return copy
+    })
   }
 
   const handleUpdateBatchField = (id, field, value) => {
     setBatchRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+    if (batchErrors[id]?.[field]) {
+      setBatchErrors(prev => {
+        const rowErr = { ...(prev[id] || {}) }
+        delete rowErr[field]
+        return { ...prev, [id]: rowErr }
+      })
+    }
+  }
+
+  const handleResetBatchForm = () => {
+    setBatchCategoryId('')
+    setBatchCategoryError('')
+    setBatchErrors({})
+    setBatchRows([
+      { id: 1, name: '', base_price: '', stock_quantity: '', unit: 'piece' },
+      { id: 2, name: '', base_price: '', stock_quantity: '', unit: 'piece' },
+      { id: 3, name: '', base_price: '', stock_quantity: '', unit: 'piece' }
+    ])
   }
 
   const handleBatchSubmit = async (e) => {
     e.preventDefault()
+
+    // 1. Validate Category selection
+    if (!batchCategoryId) {
+      setBatchCategoryError('Please select a category for this batch.')
+      Swal.fire({
+        icon: 'warning',
+        title: 'Category Required',
+        text: 'Please select a category first. All products in this batch will be saved under the selected category.',
+        confirmButtonColor: '#f97316'
+      })
+      const catEl = document.getElementById('batch-category-select')
+      if (catEl) catEl.focus()
+      return
+    }
+    setBatchCategoryError('')
+
+    // 2. Validate at least one row
+    if (!batchRows || batchRows.length === 0) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'No Products Added',
+        text: 'Please add at least one product row to proceed.',
+        confirmButtonColor: '#f97316'
+      })
+      return
+    }
+
+    // 3. Row-by-row validation
     const errors = {}
     let hasError = false
+    const seenNames = new Set()
 
     batchRows.forEach((row, idx) => {
       const rowErr = {}
-      if (!row.name.trim()) rowErr.name = 'Required'
-      if (!row.base_price || Number(row.base_price) <= 0) rowErr.base_price = 'Invalid'
-      if (!row.category_id) rowErr.category_id = 'Select Cat'
-      if (row.stock_quantity === '' || Number(row.stock_quantity) < 0) rowErr.stock_quantity = 'Invalid'
+      const trimmedName = (row.name || '').trim()
+      const parsedPrice = parseFloat(row.base_price)
+
+      if (!trimmedName) {
+        rowErr.name = 'Product name is required'
+      } else {
+        const lowerName = trimmedName.toLowerCase()
+        if (seenNames.has(lowerName)) {
+          rowErr.name = 'Duplicate product name in this batch'
+        } else {
+          seenNames.add(lowerName)
+        }
+      }
+
+      if (row.base_price === '' || row.base_price === null || row.base_price === undefined || isNaN(parsedPrice) || parsedPrice <= 0) {
+        rowErr.base_price = 'Price must be greater than ₱0'
+      }
+
+      if (row.stock_quantity !== '' && row.stock_quantity !== null && row.stock_quantity !== undefined) {
+        const qty = parseInt(row.stock_quantity, 10)
+        if (isNaN(qty) || qty < 0) {
+          rowErr.stock_quantity = 'Stock cannot be negative'
+        }
+      }
+
       if (Object.keys(rowErr).length > 0) {
         errors[row.id] = rowErr
         hasError = true
@@ -925,51 +886,68 @@ export default function ProductManagement() {
       setBatchErrors(errors)
       Swal.fire({
         icon: 'error',
-        title: 'Batch Form Incomplete',
-        text: 'Please correct highlighted errors in the rows before submitting.',
+        title: 'Incomplete Batch Entries',
+        text: 'Please check the highlighted fields. Every product must have a valid product name and price greater than 0.',
         confirmButtonColor: '#f97316'
       })
       return
     }
 
-    // Process Batch Creation
-    const newItems = batchRows.map(r => {
-      const cat = categories.find(c => String(c.id) === String(r.category_id))
-      const sup = suppliers.find(s => String(s.id) === String(r.supplier_id))
-      return {
-        id: Date.now() + Math.random(),
-        name: r.name.trim(),
-        base_price: parseFloat(r.base_price) || 0,
-        category_id: Number(r.category_id),
-        category: cat,
-        supplier_id: Number(r.supplier_id) || null,
-        supplier_name: sup?.name || '',
-        unit: r.unit || 'piece',
-        stock_quantity: parseInt(r.stock_quantity, 10) || 0,
-        low_stock_threshold: parseInt(r.low_stock_threshold, 10) || 10,
-        status: 'active',
-        description: 'Batch imported hardware item'
-      }
-    })
-
-    setProducts(prev => [...prev, ...newItems].sort((a, b) => a.name.localeCompare(b.name)))
-    window.dispatchEvent(new CustomEvent('jem_inventory_update'))
-
-    Swal.fire({
-      icon: 'success',
-      title: 'Batch Import Complete! 📦',
-      text: `Successfully added ${newItems.length} products to inventory.`,
-      confirmButtonColor: '#f97316',
-      timer: 2500,
-      showConfirmButton: false
-    })
-
-    setShowBatchModal(false)
-    setBatchRows([
-      { id: 1, name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' },
-      { id: 2, name: '', base_price: '', category_id: '', supplier_id: '', unit: 'piece', stock_quantity: '', low_stock_threshold: '10' }
-    ])
     setBatchErrors({})
+    setBatchSubmitting(true)
+
+    try {
+      const selectedCategory = categories.find(c => String(c.id) === String(batchCategoryId))
+      const payload = {
+        category_id: Number(batchCategoryId),
+        products: batchRows.map(r => {
+          const selling = parseFloat(r.base_price)
+          const cost = Math.round(selling * 0.70 * 100) / 100
+          const stock = r.stock_quantity !== '' ? parseInt(r.stock_quantity, 10) : 0
+          return {
+            name: r.name.trim(),
+            base_price: selling,
+            selling_price: selling,
+            cost_price: cost,
+            stock_quantity: stock,
+            low_stock_threshold: 10,
+            unit: r.unit || 'piece',
+            status: 'active',
+            description: `Batch product added under ${selectedCategory?.name || 'category'}`
+          }
+        })
+      }
+
+      const res = await createProductsBatch(payload)
+
+      if (res && res.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'All Products Saved! 📦',
+          text: res.message || `Successfully added ${batchRows.length} products under "${selectedCategory?.name || 'Category'}".`,
+          confirmButtonColor: '#f97316',
+          timer: 2600,
+          showConfirmButton: false
+        })
+
+        setShowBatchModal(false)
+        handleResetBatchForm()
+        fetchProducts()
+        window.dispatchEvent(new CustomEvent('jem_inventory_update'))
+      } else {
+        throw new Error(res?.message || 'Failed to save batch products.')
+      }
+    } catch (err) {
+      console.error('Batch save error:', err)
+      Swal.fire({
+        icon: 'error',
+        title: 'Batch Save Failed',
+        text: err.message || 'Could not save products to database. Please check for duplicate names or invalid values.',
+        confirmButtonColor: '#f97316'
+      })
+    } finally {
+      setBatchSubmitting(false)
+    }
   }
 
   return (
@@ -989,7 +967,7 @@ export default function ProductManagement() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => setShowBatchModal(true)}
+            onClick={handleOpenBatchModal}
             style={{ padding: '10px 16px', fontSize: '13.5px', background: '#334155' }}
           >
             <Layers size={16} /> + Add Multiple Products
@@ -1077,6 +1055,7 @@ export default function ProductManagement() {
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Try changing search terms or filters.</p>
           </div>
         ) : (
+          <>
           <div className="table-wrap">
             <table className="management-table">
               <thead>
@@ -1091,7 +1070,7 @@ export default function ProductManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   const isLow = Number(product.stock_quantity || 0) <= Number(product.low_stock_threshold || 10) && Number(product.stock_quantity || 0) > 0
                   const isOut = Number(product.stock_quantity || 0) === 0
                   const cost = Number(product.cost_price ?? (product.base_price * 0.7) ?? 0)
@@ -1123,7 +1102,7 @@ export default function ProductManagement() {
                       </td>
                       <td>
                         <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                          {product.supplier_name || (suppliers.find(s => s.id === product.supplier_id)?.name) || 'Metro Hardware Distributors'}
+                          {product.supplier_name || (suppliers.find(s => s.id === product.supplier_id)?.name) || 'Direct Inventory'}
                         </span>
                       </td>
                       <td>
@@ -1227,91 +1206,162 @@ export default function ProductManagement() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredProducts.length}
+            rowsPerPage={rowsPerPage}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setRowsPerPage(newSize)
+              setCurrentPage(1)
+            }}
+            itemName="products"
+          />
+          </>
         )}
       </div>
 
       {/* =========================================================================
           MODAL 1: ADD / EDIT PRODUCT (SKU Removed, Validated, Supplier Integrated)
           ========================================================================= */}
+      {/* =========================================================================
+          MODAL 1: ADD / EDIT PRODUCT (FULL-SCREEN MODE)
+          ========================================================================= */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div
+          className="supply-fullscreen-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100dvh',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            margin: 0,
+            padding: 0,
+            zIndex: 2500,
+            background: 'var(--bg-app, #020617)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+          onClick={() => !submitting && setShowForm(false)}
+        >
           <div
-            className="modal-content"
+            className="supply-fullscreen-modal"
             style={{
-              maxWidth: '740px',
-              width: '95%',
-              maxHeight: '88vh',
-              borderRadius: '16px',
+              width: '100vw',
+              height: '100dvh',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              borderRadius: 0,
+              border: 'none',
+              margin: 0,
               padding: 0,
+              background: 'var(--bg-surface, #0b132b)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              boxShadow: '0 25px 65px rgba(0, 0, 0, 0.35)',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)'
+              boxShadow: 'none'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 1. STICKY MODAL HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 22px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)', flexShrink: 0 }}>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                  {editingProduct
-                    ? 'Edit Product Details'
-                    : selectedExistingProduct
-                      ? 'Restock Existing Hardware Supply'
-                      : 'Add Hardware Supply'}
-                </h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
-                  {editingProduct
-                    ? 'Update catalog specifications, pricing, and stock limits'
-                    : selectedExistingProduct
-                      ? `Receiving incoming stock batch for "${selectedExistingProduct.name}"`
-                      : 'Check if product already exists to restock, or register a new product'}
-                </p>
+            {/* 1. FIXED TOP HEADER */}
+            <div className="supply-fullscreen-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'rgba(249, 115, 22, 0.15)',
+                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#f97316',
+                  flexShrink: 0
+                }}>
+                  {editingProduct ? <Edit2 size={22} /> : selectedExistingProduct ? <Package size={22} /> : <Plus size={22} />}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                      {editingProduct
+                        ? 'Edit Product Details'
+                        : selectedExistingProduct
+                          ? 'Restock Existing Hardware Supply'
+                          : 'Add Hardware Supply'}
+                    </h2>
+                    <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.3)', fontSize: '11px', fontWeight: '700' }}>
+                      Full Screen Mode
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                    {editingProduct
+                      ? 'Update catalog specifications, unit pricing, manufacturer brand, and stock reorder limits'
+                      : selectedExistingProduct
+                        ? `Receiving incoming stock batch for "${selectedExistingProduct.name}"`
+                        : 'Search existing catalog items to restock or register a brand new hardware item'}
+                  </p>
+                </div>
               </div>
+
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}
+                onClick={() => !submitting && setShowForm(false)}
+                disabled={submitting}
+                style={{
+                  background: 'var(--bg-hover)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12.5px',
+                  fontWeight: '600',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Close (Esc)"
               >
-                <X size={19} />
+                <span>Close</span>
+                <X size={18} />
               </button>
             </div>
 
             {/* 2. MODE SWITCHER TABS (Only when adding, not editing) */}
             {!editingProduct && (
-              <div style={{ padding: '12px 22px 0', background: 'var(--bg-surface)', flexShrink: 0 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--bg-hover)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+              <div className="supply-fullscreen-tabs">
+                <div className="supply-tabs-container">
                   <button
                     type="button"
+                    className={`supply-tab-btn ${addMode === 'existing' ? 'active' : ''}`}
                     onClick={() => {
                       setAddMode('existing')
                       setFormErrors({})
                     }}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: addMode === 'existing' ? '1px solid var(--border-color)' : '1px solid transparent',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      background: addMode === 'existing' ? 'var(--bg-surface)' : 'transparent',
-                      color: addMode === 'existing' ? '#f97316' : 'var(--text-secondary)',
-                      boxShadow: addMode === 'existing' ? '0 2px 6px rgba(0,0,0,0.15)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
                   >
-                    <Search size={14} />
+                    <Search size={16} />
                     <span>Select &amp; Restock Existing</span>
+                    <span className="badge" style={{
+                      background: addMode === 'existing' ? 'rgba(249, 115, 22, 0.2)' : 'var(--bg-surface)',
+                      color: addMode === 'existing' ? '#f97316' : 'var(--text-muted)',
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '10px'
+                    }}>
+                      {products.length} in Catalog
+                    </span>
                   </button>
                   <button
                     type="button"
+                    className={`supply-tab-btn ${addMode === 'new' ? 'active' : ''}`}
                     onClick={() => {
                       setAddMode('new')
                       setSelectedExistingProduct(null)
@@ -1325,24 +1375,8 @@ export default function ProductManagement() {
                       }))
                       setFormErrors({})
                     }}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: addMode === 'new' ? '1px solid var(--border-color)' : '1px solid transparent',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      background: addMode === 'new' ? 'var(--bg-surface)' : 'transparent',
-                      color: addMode === 'new' ? '#f97316' : 'var(--text-secondary)',
-                      boxShadow: addMode === 'new' ? '0 2px 6px rgba(0,0,0,0.15)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
                   >
-                    <Plus size={14} />
+                    <Plus size={16} />
                     <span>Register Brand New Product</span>
                   </button>
                 </div>
@@ -1354,94 +1388,106 @@ export default function ProductManagement() {
               id="add-supply-form"
               onSubmit={handleSubmit}
               noValidate
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-                padding: '16px 22px 20px',
-                overflowY: 'auto',
-                flex: 1
-              }}
+              className="supply-fullscreen-form"
             >
-              {/* FLOW A: RESTOCK EXISTING PRODUCT (Pre-checked or Selected) */}
+              {/* =========================================================================
+                  FLOW A: RESTOCK EXISTING PRODUCT
+                  ========================================================================= */}
               {!editingProduct && addMode === 'existing' && (
                 <>
                   {!selectedExistingProduct ? (
-                    <div className="form-group" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
-                        <span>Search &amp; Select Existing Hardware Product <span style={{ color: '#ef4444' }}>*</span></span>
-                        <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700' }}>
-                          {matchingExistingProducts.length} in catalog
-                        </span>
-                      </label>
-                      
-                      {/* Search Bar with Quick Clear */}
-                      <div style={{ position: 'relative' }}>
-                        <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Search product name or category (e.g. wire, nails, cement, pipes)..."
-                          value={existingProductSearch}
-                          onChange={(e) => setExistingProductSearch(e.target.value)}
-                          style={{ paddingLeft: '36px', paddingRight: existingProductSearch ? '32px' : '12px', height: '40px', fontSize: '13.5px' }}
-                          autoFocus
-                        />
-                        {existingProductSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setExistingProductSearch('')}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
+                      {/* Search Bar - Full Available Width */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                          <label className="form-label" style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>
+                            Search &amp; Select Existing Hardware Product <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              Showing <strong>{matchingExistingProducts.length}</strong> of {products.length} hardware products
+                            </span>
+                            {existingProductSearch && (
+                              <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', fontSize: '11px' }}>
+                                Filtered by "{existingProductSearch}"
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Type product name, category, or brand to search catalog (e.g. wire, nails, cement, pipes, socket)..."
+                            value={existingProductSearch}
+                            onChange={(e) => setExistingProductSearch(e.target.value)}
                             style={{
-                              position: 'absolute',
-                              right: '10px',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              background: 'var(--bg-hover)',
-                              border: 'none',
-                              borderRadius: '50%',
-                              width: '20px',
-                              height: '20px',
-                              display: 'grid',
-                              placeItems: 'center',
-                              cursor: 'pointer',
-                              color: 'var(--text-secondary)'
+                              paddingLeft: '42px',
+                              paddingRight: existingProductSearch ? '38px' : '14px',
+                              height: '46px',
+                              fontSize: '14px',
+                              width: '100%',
+                              borderRadius: '10px'
                             }}
-                          >
-                            <X size={12} />
-                          </button>
-                        )}
+                            autoFocus
+                          />
+                          {existingProductSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setExistingProductSearch('')}
+                              style={{
+                                position: 'absolute',
+                                right: '12px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'var(--bg-hover)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '24px',
+                                height: '24px',
+                                display: 'grid',
+                                placeItems: 'center',
+                                cursor: 'pointer',
+                                color: 'var(--text-secondary)'
+                              }}
+                              title="Clear search"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {/* IN-FLOW CATALOG RESULTS BOX: Roomy, Never Cut Off */}
-                      <div style={{
-                        background: 'var(--bg-elevated, var(--bg-surface))',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '10px',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}>
+                      {/* Expanded Matching Hardware Items Table */}
+                      <div className="supply-catalog-results-box">
                         <div style={{
                           background: 'var(--bg-hover)',
-                          padding: '8px 14px',
+                          padding: '10px 18px',
                           borderBottom: '1px solid var(--border-color)',
                           display: 'flex',
                           justifyContent: 'space-between',
-                          fontSize: '11px',
+                          alignItems: 'center',
+                          fontSize: '12px',
                           fontWeight: '700',
                           color: 'var(--text-secondary)',
                           textTransform: 'uppercase',
                           letterSpacing: '0.04em'
                         }}>
-                          <span>Matching Hardware Items ({matchingExistingProducts.length})</span>
-                          <span>Click to Select &amp; Restock</span>
+                          <span>Hardware Products ({matchingExistingProducts.length})</span>
+                          <span style={{ color: '#f97316', fontSize: '11.5px' }}>Click any row to select &amp; restock</span>
                         </div>
 
-                        <div style={{ maxHeight: '250px', overflowY: 'auto', padding: '4px' }}>
+                        <div className="supply-catalog-table-wrap">
                           {matchingExistingProducts.length === 0 ? (
-                            <div style={{ padding: '24px 14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                              <p style={{ margin: '0 0 8px', fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '600' }}>
-                                No existing product found matching "{existingProductSearch}"
+                            <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              <Package size={44} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+                              <h4 style={{ margin: '0 0 6px', fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>
+                                No hardware product found matching "{existingProductSearch}"
+                              </h4>
+                              <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                The product you searched for doesn't exist in the catalog yet. You can register it as a new product now.
                               </p>
                               <button
                                 type="button"
@@ -1449,548 +1495,765 @@ export default function ProductManagement() {
                                   setAddMode('new')
                                   setFormData(prev => ({ ...prev, name: existingProductSearch }))
                                 }}
-                                style={{
-                                  background: 'rgba(249, 115, 22, 0.12)',
-                                  border: '1px solid rgba(249, 115, 22, 0.3)',
-                                  color: '#f97316',
-                                  padding: '7px 14px',
-                                  borderRadius: '6px',
-                                  fontSize: '12px',
-                                  fontWeight: '700',
-                                  cursor: 'pointer'
-                                }}
+                                className="btn btn-primary"
+                                style={{ padding: '9px 18px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                               >
-                                + Register New Product "{existingProductSearch}"
+                                <Plus size={15} /> Register New Product "{existingProductSearch}"
                               </button>
                             </div>
                           ) : (
-                            matchingExistingProducts.map((p) => (
-                              <div
-                                key={p.id}
-                                onClick={() => handleSelectExistingProduct(p)}
-                                style={{
-                                  padding: '10px 14px',
-                                  borderRadius: '7px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  borderBottom: '1px solid var(--border-subtle)',
-                                  transition: 'background 0.12s ease',
-                                  margin: '1px 0'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'rgba(249, 115, 22, 0.12)'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent'
-                                }}
-                              >
-                                <div style={{ flex: 1, paddingRight: '12px' }}>
-                                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)', display: 'block' }}>{p.name}</strong>
-                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', gap: '6px', marginTop: '3px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '10.5px', padding: '1px 6px' }}>
-                                      {getProductCategoryName(p)}
-                                    </span>
-                                    {p.brand?.name && (
-                                      <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '10.5px', padding: '1px 6px' }}>
-                                        {p.brand.name}
-                                      </span>
-                                    )}
-                                    <span style={{ color: 'var(--text-muted)' }}>
-                                      Unit: <strong style={{ color: 'var(--text-primary)' }}>{p.unit || 'piece'}</strong>
-                                    </span>
-                                  </div>
-                                </div>
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                  <span
-                                    className="badge"
-                                    style={{
-                                      background: 'rgba(16, 185, 129, 0.12)',
-                                      color: '#10b981',
-                                      border: '1px solid rgba(16, 185, 129, 0.3)',
-                                      fontSize: '11px',
-                                      fontWeight: '700',
-                                      padding: '2px 8px'
-                                    }}
-                                  >
-                                    {formatQuantityWithUnit(p.stock_quantity, p.unit)}
-                                  </span>
-                                  <span style={{ display: 'block', fontSize: '12px', color: '#f97316', fontWeight: '800', marginTop: '3px' }}>
-                                    ₱{Number(p.selling_price ?? p.base_price ?? 0).toLocaleString()}
-                                  </span>
-                                </div>
-                              </div>
-                            ))
+                            <table className="supply-catalog-table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: '32%' }}>Product Name</th>
+                                  <th style={{ width: '18%' }}>Category</th>
+                                  <th style={{ width: '14%' }}>Brand</th>
+                                  <th style={{ width: '10%' }}>Unit</th>
+                                  <th style={{ width: '13%' }}>Current Stock</th>
+                                  <th style={{ width: '13%' }}>Selling Price</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {matchingExistingProducts.map((p) => {
+                                  const isLowStock = Number(p.stock_quantity) <= Number(p.low_stock_threshold || 10)
+                                  const isOutOfStock = Number(p.stock_quantity) <= 0
+                                  return (
+                                    <tr
+                                      key={p.id}
+                                      onClick={() => handleSelectExistingProduct(p)}
+                                      title={`Click to restock ${p.name}`}
+                                    >
+                                      <td>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                          <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
+                                            {p.name}
+                                          </strong>
+                                          {p.sku && (
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                              SKU: {p.sku}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td>
+                                        <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', fontSize: '11.5px', padding: '3px 8px' }}>
+                                          {getProductCategoryName(p)}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <span style={{ color: p.brand?.name ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: '13px' }}>
+                                          {p.brand?.name || '—'}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11.5px', padding: '3px 8px' }}>
+                                          {p.unit || 'piece'}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <span
+                                          className="badge"
+                                          style={{
+                                            background: isOutOfStock
+                                              ? 'rgba(239, 68, 68, 0.15)'
+                                              : isLowStock
+                                                ? 'rgba(245, 158, 11, 0.15)'
+                                                : 'rgba(16, 185, 129, 0.15)',
+                                            color: isOutOfStock ? '#ef4444' : isLowStock ? '#f59e0b' : '#10b981',
+                                            border: `1px solid ${isOutOfStock ? 'rgba(239, 68, 68, 0.3)' : isLowStock ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+                                            fontSize: '12px',
+                                            fontWeight: '700',
+                                            padding: '3px 9px'
+                                          }}
+                                        >
+                                          {formatQuantityWithUnit(p.stock_quantity, p.unit)}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <span style={{ fontSize: '14px', color: '#f97316', fontWeight: '800' }}>
+                                          ₱{Number(p.selling_price ?? p.base_price ?? 0).toLocaleString()}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
                           )}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    /* Existing Product Detected & Loaded Banner */
-                    <div style={{ background: 'rgba(16, 185, 129, 0.09)', border: '1px solid rgba(16, 185, 129, 0.28)', borderRadius: '12px', padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    /* Existing Product Detected & Loaded Banner + Restock Form */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                      <div style={{
+                        background: 'rgba(16, 185, 129, 0.1)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '12px',
+                        padding: '16px 20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}>
                         <div>
-                          <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <CheckCircle2 size={13} color="#10b981" /> Existing Product Detected &amp; Loaded
+                          <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CheckCircle2 size={14} color="#10b981" /> Existing Product Loaded For Restocking
                           </span>
-                          <h3 style={{ fontSize: '15.5px', fontWeight: '800', color: 'var(--text-primary)', margin: '3px 0 2px' }}>
+                          <h3 style={{ fontSize: '17px', fontWeight: '800', color: 'var(--text-primary)', margin: '4px 0 6px' }}>
                             {selectedExistingProduct.name}
                           </h3>
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px', fontSize: '11.5px' }}>
-                            <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="badge" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', fontSize: '11.5px', padding: '3px 8px' }}>
                               Category: <strong>{getProductCategoryName(selectedExistingProduct)}</strong>
                             </span>
                             {selectedExistingProduct.brand?.name && (
-                              <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                              <span className="badge" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', fontSize: '11.5px', padding: '3px 8px' }}>
                                 Brand: <strong>{selectedExistingProduct.brand.name}</strong>
                               </span>
                             )}
-                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11.5px', padding: '3px 8px' }}>
                               Unit: <strong>{selectedExistingProduct.unit || 'piece'}</strong>
                             </span>
-                            <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.12)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.3)', fontWeight: '700' }}>
+                            <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.3)', fontWeight: '700', fontSize: '11.5px', padding: '3px 8px' }}>
                               Current Stock: {formatQuantityWithUnit(selectedExistingProduct.stock_quantity, selectedExistingProduct.unit)}
                             </span>
                           </div>
                         </div>
+
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedExistingProduct(null)
                             setFormData(prev => ({ ...prev, name: '', stock_quantity: '' }))
                           }}
-                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: '700' }}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '8px 14px', fontWeight: '700' }}
                         >
                           Change Product
                         </button>
                       </div>
-                      <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: '#10b981' }}>
-                        Product specifications are preloaded. Enter incoming stock batch details below:
-                      </p>
+
+                      {/* Two-Column Responsive Cards for Restock Input */}
+                      <div className="supply-form-cards-grid">
+                        {/* Card 1: Quantities & Pricing */}
+                        <div className="supply-card">
+                          <div className="supply-card-header">
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Package size={15} /> Incoming Stock &amp; Pricing
+                            </span>
+                            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Required</span>
+                          </div>
+
+                          {/* Stock Quantity to Add & Reorder Threshold */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>Incoming Quantity to Add <span style={{ color: '#ef4444' }}>*</span></span>
+                              </label>
+                              <input
+                                type="number"
+                                className="form-input"
+                                placeholder={getQuantityPlaceholder(formData.unit, 25)}
+                                value={formData.stock_quantity}
+                                onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                                autoFocus
+                              />
+                              {formErrors.stock_quantity && (
+                                <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                  {formErrors.stock_quantity}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label">
+                                Reorder Threshold <span style={{ color: '#ef4444' }}>*</span>
+                              </label>
+                              <input
+                                type="number"
+                                className="form-input"
+                                placeholder={getQuantityPlaceholder(formData.unit, 10)}
+                                value={formData.low_stock_threshold}
+                                onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
+                              />
+                              {formErrors.low_stock_threshold && (
+                                <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                  {formErrors.low_stock_threshold}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Cost Price & Selling Price with Gross Margin */}
+                          <div style={{ background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                              <div className="form-group" style={{ margin: 0 }}>
+                                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                  <span>Cost Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="form-input"
+                                  placeholder="0.00"
+                                  value={formData.cost_price}
+                                  onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
+                                />
+                                {formErrors.cost_price && (
+                                  <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                    {formErrors.cost_price}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="form-group" style={{ margin: 0 }}>
+                                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                  <span>Selling Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: Number(formData.selling_price || formData.base_price) > Number(formData.cost_price) ? '#10b981' : '#f97316'
+                                  }}>
+                                    {Number(formData.selling_price || formData.base_price) > 0 && Number(formData.cost_price) > 0 ? (
+                                      `${Math.round(((Number(formData.selling_price || formData.base_price) - Number(formData.cost_price)) / Number(formData.selling_price || formData.base_price)) * 100)}% Margin`
+                                    ) : 'Retail'}
+                                  </span>
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="form-input"
+                                  placeholder="0.00"
+                                  value={formData.selling_price || formData.base_price}
+                                  onChange={(e) => setFormData({ ...formData, selling_price: e.target.value, base_price: e.target.value })}
+                                />
+                                {formErrors.selling_price && (
+                                  <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                    {formErrors.selling_price}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card 2: Batch Tracking & Supplier */}
+                        <div className="supply-card">
+                          <div className="supply-card-header">
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Building size={15} /> Batch Info &amp; Supplier
+                            </span>
+                            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Batch Details</span>
+                          </div>
+
+                          {/* Supplier Selection */}
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">
+                              Supplier / Source Distributor
+                            </label>
+                            <select
+                              className="form-input"
+                              value={formData.supplier_id}
+                              onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
+                            >
+                              <option value="">Select Supplier</option>
+                              {suppliers.map((sup) => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Dates */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label" style={{ fontSize: '12px' }}>Date Received</label>
+                              <input
+                                type="date"
+                                className="form-input"
+                                value={formData.received_date}
+                                onChange={(e) => setFormData({ ...formData, received_date: e.target.value })}
+                              />
+                            </div>
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label" style={{ fontSize: '12px' }}>Expiration Date (Optional)</label>
+                              <input
+                                type="date"
+                                className="form-input"
+                                value={formData.expiration_date}
+                                onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Batch Notes */}
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">
+                              Delivery Receipt / Batch Notes
+                            </label>
+                            <textarea
+                              className="form-input"
+                              style={{ minHeight: '70px', padding: '10px 12px' }}
+                              placeholder="e.g. Received via Delivery Receipt #DR-98124, 25 boxes verified..."
+                              value={formData.description}
+                              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </>
               )}
 
-              {/* FLOW B: REGISTER BRAND NEW PRODUCT OR EDIT DETAILS */}
+              {/* =========================================================================
+                  FLOW B: REGISTER BRAND NEW PRODUCT OR EDIT DETAILS
+                  ========================================================================= */}
               {(editingProduct || addMode === 'new') && (
-                <>
-                  {/* Product Name with Duplicate Detection */}
-                  <div className="form-group">
-                    <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Product Name <span style={{ color: '#ef4444' }}>*</span></span>
-                      {existingMatch && (
-                        <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: '700' }}>
-                          ⚠️ Match Found
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Enter product name (e.g. Common Wire Nails 4-inch)"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      style={{
-                        borderColor: existingMatch ? '#f59e0b' : formErrors.name ? '#ef4444' : undefined,
-                        background: existingMatch ? 'rgba(245, 158, 11, 0.08)' : undefined
-                      }}
-                    />
-
-                    {/* Duplicate Detection Alert Card */}
-                    {existingMatch && (
-                      <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px', padding: '10px 12px', marginTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  {/* Duplicate Detection Alert Card */}
+                  {existingMatch && (
+                    <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '12px', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                        <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
                         <div>
-                          <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: '800', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <AlertTriangle size={13} color="#f59e0b" /> Product Already Exists in Catalog!
+                          <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Product Already Exists in Catalog!
                           </span>
-                          <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            <strong style={{ color: 'var(--text-primary)' }}>"{existingMatch.name}"</strong> is already in inventory ({formatQuantityWithUnit(existingMatch.stock_quantity, existingMatch.unit)} in stock).
+                          <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            <strong style={{ color: 'var(--text-primary)' }}>"{existingMatch.name}"</strong> is already in inventory ({formatQuantityWithUnit(existingMatch.stock_quantity, existingMatch.unit)} available). You can restock it instead of creating a duplicate.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectExistingProduct(existingMatch)}
-                          style={{ background: '#f97316', color: '#ffffff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '11.5px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                          Select &amp; Restock
-                        </button>
                       </div>
-                    )}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectExistingProduct(existingMatch)}
+                        className="btn btn-primary"
+                        style={{ padding: '7px 16px', fontSize: '12.5px', fontWeight: '700' }}
+                      >
+                        Select &amp; Restock Existing
+                      </button>
+                    </div>
+                  )}
 
-                    {formErrors.name && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <AlertCircle size={12} /> {formErrors.name}
-                      </span>
-                    )}
-                  </div>
+                  {/* Two-Column Responsive Cards for Product Registration */}
+                  <div className="supply-form-cards-grid">
+                    {/* Card 1: Product Specifications & Classification */}
+                    <div className="supply-card">
+                      <div className="supply-card-header">
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Tag size={15} /> Product Identification &amp; Classification
+                        </span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Basic Info</span>
+                      </div>
 
-                  {/* 2-Column Row: Category & Brand */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div className="form-group">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <label className="form-label" style={{ margin: 0 }}>
-                          Category <span style={{ color: '#ef4444' }}>*</span>
+                      {/* Category */}
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label className="form-label" style={{ margin: 0 }}>
+                            Category <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowQuickAddCat(true)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ea580c',
+                              fontSize: '11.5px',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                            title="Create a new category for products"
+                          >
+                            <Plus size={12} /> New
+                          </button>
+                        </div>
+                        <select
+                          className="form-input"
+                          value={formData.category_id}
+                          onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map((cat) => {
+                            const isCatActive = cat.status === 'active' || cat.status === undefined
+                            const isCurrentProductCat = Boolean(editingProduct && String(cat.id) === String(formData.category_id))
+                            if (!isCatActive && !isCurrentProductCat) return null
+                            return (
+                              <option key={cat.id} value={cat.id} disabled={!isCatActive && !isCurrentProductCat}>
+                                {cat.name} {!isCatActive ? '(Inactive)' : ''} {cat.products_count !== undefined ? `(${cat.products_count})` : ''}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        {formErrors.category_id && (
+                          <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px', display: 'block' }}>
+                            {formErrors.category_id}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Product Name & Brand */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span>Product Name <span style={{ color: '#ef4444' }}>*</span></span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Enter product name (e.g. Common Wire Nails 4-inch, PVC Elbow 1/2)..."
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            style={{
+                              borderColor: existingMatch ? '#f59e0b' : formErrors.name ? '#ef4444' : undefined,
+                              background: existingMatch ? 'rgba(245, 158, 11, 0.08)' : undefined
+                            }}
+                          />
+                          {formErrors.name && (
+                            <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <AlertCircle size={12} /> {formErrors.name}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ marginBottom: '4px', display: 'block' }}>Manufacturer Brand</label>
+                          <select
+                            className="form-input"
+                            value={formData.brand_id}
+                            onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
+                          >
+                            <option value="">Select Brand (Optional)</option>
+                            {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Unit of Measurement Dropdown */}
+                      <div className="form-group" ref={unitDropdownRef} style={{ position: 'relative', margin: 0 }}>
+                        <label className="form-label">
+                          Unit of Measurement <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <button
                           type="button"
-                          onClick={() => setShowQuickAddCat(true)}
+                          onClick={() => setUnitDropdownOpen(!unitDropdownOpen)}
+                          className="form-input"
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#ea580c',
-                            fontSize: '11.5px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            gap: '3px'
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            background: 'var(--input-bg)',
+                            color: 'var(--input-text)',
+                            userSelect: 'none',
+                            borderColor: unitDropdownOpen ? '#f97316' : 'var(--border-color)'
                           }}
-                          title="Create a new category for products"
                         >
-                          <Plus size={12} /> New Category
+                          <span style={{ fontWeight: '600', color: 'var(--input-text)' }}>
+                            {UNIT_OPTIONS.find((o) => o.value === formData.unit)?.label || 'Piece (pcs)'}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            color="var(--text-secondary)"
+                            style={{
+                              transform: unitDropdownOpen ? 'rotate(180deg)' : 'none',
+                              transition: 'transform 0.2s ease'
+                            }}
+                          />
                         </button>
+
+                        {unitDropdownOpen && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 4px)',
+                              left: 0,
+                              right: 0,
+                              zIndex: 9999,
+                              maxHeight: '220px',
+                              overflowY: 'auto',
+                              background: 'var(--bg-surface)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '10px',
+                              boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)',
+                              padding: '5px'
+                            }}
+                          >
+                            {UNIT_OPTIONS.map((opt) => {
+                              const isSelected = formData.unit === opt.value
+                              return (
+                                <div
+                                  key={opt.value}
+                                  onClick={() => {
+                                    setFormData({ ...formData, unit: opt.value })
+                                    setUnitDropdownOpen(false)
+                                  }}
+                                  style={{
+                                    padding: '8px 12px',
+                                    fontSize: '13px',
+                                    fontWeight: isSelected ? '700' : '500',
+                                    color: isSelected ? '#f97316' : 'var(--text-primary)',
+                                    background: isSelected ? 'rgba(249, 115, 22, 0.12)' : 'transparent',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    transition: 'background 0.15s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = 'transparent'
+                                  }}
+                                >
+                                  <span>{opt.label}</span>
+                                  {isSelected && <Check size={14} color="#f97316" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {formErrors.unit && (
+                          <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px', display: 'block' }}>
+                            {formErrors.unit}
+                          </span>
+                        )}
                       </div>
-                      <select
-                        className="form-input"
-                        value={formData.category_id}
-                        onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                      >
-                        <option value="">Select Existing Category</option>
-                        {categories.map((cat) => {
-                          const isCatActive = cat.status === 'active' || cat.status === undefined
-                          const isCurrentProductCat = Boolean(editingProduct && String(cat.id) === String(formData.category_id))
-                          if (!isCatActive && !isCurrentProductCat) return null
-                          return (
-                            <option key={cat.id} value={cat.id} disabled={!isCatActive && !isCurrentProductCat}>
-                              {cat.name} {!isCatActive ? '(Inactive)' : ''} {cat.products_count !== undefined ? `(${cat.products_count} products)` : ''}
-                            </option>
-                          )
-                        })}
-                      </select>
-                      {formErrors.category_id && (
-                        <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
-                          {formErrors.category_id}
-                        </span>
-                      )}
-                    </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Manufacturer Brand</label>
-                      <select
-                        className="form-input"
-                        value={formData.brand_id}
-                        onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
-                      >
-                        <option value="">Select Brand (Optional)</option>
-                        {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Unit of Measurement Dropdown */}
-                  <div className="form-group" ref={unitDropdownRef} style={{ position: 'relative' }}>
-                    <label className="form-label">
-                      Unit of Measurement <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setUnitDropdownOpen(!unitDropdownOpen)}
-                      className="form-input"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        background: 'var(--input-bg)',
-                        color: 'var(--input-text)',
-                        userSelect: 'none',
-                        borderColor: unitDropdownOpen ? '#f97316' : 'var(--border-color)'
-                      }}
-                    >
-                      <span style={{ fontWeight: '600', color: 'var(--input-text)' }}>
-                        {UNIT_OPTIONS.find((o) => o.value === formData.unit)?.label || 'Piece (pcs)'}
-                      </span>
-                      <ChevronDown
-                        size={16}
-                        color="var(--text-secondary)"
-                        style={{
-                          transform: unitDropdownOpen ? 'rotate(180deg)' : 'none',
-                          transition: 'transform 0.2s ease'
-                        }}
-                      />
-                    </button>
-
-                    {unitDropdownOpen && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: 'calc(100% + 4px)',
-                          left: 0,
-                          right: 0,
-                          zIndex: 9999,
-                          maxHeight: '200px',
-                          overflowY: 'auto',
-                          background: 'var(--bg-surface)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '10px',
-                          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
-                          padding: '5px'
-                        }}
-                      >
-                        {UNIT_OPTIONS.map((opt) => {
-                          const isSelected = formData.unit === opt.value
-                          return (
-                            <div
-                              key={opt.value}
-                              onClick={() => {
-                                setFormData({ ...formData, unit: opt.value })
-                                setUnitDropdownOpen(false)
-                              }}
-                              style={{
-                                padding: '8px 12px',
-                                fontSize: '13px',
-                                fontWeight: isSelected ? '700' : '500',
-                                color: isSelected ? '#f97316' : 'var(--text-primary)',
-                                background: isSelected ? 'rgba(249, 115, 22, 0.12)' : 'transparent',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                transition: 'background 0.15s'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isSelected) e.currentTarget.style.background = 'transparent'
-                              }}
-                            >
-                              <span>{opt.label}</span>
-                              {isSelected && <Check size={14} color="#f97316" />}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {formErrors.unit && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
-                        {formErrors.unit}
-                      </span>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* COMMON STOCK DETAILS SECTION:
-                  Appears for:
-                  1. Restocking an existing product (once selected)
-                  2. Registering a brand new product
-                  3. Editing product details */}
-              {(selectedExistingProduct || addMode === 'new' || editingProduct) && (
-                <>
-                  {/* Supplier Selection */}
-                  <div className="form-group">
-                    <label className="form-label">
-                      Supplier / Source Distributor
-                    </label>
-                    <select
-                      className="form-input"
-                      value={formData.supplier_id}
-                      onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
-                    >
-                      <option value="">Select Supplier</option>
-                      {suppliers.map((sup) => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Cost Price & Selling Price with Live Gross Margin */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span>Cost Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>Cost</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={formData.cost_price}
-                        onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
-                      />
-                      {formErrors.cost_price && (
-                        <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px' }}>
-                          {formErrors.cost_price}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span>Selling Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
-                        <span style={{
-                          fontSize: '10.5px',
-                          fontWeight: '700',
-                          color: Number(formData.selling_price || formData.base_price) > Number(formData.cost_price) ? '#10b981' : '#f97316'
-                        }}>
-                          {Number(formData.selling_price || formData.base_price) > 0 && Number(formData.cost_price) > 0 ? (
-                            `${Math.round(((Number(formData.selling_price || formData.base_price) - Number(formData.cost_price)) / Number(formData.selling_price || formData.base_price)) * 100)}% Margin`
-                          ) : 'Retail'}
-                        </span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={formData.selling_price || formData.base_price}
-                        onChange={(e) => setFormData({ ...formData, selling_price: e.target.value, base_price: e.target.value })}
-                      />
-                      {formErrors.selling_price && (
-                        <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px' }}>
-                          {formErrors.selling_price}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Stock Quantity to Add & Reorder Threshold */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div className="form-group">
-                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>
-                          {selectedExistingProduct
-                            ? `Incoming Quantity to Add`
-                            : editingProduct
-                              ? 'Current Stock'
-                              : 'Initial Stock'} (in {getUnitBadgeText(formData.unit, true)}) <span style={{ color: '#ef4444' }}>*</span>
-                        </span>
-                        <span style={{ fontSize: '11px', color: '#f97316', fontWeight: '700' }}>
-                          Unit: {formData.unit || 'piece'}
-                        </span>
-                      </label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        placeholder={getQuantityPlaceholder(formData.unit, selectedExistingProduct ? 25 : 50)}
-                        value={formData.stock_quantity}
-                        onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-                      />
-                      {formErrors.stock_quantity && (
-                        <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px' }}>
-                          {formErrors.stock_quantity}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        Reorder Threshold (in {getUnitBadgeText(formData.unit, true)}) <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        placeholder={getQuantityPlaceholder(formData.unit, 10)}
-                        value={formData.low_stock_threshold}
-                        onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
-                      />
-                      {formErrors.low_stock_threshold && (
-                        <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px' }}>
-                          {formErrors.low_stock_threshold}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Batch Tracking Dates (Date Received & Expiration) */}
-                  <div style={{ background: 'rgba(249, 115, 22, 0.08)', border: '1px solid rgba(249, 115, 22, 0.22)', borderRadius: '10px', padding: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                      <Package size={14} color="#f97316" />
-                      <strong style={{ fontSize: '12px', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {selectedExistingProduct ? 'New Incoming Inventory Batch' : 'Batch Tracking Information'}
-                      </strong>
-                    </div>
-                    <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '0 0 8px 0' }}>
-                      {selectedExistingProduct
-                        ? `Recorded as a new batch. Existing batches and history are preserved.`
-                        : `Stock will be recorded with its own cost, selling price, and supplier.`}
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      {/* Product Description */}
                       <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Date Received</label>
-                        <input
-                          type="date"
+                        <label className="form-label">
+                          Product Description / Specifications
+                        </label>
+                        <textarea
                           className="form-input"
-                          value={formData.received_date}
-                          onChange={(e) => setFormData({ ...formData, received_date: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Expiration Date (Optional)</label>
-                        <input
-                          type="date"
-                          className="form-input"
-                          value={formData.expiration_date}
-                          onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
+                          style={{ minHeight: '80px', padding: '10px 12px' }}
+                          placeholder="Enter product description, technical specifications, dimensions, material..."
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                         />
                       </div>
                     </div>
-                  </div>
 
-                  {/* Description / Batch Notes */}
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">
-                      {selectedExistingProduct ? 'Batch Notes / Delivery Receipt Reference' : 'Product Description / Specifications'}
-                    </label>
-                    <textarea
-                      className="form-input"
-                      style={{ minHeight: '55px', padding: '8px 10px' }}
-                      placeholder={selectedExistingProduct ? 'e.g. Received via Delivery Receipt #DR-98124' : 'Enter product description / specifications...'}
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    />
+                    {/* Card 2: Inventory, Pricing & Batch Tracking */}
+                    <div className="supply-card">
+                      <div className="supply-card-header">
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Package size={15} /> Pricing, Inventory &amp; Batch
+                        </span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Stock &amp; Pricing</span>
+                      </div>
+
+                      {/* Supplier Selection */}
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">
+                          Supplier / Source Distributor
+                        </label>
+                        <select
+                          className="form-input"
+                          value={formData.supplier_id}
+                          onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
+                        >
+                          <option value="">Select Supplier</option>
+                          {suppliers.map((sup) => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Cost Price & Selling Price with Live Margin */}
+                      <div style={{ background: 'var(--bg-hover)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                              <span>Cost Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="form-input"
+                              placeholder="0.00"
+                              value={formData.cost_price}
+                              onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
+                            />
+                            {formErrors.cost_price && (
+                              <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                {formErrors.cost_price}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                              <span>Selling Price (₱ / {getUnitBadgeText(formData.unit, false)}) <span style={{ color: '#ef4444' }}>*</span></span>
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: Number(formData.selling_price || formData.base_price) > Number(formData.cost_price) ? '#10b981' : '#f97316'
+                              }}>
+                                {Number(formData.selling_price || formData.base_price) > 0 && Number(formData.cost_price) > 0 ? (
+                                  `${Math.round(((Number(formData.selling_price || formData.base_price) - Number(formData.cost_price)) / Number(formData.selling_price || formData.base_price)) * 100)}% Margin`
+                                ) : 'Retail'}
+                              </span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="form-input"
+                              placeholder="0.00"
+                              value={formData.selling_price || formData.base_price}
+                              onChange={(e) => setFormData({ ...formData, selling_price: e.target.value, base_price: e.target.value })}
+                            />
+                            {formErrors.selling_price && (
+                              <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                                {formErrors.selling_price}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stock Quantities & Threshold */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                              {editingProduct ? 'Current Stock' : 'Initial Stock'} (in {getUnitBadgeText(formData.unit, true)}) <span style={{ color: '#ef4444' }}>*</span>
+                            </span>
+                          </label>
+                          <input
+                            type="number"
+                            className="form-input"
+                            placeholder={getQuantityPlaceholder(formData.unit, 50)}
+                            value={formData.stock_quantity}
+                            onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                          />
+                          {formErrors.stock_quantity && (
+                            <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                              {formErrors.stock_quantity}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">
+                            Reorder Threshold (in {getUnitBadgeText(formData.unit, true)}) <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <input
+                            type="number"
+                            className="form-input"
+                            placeholder={getQuantityPlaceholder(formData.unit, 10)}
+                            value={formData.low_stock_threshold}
+                            onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
+                          />
+                          {formErrors.low_stock_threshold && (
+                            <span style={{ color: '#ef4444', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                              {formErrors.low_stock_threshold}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Batch Tracking Dates */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>Date Received</label>
+                          <input
+                            type="date"
+                            className="form-input"
+                            value={formData.received_date}
+                            onChange={(e) => setFormData({ ...formData, received_date: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '12px' }}>Expiration Date (Optional)</label>
+                          <input
+                            type="date"
+                            className="form-input"
+                            value={formData.expiration_date}
+                            onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </>
+                </div>
               )}
             </form>
 
-            {/* 4. STICKY DOCKED FOOTER ACTIONS */}
-            <div style={{
-              padding: '14px 22px',
-              borderTop: '1px solid var(--border-color)',
-              background: 'var(--bg-surface)',
-              display: 'flex',
-              gap: '10px',
-              flexShrink: 0
-            }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ flex: 1, padding: '10px 16px' }}
-                onClick={() => setShowForm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="add-supply-form"
-                className="btn btn-primary"
-                style={{ flex: 2, padding: '10px 16px' }}
-                disabled={submitting || (!editingProduct && addMode === 'existing' && !selectedExistingProduct)}
-              >
-                {submitting
-                  ? 'Saving...'
-                  : editingProduct
-                    ? 'Save Changes'
-                    : selectedExistingProduct
-                      ? `Receive Stock Batch (${formatQuantityWithUnit(Number(formData.stock_quantity) || 0, formData.unit)})`
-                      : 'Create Product'}
-              </button>
+            {/* 4. FIXED BOTTOM ACTION BAR */}
+            <div className="supply-fullscreen-footer">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                {selectedExistingProduct ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '700' }}>
+                      Restocking
+                    </span>
+                    <span style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '600' }}>
+                      {selectedExistingProduct.name}
+                    </span>
+                    {formData.stock_quantity && Number(formData.stock_quantity) > 0 && (
+                      <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
+                        +{formData.stock_quantity} {formData.unit || 'pcs'}
+                      </span>
+                    )}
+                  </div>
+                ) : editingProduct ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: '700' }}>
+                      Editing
+                    </span>
+                    <span style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '600' }}>
+                      {editingProduct.name}
+                    </span>
+                  </div>
+                ) : addMode === 'new' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="badge" style={{ background: 'rgba(249, 115, 22, 0.15)', color: '#f97316', border: '1px solid rgba(249, 115, 22, 0.3)', fontWeight: '700' }}>
+                      New Product Mode
+                    </span>
+                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      Registering brand new item to catalog
+                    </span>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    💡 Click on any hardware item above to select and restock its inventory
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '10px 20px', fontSize: '13.5px' }}
+                  onClick={() => !submitting && setShowForm(false)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="add-supply-form"
+                  className="btn btn-primary"
+                  style={{ padding: '10px 24px', fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700' }}
+                  disabled={submitting || (!editingProduct && addMode === 'existing' && !selectedExistingProduct)}
+                >
+                  {submitting
+                    ? 'Saving...'
+                    : editingProduct
+                      ? 'Save Changes'
+                      : selectedExistingProduct
+                        ? `Receive Stock Batch (${formatQuantityWithUnit(Number(formData.stock_quantity) || 0, formData.unit)})`
+                        : 'Create Product'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1999,143 +2262,409 @@ export default function ProductManagement() {
       {/* =========================================================================
           MODAL 2: BATCH / MULTIPLE PRODUCT ENTRY
           ========================================================================= */}
+      {/* =========================================================================
+          MODAL 2: BATCH / MULTIPLE PRODUCT ENTRY (SINGLE CATEGORY SELECTION)
+          ========================================================================= */}
+      {/* =========================================================================
+          MODAL 2: BATCH / MULTIPLE PRODUCT ENTRY (FULL-SCREEN MODE)
+          ========================================================================= */}
       {showBatchModal && (
-        <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '980px', width: '100%', borderRadius: '16px', padding: '24px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <div>
-                <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
-                  Add Multiple Products (Batch Entry)
-                </h2>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Enter multiple hardware supplies simultaneously and submit in one go.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowBatchModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleBatchSubmit}>
-              <div style={{ maxHeight: '420px', minHeight: '260px', overflowY: 'auto', marginBottom: '14px', paddingBottom: openBatchCategoryRowId ? '180px' : '10px' }}>
-                <table className="management-table" style={{ fontSize: '12.5px', width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '20%' }}>Category *</th>
-                      <th style={{ width: '28%' }}>Product Name *</th>
-                      <th style={{ width: '16%' }}>Price (₱) *</th>
-                      <th style={{ width: '16%' }}>Supplier</th>
-                      <th style={{ width: '12%' }}>Stock Qty *</th>
-                      <th style={{ width: '8%', textAlign: 'center' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {batchRows.map((row, idx) => {
-                      const err = batchErrors[row.id] || {}
-                      const isCatOpen = openBatchCategoryRowId === row.id
-                      return (
-                        <tr key={row.id} style={{ position: 'relative', zIndex: isCatOpen ? 100 : 1 }}>
-                          <td style={{ position: 'relative', zIndex: isCatOpen ? 100 : 1 }}>
-                            <BatchCategoryDropdown
-                              value={row.category_id}
-                              categories={categories}
-                              onChange={(val) => handleUpdateBatchField(row.id, 'category_id', val)}
-                              hasError={!!err.category_id}
-                              isOpen={isCatOpen}
-                              onToggle={() => setOpenBatchCategoryRowId(prev => prev === row.id ? null : row.id)}
-                              onClose={() => setOpenBatchCategoryRowId(null)}
-                            />
-                            {err.category_id && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.category_id}</span>}
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              className="form-input"
-                              style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.name ? '#ef4444' : 'var(--border-color)' }}
-                              placeholder="Enter product name"
-                              value={row.name}
-                              onChange={(e) => handleUpdateBatchField(row.id, 'name', e.target.value)}
-                            />
-                            {err.name && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.name}</span>}
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              className="form-input"
-                              style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.base_price ? '#ef4444' : 'var(--border-color)' }}
-                              placeholder="0.00"
-                              value={row.base_price}
-                              onChange={(e) => handleUpdateBatchField(row.id, 'base_price', e.target.value)}
-                            />
-                            {err.base_price && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.base_price}</span>}
-                          </td>
-                          <td>
-                            <select
-                              className="form-input"
-                              style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.supplier_id ? '#ef4444' : 'var(--border-color)' }}
-                              value={row.supplier_id}
-                              onChange={(e) => handleUpdateBatchField(row.id, 'supplier_id', e.target.value)}
-                            >
-                              <option value="">Supplier</option>
-                              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              className="form-input"
-                              style={{ padding: '6px 8px', fontSize: '12.5px', borderColor: err.stock_quantity ? '#ef4444' : 'var(--border-color)' }}
-                              placeholder="0"
-                              value={row.stock_quantity}
-                              onChange={(e) => handleUpdateBatchField(row.id, 'stock_quantity', e.target.value)}
-                            />
-                            {err.stock_quantity && <span style={{ color: '#ef4444', fontSize: '10px' }}>{err.stock_quantity}</span>}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveBatchRow(row.id)}
-                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                              title="Remove row"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+        <div
+          className="batch-fullscreen-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100dvh',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            margin: 0,
+            padding: 0,
+            zIndex: 2500,
+            background: 'var(--bg-app, #020617)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+          onClick={() => !batchSubmitting && setShowBatchModal(false)}
+        >
+          <div
+            className="batch-fullscreen-modal"
+            style={{
+              width: '100vw',
+              height: '100dvh',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              borderRadius: 0,
+              border: 'none',
+              margin: 0,
+              padding: 0,
+              background: 'var(--bg-surface, #0b132b)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: 'none'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 1. FIXED TOP HEADER */}
+            <div className="batch-fullscreen-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'rgba(249, 115, 22, 0.15)',
+                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#f97316'
+                }}>
+                  <Layers size={22} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
+                      Add Multiple Products (Batch Entry)
+                    </h2>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'rgba(249, 115, 22, 0.12)',
+                      border: '1px solid rgba(249, 115, 22, 0.3)',
+                      color: '#f97316',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      padding: '2px 8px',
+                      borderRadius: '6px'
+                    }}>
+                      Full-Screen Interface
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '3px 0 0' }}>
+                    Select a category once at the top to quickly enter and save multiple products in a single submission.
+                  </p>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  onClick={handleAddBatchRow}
-                  style={{ fontSize: '12.5px', padding: '8px 14px' }}
+                  onClick={() => !batchSubmitting && setShowBatchModal(false)}
+                  disabled={batchSubmitting}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    cursor: batchSubmitting ? 'not-allowed' : 'pointer',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                  title="Close Full-Screen (Esc)"
                 >
-                  <Plus size={14} /> Add Another Row
+                  <X size={18} />
+                  <span>Close (Esc)</span>
                 </button>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              </div>
+            </div>
+
+            {/* 2. FORM WRAPPER (Flex: 1) */}
+            <form onSubmit={handleBatchSubmit} className="batch-fullscreen-form">
+              {/* SCROLLABLE BODY */}
+              <div className="batch-fullscreen-body">
+                {/* TARGET CATEGORY SECTION */}
+                <div style={{
+                  background: 'var(--bg-surface-elevated, #0f172a)',
+                  border: batchCategoryError ? '1px solid #ef4444' : '1px solid rgba(249, 115, 22, 0.3)',
+                  borderRadius: '12px',
+                  padding: '18px 24px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <label htmlFor="batch-category-select" style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Tag size={16} style={{ color: '#f97316' }} />
+                      Target Category <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    {batchCategoryId && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(249, 115, 22, 0.15)',
+                        border: '1px solid rgba(249, 115, 22, 0.35)',
+                        color: '#f97316',
+                        fontSize: '12.5px',
+                        fontWeight: '700',
+                        padding: '4px 14px',
+                        borderRadius: '20px'
+                      }}>
+                        <CheckCircle2 size={14} />
+                        Active Category: {categories.find(c => String(c.id) === String(batchCategoryId))?.name || 'Selected'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) auto', gap: '16px', alignItems: 'center' }}>
+                    <div>
+                      <select
+                        id="batch-category-select"
+                        className="form-input"
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          borderRadius: '8px',
+                          borderColor: batchCategoryError ? '#ef4444' : 'var(--border-color)',
+                          background: 'var(--input-bg, #0b132b)',
+                          color: batchCategoryId ? 'var(--text-primary)' : 'var(--text-muted)',
+                          cursor: 'pointer'
+                        }}
+                        value={batchCategoryId}
+                        onChange={(e) => {
+                          setBatchCategoryId(e.target.value)
+                          if (e.target.value) setBatchCategoryError('')
+                        }}
+                      >
+                        <option value="">-- Select Category (e.g. Computer Accessories, Plumbing, Lumber...) --</option>
+                        {categories
+                          .filter(c => c.status === 'active' || c.status === undefined)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                      {batchCategoryError && (
+                        <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <AlertCircle size={13} /> {batchCategoryError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Sparkles size={16} style={{ color: '#f97316', flexShrink: 0 }} />
+                      <span>All product rows below will automatically inherit and be saved under this single category.</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* EXPANDED PRODUCTS TABLE */}
+                <div className="batch-fullscreen-table-wrap">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '50px', textAlign: 'center' }}>#</th>
+                        <th style={{ minWidth: '320px', width: '45%' }}>Product Name *</th>
+                        <th style={{ minWidth: '180px', width: '20%' }}>Price (₱) *</th>
+                        <th style={{ minWidth: '150px', width: '15%' }}>Initial Stock</th>
+                        <th style={{ minWidth: '160px', width: '15%' }}>Unit</th>
+                        <th style={{ width: '60px', textAlign: 'center' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batchRows.map((row, idx) => {
+                        const err = batchErrors[row.id] || {}
+                        return (
+                          <tr key={row.id}>
+                            <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: '700', fontSize: '12.5px' }}>
+                              {idx + 1}
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="form-input"
+                                style={{
+                                  padding: '9px 12px',
+                                  fontSize: '13px',
+                                  borderColor: err.name ? '#ef4444' : 'var(--border-color)',
+                                  background: 'var(--input-bg)'
+                                }}
+                                placeholder="e.g. Wireless Mouse, USB Cable, Blue Tee Plain..."
+                                value={row.name}
+                                onChange={(e) => handleUpdateBatchField(row.id, 'name', e.target.value)}
+                              />
+                              {err.name && (
+                                <div style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <AlertCircle size={12} /> {err.name}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ position: 'relative' }}>
+                                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '600' }}>₱</span>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0.01"
+                                  className="form-input"
+                                  style={{
+                                    padding: '9px 12px 9px 28px',
+                                    fontSize: '13px',
+                                    borderColor: err.base_price ? '#ef4444' : 'var(--border-color)',
+                                    background: 'var(--input-bg)'
+                                  }}
+                                  placeholder="0.00"
+                                  value={row.base_price}
+                                  onChange={(e) => handleUpdateBatchField(row.id, 'base_price', e.target.value)}
+                                />
+                              </div>
+                              {err.base_price && (
+                                <div style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <AlertCircle size={12} /> {err.base_price}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                className="form-input"
+                                style={{
+                                  padding: '9px 12px',
+                                  fontSize: '13px',
+                                  borderColor: err.stock_quantity ? '#ef4444' : 'var(--border-color)',
+                                  background: 'var(--input-bg)'
+                                }}
+                                placeholder="0"
+                                value={row.stock_quantity}
+                                onChange={(e) => handleUpdateBatchField(row.id, 'stock_quantity', e.target.value)}
+                              />
+                              {err.stock_quantity && (
+                                <div style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px' }}>
+                                  {err.stock_quantity}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <select
+                                className="form-input"
+                                style={{
+                                  padding: '9px 12px',
+                                  fontSize: '13px',
+                                  background: 'var(--input-bg)'
+                                }}
+                                value={row.unit || 'piece'}
+                                onChange={(e) => handleUpdateBatchField(row.id, 'unit', e.target.value)}
+                              >
+                                {(UNIT_OPTIONS && UNIT_OPTIONS.length > 0 ? UNIT_OPTIONS : [
+                                  { value: 'piece', label: 'Piece (pc)' },
+                                  { value: 'box', label: 'Box' },
+                                  { value: 'set', label: 'Set' },
+                                  { value: 'meter', label: 'Meter (m)' },
+                                  { value: 'roll', label: 'Roll' },
+                                  { value: 'pack', label: 'Pack' },
+                                  { value: 'kg', label: 'Kilogram (kg)' }
+                                ]).map((u) => {
+                                  const val = typeof u === 'string' ? u : u.value
+                                  const lbl = typeof u === 'string' ? u : (u.label || u.value)
+                                  return (
+                                    <option key={val} value={val}>
+                                      {lbl}
+                                    </option>
+                                  )
+                                })}
+                              </select>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBatchRow(row.id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: batchRows.length > 1 ? '#ef4444' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  transition: 'background 0.15s ease'
+                                }}
+                                title={batchRows.length > 1 ? 'Remove product row' : 'Reset product row'}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 3. FIXED BOTTOM ACTION BAR */}
+              <div className="batch-fullscreen-footer">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setShowBatchModal(false)}
-                    style={{ padding: '10px 16px' }}
+                    onClick={handleAddBatchRow}
+                    style={{ fontSize: '13px', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600' }}
+                  >
+                    <Plus size={16} /> Add Another Product
+                  </button>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {batchRows.length} {batchRows.length === 1 ? 'product row' : 'product rows'} in batch
+                  </span>
+                  {batchCategoryId && (
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                      • Target Category: <strong>{categories.find(c => String(c.id) === String(batchCategoryId))?.name}</strong>
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      if (!batchSubmitting) {
+                        setShowBatchModal(false)
+                        handleResetBatchForm()
+                      }
+                    }}
+                    disabled={batchSubmitting}
+                    style={{ padding: '10px 20px', fontSize: '13.5px' }}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     className="btn btn-primary"
-                    style={{ padding: '10px 20px' }}
+                    disabled={batchSubmitting}
+                    style={{ padding: '10px 24px', fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700' }}
                   >
-                    Save All {batchRows.length} Products
+                    {batchSubmitting ? (
+                      <>
+                        <span className="spinner" style={{ width: '15px', height: '15px', display: 'inline-block' }} />
+                        Saving All Products...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        Save All Products ({batchRows.length})
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -2202,7 +2731,7 @@ export default function ProductManagement() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Primary Supplier:</span>
                   <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>
-                    {viewingProduct.supplier_name || (suppliers.find(s => s.id === viewingProduct.supplier_id)?.name) || 'Metro Hardware Distributors'}
+                    {viewingProduct.supplier_name || (suppliers.find(s => s.id === viewingProduct.supplier_id)?.name) || 'Direct Inventory'}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>

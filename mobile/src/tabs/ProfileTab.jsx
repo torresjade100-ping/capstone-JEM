@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,8 @@ export default function ProfileTab({
   onShowToast,
 }) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isTablet = windowWidth > 768;
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const displayName = userName || 'Valued Customer';
@@ -71,87 +73,93 @@ export default function ProfileTab({
         <View style={s.orbA} pointerEvents="none" />
         <View style={s.orbB} pointerEvents="none" />
 
-        {/* User Card Row */}
-        <View style={s.userCardRow}>
-          <LinearGradient
-            colors={GRADIENTS.orange}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[s.avatar, SHADOWS.orange]}
-          >
-            <Text style={s.avatarText}>{avatarLetter}</Text>
-          </LinearGradient>
+        {/* User Card & Metrics Container */}
+        <View style={[isTablet && { maxWidth: 760, width: '100%', alignSelf: 'center' }]}>
+          {/* User Card Row */}
+          <View style={s.userCardRow}>
+            <LinearGradient
+              colors={GRADIENTS.orange}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[s.avatar, SHADOWS.orange]}
+            >
+              <Text style={s.avatarText}>{avatarLetter}</Text>
+            </LinearGradient>
 
-          <View style={{ flex: 1, paddingHorizontal: 12 }}>
-            <Text style={s.nameText} numberOfLines={1}>
-              {displayName}
-            </Text>
-            <Text style={s.emailText} numberOfLines={1}>
-              {displayEmail}
-            </Text>
+            <View style={{ flex: 1, paddingHorizontal: 12 }}>
+              <Text style={s.nameText} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <Text style={s.emailText} numberOfLines={1}>
+                {displayEmail}
+              </Text>
 
-            <View style={s.customerBadge}>
-              <Ionicons name="person" size={11} color={PALETTE.orange200} />
-              <Text style={s.customerBadgeText}>Customer Account</Text>
+              <View style={s.customerBadge}>
+                <Ionicons name="person" size={11} color={PALETTE.orange200} />
+                <Text style={s.customerBadgeText}>Customer Account</Text>
+              </View>
             </View>
+
+            <PressableScale
+              onPress={onOpenEditProfile}
+              style={s.editBtn}
+              scaleTo={0.9}
+            >
+              <Ionicons name="pencil" size={16} color="#FFFFFF" />
+            </PressableScale>
           </View>
 
-          <PressableScale
-            onPress={onOpenEditProfile}
-            style={s.editBtn}
-            scaleTo={0.9}
-          >
-            <Ionicons name="pencil" size={16} color="#FFFFFF" />
-          </PressableScale>
-        </View>
+          {/* 3 Metric Cards */}
+          <View style={s.metricsRow}>
+            <PressableScale
+              onPress={onNavigateToOrders}
+              style={s.metricCard}
+              containerStyle={{ flex: 1 }}
+              scaleTo={0.95}
+            >
+              <View style={[s.metricIcon, { backgroundColor: 'rgba(249, 115, 22, 0.16)' }]}>
+                <Ionicons name="receipt" size={16} color={PALETTE.orange400} />
+              </View>
+              <Text style={s.metricVal}>{ordersCount}</Text>
+              <Text style={s.metricLabel}>Total Orders</Text>
+            </PressableScale>
 
-        {/* 3 Metric Cards */}
-        <View style={s.metricsRow}>
-          <PressableScale
-            onPress={onNavigateToOrders}
-            style={s.metricCard}
-            containerStyle={{ flex: 1 }}
-            scaleTo={0.95}
-          >
-            <View style={[s.metricIcon, { backgroundColor: 'rgba(249, 115, 22, 0.16)' }]}>
-              <Ionicons name="receipt" size={16} color={PALETTE.orange400} />
-            </View>
-            <Text style={s.metricVal}>{ordersCount}</Text>
-            <Text style={s.metricLabel}>Total Orders</Text>
-          </PressableScale>
+            <PressableScale
+              onPress={onNavigateToOrders}
+              style={s.metricCard}
+              containerStyle={{ flex: 1 }}
+              scaleTo={0.95}
+            >
+              <View style={[s.metricIcon, { backgroundColor: 'rgba(16, 185, 129, 0.16)' }]}>
+                <Ionicons name="checkmark-done" size={16} color={PALETTE.success} />
+              </View>
+              <Text style={s.metricVal}>{completedOrdersCount}</Text>
+              <Text style={s.metricLabel}>Delivered</Text>
+            </PressableScale>
 
-          <PressableScale
-            onPress={onNavigateToOrders}
-            style={s.metricCard}
-            containerStyle={{ flex: 1 }}
-            scaleTo={0.95}
-          >
-            <View style={[s.metricIcon, { backgroundColor: 'rgba(16, 185, 129, 0.16)' }]}>
-              <Ionicons name="checkmark-done" size={16} color={PALETTE.success} />
-            </View>
-            <Text style={s.metricVal}>{completedOrdersCount}</Text>
-            <Text style={s.metricLabel}>Delivered</Text>
-          </PressableScale>
-
-          <PressableScale
-            onPress={onOpenWishlist}
-            style={s.metricCard}
-            containerStyle={{ flex: 1 }}
-            scaleTo={0.95}
-          >
-            <View style={[s.metricIcon, { backgroundColor: 'rgba(244, 114, 182, 0.16)' }]}>
-              <Ionicons name="heart" size={16} color="#F472B6" />
-            </View>
-            <Text style={s.metricVal}>{wishlistCount}</Text>
-            <Text style={s.metricLabel}>Wishlist</Text>
-          </PressableScale>
+            <PressableScale
+              onPress={onOpenWishlist}
+              style={s.metricCard}
+              containerStyle={{ flex: 1 }}
+              scaleTo={0.95}
+            >
+              <View style={[s.metricIcon, { backgroundColor: 'rgba(244, 114, 182, 0.16)' }]}>
+                <Ionicons name="heart" size={16} color="#F472B6" />
+              </View>
+              <Text style={s.metricVal}>{wishlistCount}</Text>
+              <Text style={s.metricLabel}>Wishlist</Text>
+            </PressableScale>
+          </View>
         </View>
       </LinearGradient>
 
       {/* 2. Scrollable Body Content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={s.scroll}
+        contentContainerStyle={[
+          s.scroll,
+          isTablet && { maxWidth: 760, alignSelf: 'center', width: '100%' },
+        ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
@@ -184,7 +192,7 @@ export default function ProfileTab({
           {renderRow({
             icon: 'card-outline',
             label: 'Payment Methods',
-            onPress: () => onShowToast('GCash, Maya, Bank Transfer & COD enabled'),
+            onPress: () => onShowToast('GCash, Maya & COD enabled'),
           })}
           {renderRow({
             icon: 'notifications-outline',

@@ -6,6 +6,7 @@ import { ScreenHeader, GlassIconButton, SearchBar, SectionHeader } from '../comp
 import PressableScale from '../components/ui/PressableScale';
 import ProductCard from '../components/ui/ProductCard';
 import { PALETTE, GRADIENTS, RADIUS, SHADOWS, getCategoryVisual } from '../components/ui/theme';
+import { getMobileNotifications } from '../api/mobileApi';
 
 const PROMO_SLIDES = [
   {
@@ -34,19 +35,13 @@ const PROMO_SLIDES = [
   },
 ];
 
-const VALUE_PROPS = [
-  { icon: 'truck-delivery', title: 'Site Delivery', caption: 'Truck dispatch', tint: PALETTE.orange500, bg: PALETTE.orange50 },
-  { icon: 'shield-check', title: 'PNS / ASTM', caption: 'Certified grade', tint: PALETTE.success, bg: PALETTE.successBg },
-  { icon: 'wallet', title: 'GCash · COD', caption: 'Flexible pay', tint: PALETTE.info, bg: PALETTE.infoBg },
-];
-
 const USE_NATIVE = Platform.OS !== 'web';
 
 const greetingForNow = () => {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h >= 5 && h < 12) return 'Good morning,';
+  if (h >= 12 && h < 18) return 'Good afternoon,';
+  return 'Good evening,';
 };
 
 export default function HomeTab({
@@ -62,6 +57,8 @@ export default function HomeTab({
   onOpenNotifications,
   onNavigateToCategories,
   userName = '',
+  unreadCount: propUnreadCount,
+  customerEmail = '',
   refreshing = false,
   onRefresh = null,
   isOffline = false,
@@ -71,8 +68,66 @@ export default function HomeTab({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isTablet = windowWidth > 768;
 
+  const [greeting, setGreeting] = useState(() => greetingForNow());
   const [promoIndex, setPromoIndex] = useState(0);
   const fade = useRef(new Animated.Value(1)).current;
+
+  // Unread notification badge synchronization
+  const [unreadCount, setUnreadCount] = useState(
+    typeof propUnreadCount === 'number' ? propUnreadCount : 0
+  );
+
+  useEffect(() => {
+    if (typeof propUnreadCount === 'number') {
+      setUnreadCount(propUnreadCount);
+    }
+  }, [propUnreadCount]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncCount = async () => {
+      try {
+        const data = await getMobileNotifications(customerEmail);
+        if (isMounted && Array.isArray(data)) {
+          const unread = data.filter((n) => !n.read && !n.is_read && !n.read_at).length;
+          setUnreadCount(unread);
+        }
+      } catch (e) {}
+    };
+
+    if (typeof propUnreadCount !== 'number') {
+      syncCount();
+    }
+
+    const handleNotificationUpdate = (e) => {
+      if (e?.detail?.unreadCount !== undefined && typeof e.detail.unreadCount === 'number') {
+        if (isMounted) setUnreadCount(e.detail.unreadCount);
+      } else {
+        syncCount();
+      }
+    };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('jem_notification_update', handleNotificationUpdate);
+    }
+
+    return () => {
+      isMounted = false;
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('jem_notification_update', handleNotificationUpdate);
+      }
+    };
+  }, [customerEmail, propUnreadCount]);
+
+  // Real-time dynamic greeting tick interval
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const next = greetingForNow();
+      setGreeting((prev) => (prev !== next ? next : prev));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Auto rotate promo slides with a soft cross-fade
   useEffect(() => {
@@ -99,11 +154,15 @@ export default function HomeTab({
               <Text style={s.avatarText}>{initial}</Text>
             </LinearGradient>
             <View style={{ flex: 1 }}>
-              <Text style={s.greeting}>{greetingForNow()}{firstName ? ',' : ''}</Text>
-              <Text style={s.userName} numberOfLines={1}>{firstName || 'Builder'} 👷</Text>
+              <Text style={s.greeting}>{greeting}</Text>
+              <Text style={s.userName} numberOfLines={1}>{firstName || 'Builder'}</Text>
             </View>
           </View>
-          <GlassIconButton icon="notifications-outline" onPress={onOpenNotifications} badge />
+          <GlassIconButton
+            icon="notifications-outline"
+            onPress={onOpenNotifications}
+            badge={unreadCount > 0}
+          />
         </View>
 
         <View style={s.locationRow}>
@@ -180,19 +239,6 @@ export default function HomeTab({
                 </LinearGradient>
               </Animated.View>
             </PressableScale>
-
-            {/* Value props */}
-            <View style={s.valueRow}>
-              {VALUE_PROPS.map((vp) => (
-                <View key={vp.title} style={[s.valueCard, SHADOWS.card]}>
-                  <View style={[s.valueIcon, { backgroundColor: vp.bg }]}>
-                    <MaterialCommunityIcons name={vp.icon} size={18} color={vp.tint} />
-                  </View>
-                  <Text style={s.valueTitle} numberOfLines={1}>{vp.title}</Text>
-                  <Text style={s.valueCaption} numberOfLines={1}>{vp.caption}</Text>
-                </View>
-              ))}
-            </View>
 
             {/* Categories */}
             <SectionHeader
@@ -278,7 +324,7 @@ const s = StyleSheet.create({
 
   scroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 120 },
 
-  heroShell: { borderRadius: RADIUS.xl, marginBottom: 16 },
+  heroShell: { borderRadius: RADIUS.xl, marginBottom: 22 },
   hero: { borderRadius: RADIUS.xl, padding: 20, minHeight: 186, overflow: 'hidden' },
   heroRing: {
     position: 'absolute',
@@ -330,19 +376,6 @@ const s = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   dotActive: { width: 20, backgroundColor: '#FFFFFF' },
-
-  valueRow: { flexDirection: 'row', gap: 10, marginBottom: 26 },
-  valueCard: {
-    flex: 1,
-    backgroundColor: PALETTE.surface,
-    borderRadius: RADIUS.lg,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: PALETTE.lineSoft,
-  },
-  valueIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  valueTitle: { fontSize: 12, fontWeight: '900', color: PALETTE.text },
-  valueCaption: { fontSize: 10.5, color: PALETTE.textMuted, fontWeight: '600', marginTop: 1 },
 
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 22 },
   catCell: { width: '25%', paddingHorizontal: 4, marginBottom: 14 },

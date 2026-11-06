@@ -747,9 +747,10 @@ export async function updateCustomerProfile(profileData) {
 /**
  * Fetch products from Laravel backend including variants
  */
-export async function getMobileProducts() {
+export async function getMobileProducts(options = {}) {
+  const { allowSeedFallback = false } = options || {};
   try {
-    const data = await safeFetch('/products');
+    const data = await safeFetch('/products?per_page=300');
     const list = Array.isArray(data) ? data : (data?.data?.data || data?.data || []);
 
     if (list.length > 0) {
@@ -797,7 +798,13 @@ export async function getMobileProducts() {
             (p.name?.toLowerCase().includes('hardware cloth') || p.name?.toLowerCase().includes('ayagan')) ? '/images/products/hardware-cloth-3ft.png' :
             (p.name?.toLowerCase().includes('coupling reducer') || p.name?.toLowerCase().includes('reducer')) ? '/images/products/blue-coupling-reducer.png' :
             p.name?.toLowerCase().includes('blue coupling') ? '/images/products/blue-coupling-1-2.png' :
+            p.name?.toLowerCase().includes('elbow threaded') ? '/images/products/blue-elbow-threaded-1-2.png' :
             p.name?.toLowerCase().includes('blue elbow') ? '/images/products/blue-elbow-plain-1-2.png' :
+            p.name?.toLowerCase().includes('female adaptor') ? '/images/products/blue-female-adaptor-1-2.png' :
+            p.name?.toLowerCase().includes('female plug') ? '/images/products/blue-female-plug-1-2.png' :
+            p.name?.toLowerCase().includes('male adaptor') ? '/images/products/blue-male-adaptor-1-2.png' :
+            p.name?.toLowerCase().includes('male plug') ? '/images/products/blue-male-plug-1-2.png' :
+            (p.name?.toLowerCase().includes('tee plain') || p.name?.toLowerCase().includes('blue tee')) ? '/images/products/blue-tee-plain-1-2.png' :
             null
           ),
           emoji:
@@ -1174,3 +1181,9 @@ export async function submitMobileFeedback(feedbackData) {
 
   return backendRes?.data || payload;
 }
+
+export {
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  resetPassword,
+} from './forgotPasswordApi';

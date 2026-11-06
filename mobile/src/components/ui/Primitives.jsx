@@ -41,7 +41,7 @@ export function GlassIconButton({ icon, onPress, badge = false, size = 20 }) {
   return (
     <PressableScale onPress={onPress} style={s.glassBtn} scaleTo={0.9}>
       <Ionicons name={icon} size={size} color="#FFFFFF" />
-      {badge ? <View style={s.glassBadge} /> : null}
+      {Boolean(badge) ? <View style={s.glassBadge} /> : null}
     </PressableScale>
   );
 }
